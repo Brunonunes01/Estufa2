@@ -8,7 +8,7 @@ import {
   ActivityIndicator, 
   FlatList, 
   Alert,
-  TouchableOpacity // Importar
+  TouchableOpacity 
 } from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { Estufa, Plantio } from '../../types/domain';
@@ -24,26 +24,19 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
   const [plantios, setPlantios] = useState<Plantio[]>([]);
   const [loading, setLoading] = useState(true);
   
-  const isFocused = useIsFocused(); // Para recarregar a lista
+  const isFocused = useIsFocused(); 
 
-  // Hook para carregar dados da estufa e seus plantios
   useEffect(() => {
-    // Seta o título da tela
     navigation.setOptions({ title: estufaNome || 'Detalhes da Estufa' });
 
     const carregarDados = async () => {
       if (!user || !estufaId) return;
-      
       setLoading(true);
       try {
-        // Puxa os dados da Estufa
         const dadosEstufa = await getEstufaById(estufaId);
         setEstufa(dadosEstufa);
-
-        // Puxa os plantios dessa estufa
         const listaPlantios = await listPlantiosByEstufa(user.uid, estufaId);
         setPlantios(listaPlantios);
-
       } catch (error) {
         Alert.alert("Erro", "Não foi possível carregar os dados.");
       } finally {
@@ -51,11 +44,10 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
       }
     };
     
-    // Recarrega sempre que a tela entrar em foco
     if (isFocused) {
       carregarDados();
     }
-  }, [estufaId, user, isFocused]); // Dependências do hook
+  }, [estufaId, user, isFocused]); 
 
   if (loading) {
     return <ActivityIndicator size="large" style={styles.centered} />;
@@ -70,10 +62,20 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
     <View style={styles.container}>
       {/* Seção 1: Detalhes da Estufa */}
       <View style={styles.detailBox}>
-        <Text style={styles.title}>Dados da Estufa</Text>
+        <View style={styles.headerBox}>
+          <Text style={styles.title}>Dados da Estufa</Text>
+          
+          {/* BOTÃO DE EDITAR NOVO */}
+          <Button 
+            title="Editar" 
+            onPress={() => navigation.navigate('EstufaForm', { estufaId: estufa.id })}
+          />
+        </View>
+
         <Text>Área: {estufa.areaM2} m²</Text>
         <Text>Medidas (CxLxA): {estufa.comprimentoM}m x {estufa.larguraM}m x {estufa.alturaM}m</Text>
         <Text>Status: {estufa.status}</Text>
+        {/* Adicione mais detalhes aqui se quiser, ex: estufa.tipoCobertura */}
       </View>
 
       {/* Seção 2: Ações */}
@@ -88,7 +90,6 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
         data={plantios}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          // MODIFICAÇÃO: Envolvemos com TouchableOpacity
           <TouchableOpacity
             style={styles.plantioItem}
             onPress={() => navigation.navigate('PlantioDetail', { plantioId: item.id })}
@@ -120,6 +121,12 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 5,
     marginBottom: 16,
+  },
+  headerBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
   },
   title: {
     fontSize: 20,

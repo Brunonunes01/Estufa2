@@ -1,21 +1,67 @@
 // src/screens/Estufas/EstufaFormScreen.tsx
-import React, { useState } from 'react';
-import { View, Text, TextInput, Button, ScrollView, Alert, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, Button, ScrollView, Alert, StyleSheet, ActivityIndicator } from 'react-native';
 import { Timestamp } from 'firebase/firestore';
-import { createEstufa, EstufaFormData } from '../../services/estufaService';
+import { 
+  createEstufa, 
+  updateEstufa, // Importar
+  getEstufaById, // Importar
+  EstufaFormData 
+} from '../../services/estufaService';
 import { useAuth } from '../../hooks/useAuth';
 
-const EstufaFormScreen = ({ navigation }: any) => {
+const EstufaFormScreen = ({ route, navigation }: any) => {
   const { user } = useAuth();
   
+  // Verifica se estamos em modo "Editar"
+  const estufaId = route.params?.estufaId;
+  const isEditMode = !!estufaId;
+
   // Estados do formulário
   const [nome, setNome] = useState('');
   const [comprimento, setComprimento] = useState('');
   const [largura, setLargura] = useState('');
-  const [altura, setAltura] = useState(''); // Mantemos a altura para salvar, mas não para o cálculo principal
+  const [altura, setAltura] = useState('');
   const [status, setStatus] = useState<'ativa' | 'manutencao' | 'desativada'>('ativa');
   
   const [loading, setLoading] = useState(false);
+  const [loadingData, setLoadingData] = useState(false); // Loading para buscar dados
+
+  // Hook para buscar os dados da estufa se estivermos em modo "Editar"
+  useEffect(() => {
+    const carregarDadosEstufa = async () => {
+      if (isEditMode && estufaId) {
+        setLoadingData(true);
+        try {
+          const estufa = await getEstufaById(estufaId);
+          if (estufa) {
+            // Preenche o formulário com os dados existentes
+            setNome(estufa.nome);
+            setComprimento(estufa.comprimentoM.toString());
+            setLargura(estufa.larguraM.toString());
+            setAltura(estufa.alturaM.toString());
+            setStatus(estufa.status);
+            // (Pode adicionar outros campos aqui: tipoCobertura, etc.)
+          }
+        } catch (error) {
+          Alert.alert('Erro', 'Não foi possível carregar os dados da estufa.');
+          navigation.goBack();
+        } finally {
+          setLoadingData(false);
+        }
+      }
+    };
+
+    carregarDadosEstufa();
+  }, [estufaId, isEditMode]);
+
+  // Hook para definir o título da tela (Nova ou Editar)
+  useEffect(() => {
+    navigation.setOptions({
+      title: isEditMode ? 'Editar Estufa' : 'Nova Estufa'
+    });
+  }, [isEditMode, navigation]);
+
 
   const handleSave = async () => {
     if (!user) {
@@ -34,6 +80,7 @@ const EstufaFormScreen = ({ navigation }: any) => {
       larguraM: parseFloat(largura) || 0,
       alturaM: parseFloat(altura) || 0,
       status: status,
+      // (Campos opcionais simplificados)
       dataFabricacao: null,
       tipoCobertura: null,
       responsavel: null,
@@ -42,22 +89,34 @@ const EstufaFormScreen = ({ navigation }: any) => {
 
     setLoading(true);
     try {
-      await createEstufa(formData, user.uid);
-      Alert.alert('Sucesso!', 'Estufa criada.');
+      if (isEditMode) {
+        // Modo EDIÇÃO
+        await updateEstufa(estufaId, formData);
+        Alert.alert('Sucesso!', 'Estufa atualizada.');
+      } else {
+        // Modo CRIAÇÃO
+        await createEstufa(formData, user.uid);
+        Alert.alert('Sucesso!', 'Estufa criada.');
+      }
+      // Volta para a tela anterior (Lista ou Detalhe)
       navigation.goBack(); 
     } catch (error) {
-      Alert.alert('Erro', 'Não foi possível salvar a estufa.');
+      Alert.alert('Erro', `Não foi possível ${isEditMode ? 'atualizar' : 'salvar'} a estufa.`);
       console.error(error);
     } finally {
       setLoading(false);
     }
   };
 
-  // ****** AQUI A MUDANÇA ******
-  // Cálculo da ÁREA em tempo real
+  // Cálculo da área em tempo real
   const c = parseFloat(comprimento) || 0;
   const l = parseFloat(largura) || 0;
-  const area = (c * l).toFixed(2); // Arredonda para 2 casas
+  const area = (c * l).toFixed(2); 
+
+  // Mostra um "Carregando" se estiver buscando dados
+  if (loadingData) {
+    return <ActivityIndicator size="large" style={{ flex: 1 }} />;
+  }
 
   return (
     <ScrollView style={styles.container}>
@@ -93,9 +152,8 @@ const EstufaFormScreen = ({ navigation }: any) => {
         keyboardType="numeric"
       />
 
-      {/* ****** AQUI A MUDANÇA ****** */}
       <Text style={styles.label}>Área (m²)</Text>
-      <Text style={styles.volumeText}>{area} m²</Text>
+      <Text style={styles.areaText}>{area} m²</Text>
 
       <Text style={styles.label}>Status</Text>
       <TextInput
@@ -128,7 +186,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     backgroundColor: '#fff',
   },
-  volumeText: { // O nome do estilo continua 'volumeText', mas não tem problema
+  areaText: {
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 20,

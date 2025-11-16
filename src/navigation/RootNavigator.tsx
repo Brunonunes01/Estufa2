@@ -18,11 +18,8 @@ import PlantioDetailScreen from '../screens/Plantios/PlantioDetailScreen';
 import ColheitaFormScreen from '../screens/Colheitas/ColheitaFormScreen';
 import InsumosListScreen from '../screens/Insumos/InsumosListScreen';
 import InsumoFormScreen from '../screens/Insumos/InsumoFormScreen';
-
-// Novas importações
 import FornecedoresListScreen from '../screens/Fornecedores/FornecedoresListScreen';
 import FornecedorFormScreen from '../screens/Fornecedores/FornecedorFormScreen';
-
 
 const Stack = createNativeStackNavigator();
 
@@ -34,7 +31,7 @@ const AuthStack = () => (
   </Stack.Navigator>
 );
 
-// Pilha principal do app (MODIFICADA)
+// Pilha principal do app
 const AppStack = () => (
   <Stack.Navigator>
     <Stack.Screen 
@@ -51,7 +48,7 @@ const AppStack = () => (
     <Stack.Screen 
       name="EstufaForm" 
       component={EstufaFormScreen} 
-      options={{ title: 'Nova Estufa' }}
+      // O título agora é dinâmico (definido na própria tela)
     />
     <Stack.Screen 
       name="EstufaDetail" 
@@ -81,8 +78,6 @@ const AppStack = () => (
       component={InsumoFormScreen} 
       options={{ title: 'Novo Insumo' }}
     />
-
-    {/* Telas novas adicionadas */}
     <Stack.Screen 
       name="FornecedoresList" 
       component={FornecedoresListScreen} 
