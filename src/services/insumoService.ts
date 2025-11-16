@@ -2,10 +2,10 @@
 import { 
   collection, 
   addDoc, 
-  query, 
-  where, 
+  query,  
   getDocs, 
-  Timestamp 
+  Timestamp,
+  where // Importação duplicada, mas não tem problema
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Insumo } from '../types/domain';
@@ -27,7 +27,7 @@ export const createInsumo = async (data: InsumoFormData, userId: string) => {
     userId: userId,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
-    fornecedorId: null, // Não vamos usar no form inicial
+    fornecedorId: null, 
     observacoes: null,
   };
 
@@ -41,7 +41,7 @@ export const createInsumo = async (data: InsumoFormData, userId: string) => {
   }
 };
 
-// 2. LISTAR INSUMOS
+// 2. LISTAR INSUMOS (Todos)
 export const listInsumos = async (userId: string): Promise<Insumo[]> => {
   const insumos: Insumo[] = [];
   try {
@@ -60,5 +60,36 @@ export const listInsumos = async (userId: string): Promise<Insumo[]> => {
   } catch (error) {
     console.error("Erro ao listar insumos: ", error);
     throw new Error('Não foi possível buscar os insumos.');
+  }
+};
+
+// 3. LISTAR INSUMOS EM ALERTA (Função Nova)
+export const listInsumosEmAlerta = async (userId: string): Promise<Insumo[]> => {
+  const insumosEmAlerta: Insumo[] = [];
+  if (!userId) return insumosEmAlerta;
+
+  try {
+    // 1. Busca todos os insumos do usuário
+    const insumos = await listInsumos(userId);
+
+    // 2. Filtra no lado do cliente (app)
+    // O Firestore não permite a consulta "<" (estoqueAtual < estoqueMinimo) diretamente
+    // de forma eficiente entre dois campos do mesmo documento.
+    // Como o volume de insumos por produtor é pequeno, filtrar no app é a melhor solução.
+    
+    const alertas = insumos.filter(insumo => {
+      // Só alerta se 'estoqueMinimo' estiver definido (não for null)
+      if (insumo.estoqueMinimo !== null) {
+        return insumo.estoqueAtual < insumo.estoqueMinimo;
+      }
+      return false;
+    });
+
+    return alertas;
+
+  } catch (error) {
+    console.error("Erro ao listar insumos em alerta: ", error);
+    // Retorna vazio em caso de erro, para não quebrar o Dashboard
+    return []; 
   }
 };

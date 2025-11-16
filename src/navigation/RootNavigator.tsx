@@ -16,10 +16,12 @@ import EstufaDetailScreen from '../screens/Estufas/EstufaDetailScreen';
 import PlantioFormScreen from '../screens/Plantios/PlantioFormScreen';
 import PlantioDetailScreen from '../screens/Plantios/PlantioDetailScreen';
 import ColheitaFormScreen from '../screens/Colheitas/ColheitaFormScreen';
-
-// Novas importações
 import InsumosListScreen from '../screens/Insumos/InsumosListScreen';
 import InsumoFormScreen from '../screens/Insumos/InsumoFormScreen';
+
+// Novas importações
+import FornecedoresListScreen from '../screens/Fornecedores/FornecedoresListScreen';
+import FornecedorFormScreen from '../screens/Fornecedores/FornecedorFormScreen';
 
 
 const Stack = createNativeStackNavigator();
@@ -69,8 +71,6 @@ const AppStack = () => (
       component={ColheitaFormScreen} 
       options={{ title: 'Registrar Colheita' }}
     />
-
-    {/* Telas novas adicionadas */}
     <Stack.Screen 
       name="InsumosList" 
       component={InsumosListScreen} 
@@ -80,6 +80,18 @@ const AppStack = () => (
       name="InsumoForm" 
       component={InsumoFormScreen} 
       options={{ title: 'Novo Insumo' }}
+    />
+
+    {/* Telas novas adicionadas */}
+    <Stack.Screen 
+      name="FornecedoresList" 
+      component={FornecedoresListScreen} 
+      options={{ title: 'Meus Fornecedores' }}
+    />
+    <Stack.Screen 
+      name="FornecedorForm" 
+      component={FornecedorFormScreen} 
+      options={{ title: 'Novo Fornecedor' }}
     />
     
   </Stack.Navigator>

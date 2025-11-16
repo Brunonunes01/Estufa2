@@ -56,7 +56,6 @@ export interface Colheita extends BaseDoc {
   observacoes: string | null;
 }
 
-// ****** NOVA INTERFACE ADICIONADA ******
 export interface Insumo extends BaseDoc {
   nome: string;
   tipo: "adubo" | "defensivo" | "semente" | "outro";
@@ -64,6 +63,16 @@ export interface Insumo extends BaseDoc {
   estoqueAtual: number;
   estoqueMinimo: number | null;
   custoUnitario: number | null;
-  fornecedorId: string | null; // Opcional por enquanto
+  fornecedorId: string | null; 
+  observacoes: string | null;
+}
+
+// ****** NOVA INTERFACE ADICIONADA ******
+export interface Fornecedor extends BaseDoc {
+  nome: string;
+  contato: string | null;
+  telefone: string | null;
+  email: string | null;
+  endereco: string | null;
   observacoes: string | null;
 }
