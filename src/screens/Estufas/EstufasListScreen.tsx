@@ -1,6 +1,14 @@
 // src/screens/Estufas/EstufasListScreen.tsx
 import React, { useState, useEffect } from 'react';
-import { View, Text, Button, FlatList, StyleSheet, ActivityIndicator } from 'react-native';
+import { 
+  View, 
+  Text, 
+  Button, 
+  FlatList, 
+  StyleSheet, 
+  ActivityIndicator,
+  TouchableOpacity // Importação nova
+} from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { listEstufas } from '../../services/estufaService';
 import { Estufa } from '../../types/domain';
@@ -33,7 +41,7 @@ const EstufasListScreen = ({ navigation }: any) => {
   }, [isFocused, user]);
 
   if (loading) {
-    return <ActivityIndicator size="large" style={{ flex: 1 }} />;
+    return <ActivityIndicator size="large" style={{ flex: 1, justifyContent: 'center' }} />;
   }
 
   return (
@@ -47,13 +55,19 @@ const EstufasListScreen = ({ navigation }: any) => {
         data={estufas}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <View style={styles.item}>
+          // MODIFICAÇÃO: Envolvemos o item com TouchableOpacity
+          <TouchableOpacity 
+            style={styles.item}
+            // Navega para o Detalhe, passando o ID e o Nome
+            onPress={() => navigation.navigate('EstufaDetail', { 
+              estufaId: item.id,
+              estufaNome: item.nome 
+            })}
+          >
             <Text style={styles.itemTitle}>{item.nome}</Text>
             <Text>Status: {item.status}</Text>
-            
-            {/* ****** AQUI A MUDANÇA ****** */}
             <Text>Área: {item.areaM2} m²</Text>
-          </View>
+          </TouchableOpacity>
         )}
         ListEmptyComponent={<Text style={{ textAlign: 'center', marginTop: 20 }}>Nenhuma estufa cadastrada.</Text>}
         onRefresh={carregarEstufas}

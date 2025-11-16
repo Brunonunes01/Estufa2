@@ -5,10 +5,12 @@ import {
   query, 
   where, 
   getDocs, 
-  Timestamp 
+  Timestamp,
+  doc, // Importação nova
+  getDoc // Importação nova
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
-import { Estufa } from '../types/domain'; // Nossa interface
+import { Estufa } from '../types/domain';
 
 // Tipo para os dados do formulário (sem id, userId, createdAt, etc.)
 export type EstufaFormData = {
@@ -30,9 +32,6 @@ export const createEstufa = async (data: EstufaFormData, userId: string) => {
     userId: userId,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
-    
-    // ****** AQUI A MUDANÇA ******
-    // Regra de negócio: Cálculo da Área
     areaM2: data.comprimentoM * data.larguraM
   };
 
@@ -50,13 +49,12 @@ export const createEstufa = async (data: EstufaFormData, userId: string) => {
 export const listEstufas = async (userId: string): Promise<Estufa[]> => {
   if (!userId) {
     console.log("listEstufas: userId está vazio.");
-    return []; // Retorna vazio se não tiver user
+    return [];
   }
 
   const estufas: Estufa[] = [];
   try {
     const q = query(collection(db, 'estufas'), where("userId", "==", userId));
-    
     const querySnapshot = await getDocs(q);
     
     querySnapshot.forEach((doc) => {
@@ -72,5 +70,23 @@ export const listEstufas = async (userId: string): Promise<Estufa[]> => {
   } catch (error) {
     console.error("Erro ao listar estufas: ", error);
     throw new Error('Não foi possível buscar as estufas.');
+  }
+};
+
+// 3. BUSCAR ESTUFA POR ID (Função Nova)
+export const getEstufaById = async (estufaId: string): Promise<Estufa | null> => {
+  try {
+    const docRef = doc(db, 'estufas', estufaId);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() } as Estufa;
+    } else {
+      console.warn("Estufa não encontrada:", estufaId);
+      return null;
+    }
+  } catch (error) {
+    console.error("Erro ao buscar estufa por ID: ", error);
+    throw new Error('Não foi possível buscar a estufa.');
   }
 };

@@ -10,14 +10,16 @@ import RegisterScreen from '../screens/Auth/RegisterScreen';
 
 // Telas do App
 import DashboardScreen from '../screens/Dashboard/DashboardScreen';
-// NOVAS IMPORTAÇÕES
 import EstufasListScreen from '../screens/Estufas/EstufasListScreen';
 import EstufaFormScreen from '../screens/Estufas/EstufaFormScreen';
 
+// Novas importações
+import EstufaDetailScreen from '../screens/Estufas/EstufaDetailScreen';
+import PlantioFormScreen from '../screens/Plantios/PlantioFormScreen';
 
 const Stack = createNativeStackNavigator();
 
-// Pilha de autenticação (não muda)
+// Pilha de autenticação
 const AuthStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="Login" component={LoginScreen} />
@@ -25,7 +27,7 @@ const AuthStack = () => (
   </Stack.Navigator>
 );
 
-// Pilha principal do app (AQUI FICA A MUDANÇA)
+// Pilha principal do app (MODIFICADA)
 const AppStack = () => (
   <Stack.Navigator>
     <Stack.Screen 
@@ -34,7 +36,6 @@ const AppStack = () => (
       options={{ title: 'Painel SGE' }}
     />
     
-    {/* NOVAS TELAS ADICIONADAS */}
     <Stack.Screen 
       name="EstufasList" 
       component={EstufasListScreen} 
@@ -46,7 +47,18 @@ const AppStack = () => (
       options={{ title: 'Nova Estufa' }}
     />
 
-    {/* Aqui entrarão as outras telas: Plantios, Colheitas... */}
+    {/* Telas novas adicionadas */}
+    <Stack.Screen 
+      name="EstufaDetail" 
+      component={EstufaDetailScreen} 
+      // O título será definido pela própria tela
+    />
+    <Stack.Screen 
+      name="PlantioForm" 
+      component={PlantioFormScreen} 
+      options={{ title: 'Novo Plantio' }}
+    />
+    
   </Stack.Navigator>
 );
 
