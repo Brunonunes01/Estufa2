@@ -5,7 +5,9 @@ import {
   query, 
   where, 
   getDocs, 
-  Timestamp 
+  Timestamp,
+  doc, // Importar
+  getDoc // Importar
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Plantio } from '../types/domain';
@@ -25,14 +27,10 @@ export type PlantioFormData = {
 // 1. CRIAR PLANTIO
 export const createPlantio = async (data: PlantioFormData, userId: string) => {
   
-  // Calcula a previsão de colheita
   let previsaoColheita: Timestamp | null = null;
   if (data.cicloDias && data.cicloDias > 0) {
     const dataPlantioJS = data.dataPlantio.toDate();
-    
-    // Precisamos clonar a data, pois .setDate() modifica o objeto original
     const dataClonada = new Date(dataPlantioJS.getTime());
-    
     const dataPrevisaoJS = new Date(dataClonada.setDate(dataClonada.getDate() + data.cicloDias));
     previsaoColheita = Timestamp.fromDate(dataPrevisaoJS);
   }
@@ -62,7 +60,6 @@ export const createPlantio = async (data: PlantioFormData, userId: string) => {
 export const listPlantiosByEstufa = async (userId: string, estufaId: string): Promise<Plantio[]> => {
   const plantios: Plantio[] = [];
   try {
-    // Filtro duplo: pelo usuário E pela estufa
     const q = query(
       collection(db, 'plantios'), 
       where("userId", "==", userId),
@@ -79,5 +76,23 @@ export const listPlantiosByEstufa = async (userId: string, estufaId: string): Pr
   } catch (error) {
     console.error("Erro ao listar plantios: ", error);
     throw new Error('Não foi possível buscar os plantios.');
+  }
+};
+
+// 3. BUSCAR PLANTIO POR ID (Função Nova)
+export const getPlantioById = async (plantioId: string): Promise<Plantio | null> => {
+  try {
+    const docRef = doc(db, 'plantios', plantioId);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() } as Plantio;
+    } else {
+      console.warn("Plantio não encontrado:", plantioId);
+      return null;
+    }
+  } catch (error) {
+    console.error("Erro ao buscar plantio por ID: ", error);
+    throw new Error('Não foi possível buscar o plantio.');
   }
 };

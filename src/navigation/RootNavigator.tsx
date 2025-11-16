@@ -12,10 +12,15 @@ import RegisterScreen from '../screens/Auth/RegisterScreen';
 import DashboardScreen from '../screens/Dashboard/DashboardScreen';
 import EstufasListScreen from '../screens/Estufas/EstufasListScreen';
 import EstufaFormScreen from '../screens/Estufas/EstufaFormScreen';
-
-// Novas importações
 import EstufaDetailScreen from '../screens/Estufas/EstufaDetailScreen';
 import PlantioFormScreen from '../screens/Plantios/PlantioFormScreen';
+import PlantioDetailScreen from '../screens/Plantios/PlantioDetailScreen';
+import ColheitaFormScreen from '../screens/Colheitas/ColheitaFormScreen';
+
+// Novas importações
+import InsumosListScreen from '../screens/Insumos/InsumosListScreen';
+import InsumoFormScreen from '../screens/Insumos/InsumoFormScreen';
+
 
 const Stack = createNativeStackNavigator();
 
@@ -46,17 +51,35 @@ const AppStack = () => (
       component={EstufaFormScreen} 
       options={{ title: 'Nova Estufa' }}
     />
-
-    {/* Telas novas adicionadas */}
     <Stack.Screen 
       name="EstufaDetail" 
       component={EstufaDetailScreen} 
-      // O título será definido pela própria tela
     />
     <Stack.Screen 
       name="PlantioForm" 
       component={PlantioFormScreen} 
       options={{ title: 'Novo Plantio' }}
+    />
+    <Stack.Screen 
+      name="PlantioDetail" 
+      component={PlantioDetailScreen} 
+    />
+    <Stack.Screen 
+      name="ColheitaForm" 
+      component={ColheitaFormScreen} 
+      options={{ title: 'Registrar Colheita' }}
+    />
+
+    {/* Telas novas adicionadas */}
+    <Stack.Screen 
+      name="InsumosList" 
+      component={InsumosListScreen} 
+      options={{ title: 'Meus Insumos' }}
+    />
+    <Stack.Screen 
+      name="InsumoForm" 
+      component={InsumoFormScreen} 
+      options={{ title: 'Novo Insumo' }}
     />
     
   </Stack.Navigator>

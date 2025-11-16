@@ -1,6 +1,15 @@
 // src/screens/Estufas/EstufaDetailScreen.tsx
 import React, { useState, useEffect } from 'react';
-import { View, Text, Button, StyleSheet, ActivityIndicator, FlatList, Alert } from 'react-native';
+import { 
+  View, 
+  Text, 
+  Button, 
+  StyleSheet, 
+  ActivityIndicator, 
+  FlatList, 
+  Alert,
+  TouchableOpacity // Importar
+} from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { Estufa, Plantio } from '../../types/domain';
 import { getEstufaById } from '../../services/estufaService';
@@ -63,10 +72,7 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
       <View style={styles.detailBox}>
         <Text style={styles.title}>Dados da Estufa</Text>
         <Text>Área: {estufa.areaM2} m²</Text>
-
-        {/* AQUI ESTÁ A CORREÇÃO (comp -> comprimentoM) */}
         <Text>Medidas (CxLxA): {estufa.comprimentoM}m x {estufa.larguraM}m x {estufa.alturaM}m</Text>
-        
         <Text>Status: {estufa.status}</Text>
       </View>
 
@@ -82,14 +88,16 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
         data={plantios}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <View style={styles.plantioItem}>
-            {/* AQUI ESTÁ A CORREÇÃO (variade -> variedade) */}
+          // MODIFICAÇÃO: Envolvemos com TouchableOpacity
+          <TouchableOpacity
+            style={styles.plantioItem}
+            onPress={() => navigation.navigate('PlantioDetail', { plantioId: item.id })}
+          >
             <Text style={styles.plantioTitle}>{item.cultura} ({item.variedade || 'N/A'})</Text>
-            
             <Text>Data: {item.dataPlantio.toDate().toLocaleDateString()}</Text>
             <Text>Qtd: {item.quantidadePlantada} {item.unidadeQuantidade}</Text>
             <Text>Status: {item.status}</Text>
-          </View>
+          </TouchableOpacity>
         )}
         ListEmptyComponent={<Text style={{ textAlign: 'center', margin: 10 }}>Nenhum plantio cadastrado.</Text>}
       />

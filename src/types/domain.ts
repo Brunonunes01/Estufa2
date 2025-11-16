@@ -17,14 +17,13 @@ export interface User {
   createdAt: Timestamp;
 }
 
-// ****** AQUI A MUDANÇA ******
 export interface Estufa extends BaseDoc {
   nome: string;
   dataFabricacao: Timestamp | null;
   comprimentoM: number;
   larguraM: number;
   alturaM: number;
-  areaM2: number; // MUDAMOS DE volumeM3 PARA areaM2
+  areaM2: number; 
   tipoCobertura: string | null;
   responsavel: string | null;
   status: "ativa" | "manutencao" | "desativada";
@@ -41,18 +40,30 @@ export interface Plantio extends BaseDoc {
   precoEstimadoUnidade: number | null;
   cicloDias: number | null;
   dataPlantio: Timestamp;
-  previsaoColheita: Timestamp | null; // Calculado no app
+  previsaoColheita: Timestamp | null;
   status: "em_desenvolvimento" | "em_colheita" | "finalizado";
   observacoes: string | null;
 }
 
 export interface Colheita extends BaseDoc {
   plantioId: string;
-  estufaId: string; // Facilita filtros
+  estufaId: string; 
   dataColheita: Timestamp;
   quantidade: number;
-  unidade: string; // ex: "kg", "caixa"
+  unidade: string; 
   precoUnitario: number | null;
   destino: string | null;
+  observacoes: string | null;
+}
+
+// ****** NOVA INTERFACE ADICIONADA ******
+export interface Insumo extends BaseDoc {
+  nome: string;
+  tipo: "adubo" | "defensivo" | "semente" | "outro";
+  unidadePadrao: string; // kg, L, unidade
+  estoqueAtual: number;
+  estoqueMinimo: number | null;
+  custoUnitario: number | null;
+  fornecedorId: string | null; // Opcional por enquanto
   observacoes: string | null;
 }
