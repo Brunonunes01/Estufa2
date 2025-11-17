@@ -1,11 +1,21 @@
 // src/screens/Estufas/EstufaFormScreen.tsx
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, ScrollView, Alert, StyleSheet, ActivityIndicator } from 'react-native';
+import { 
+  View, 
+  Text, 
+  TextInput, 
+  Button, 
+  ScrollView, 
+  Alert, 
+  StyleSheet, 
+  ActivityIndicator,
+  TouchableOpacity 
+} from 'react-native';
 import { Timestamp } from 'firebase/firestore';
 import { 
   createEstufa, 
-  updateEstufa, // Importar
-  getEstufaById, // Importar
+  updateEstufa, 
+  getEstufaById, 
   EstufaFormData 
 } from '../../services/estufaService';
 import { useAuth } from '../../hooks/useAuth';
@@ -13,19 +23,19 @@ import { useAuth } from '../../hooks/useAuth';
 const EstufaFormScreen = ({ route, navigation }: any) => {
   const { user } = useAuth();
   
-  // Verifica se estamos em modo "Editar"
   const estufaId = route.params?.estufaId;
   const isEditMode = !!estufaId;
 
   // Estados do formulário
   const [nome, setNome] = useState('');
+  const [anoFabricacao, setAnoFabricacao] = useState(''); // <-- NOVO ESTADO
   const [comprimento, setComprimento] = useState('');
   const [largura, setLargura] = useState('');
   const [altura, setAltura] = useState('');
   const [status, setStatus] = useState<'ativa' | 'manutencao' | 'desativada'>('ativa');
   
   const [loading, setLoading] = useState(false);
-  const [loadingData, setLoadingData] = useState(false); // Loading para buscar dados
+  const [loadingData, setLoadingData] = useState(false); 
 
   // Hook para buscar os dados da estufa se estivermos em modo "Editar"
   useEffect(() => {
@@ -41,7 +51,11 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
             setLargura(estufa.larguraM.toString());
             setAltura(estufa.alturaM.toString());
             setStatus(estufa.status);
-            // (Pode adicionar outros campos aqui: tipoCobertura, etc.)
+            
+            // <-- LÓGICA NOVA: Preenche o ano
+            if (estufa.dataFabricacao) {
+              setAnoFabricacao(estufa.dataFabricacao.toDate().getFullYear().toString());
+            }
           }
         } catch (error) {
           Alert.alert('Erro', 'Não foi possível carregar os dados da estufa.');
@@ -51,7 +65,6 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
         }
       }
     };
-
     carregarDadosEstufa();
   }, [estufaId, isEditMode]);
 
@@ -74,14 +87,21 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
       return;
     }
 
+    // <-- LÓGICA NOVA: Converte o Ano (string) para Timestamp
+    let dataFabricacaoTimestamp: Timestamp | null = null;
+    const ano = parseInt(anoFabricacao);
+    if (ano >= 1900 && ano <= 2100) { // Validação simples do ano
+      // Salva como 1º de Janeiro (mês 0) do ano digitado
+      dataFabricacaoTimestamp = Timestamp.fromDate(new Date(ano, 0, 1));
+    }
+
     const formData: EstufaFormData = {
       nome: nome,
       comprimentoM: parseFloat(comprimento) || 0,
       larguraM: parseFloat(largura) || 0,
       alturaM: parseFloat(altura) || 0,
       status: status,
-      // (Campos opcionais simplificados)
-      dataFabricacao: null,
+      dataFabricacao: dataFabricacaoTimestamp, // <-- CAMPO NOVO AQUI
       tipoCobertura: null,
       responsavel: null,
       observacoes: null,
@@ -90,15 +110,12 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
     setLoading(true);
     try {
       if (isEditMode) {
-        // Modo EDIÇÃO
         await updateEstufa(estufaId, formData);
         Alert.alert('Sucesso!', 'Estufa atualizada.');
       } else {
-        // Modo CRIAÇÃO
         await createEstufa(formData, user.uid);
         Alert.alert('Sucesso!', 'Estufa criada.');
       }
-      // Volta para a tela anterior (Lista ou Detalhe)
       navigation.goBack(); 
     } catch (error) {
       Alert.alert('Erro', `Não foi possível ${isEditMode ? 'atualizar' : 'salvar'} a estufa.`);
@@ -113,7 +130,6 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
   const l = parseFloat(largura) || 0;
   const area = (c * l).toFixed(2); 
 
-  // Mostra um "Carregando" se estiver buscando dados
   if (loadingData) {
     return <ActivityIndicator size="large" style={{ flex: 1 }} />;
   }
@@ -126,6 +142,17 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
         value={nome}
         onChangeText={setNome}
         placeholder="Ex: Estufa 1 - Tomates"
+      />
+
+      {/* ****** CAMPO NOVO ADICIONADO ****** */}
+      <Text style={styles.label}>Ano de Construção (Opcional)</Text>
+      <TextInput
+        style={styles.input}
+        value={anoFabricacao}
+        onChangeText={setAnoFabricacao}
+        keyboardType="numeric"
+        maxLength={4}
+        placeholder="Ex: 2023"
       />
       
       <Text style={styles.label}>Comprimento (m)</Text>
@@ -156,12 +183,34 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
       <Text style={styles.areaText}>{area} m²</Text>
 
       <Text style={styles.label}>Status</Text>
-      <TextInput
-        style={styles.input}
-        value={status}
-        onChangeText={(text) => setStatus(text as any)}
-        placeholder="ativa / manutencao / desativada"
-      />
+      <View style={styles.statusContainer}>
+        <TouchableOpacity
+          style={[styles.statusButton, status === 'ativa' && styles.statusButtonSelected]}
+          onPress={() => setStatus('ativa')}
+        >
+          <Text style={[styles.statusButtonText, status === 'ativa' && styles.statusButtonTextSelected]}>
+            Ativa
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.statusButton, status === 'manutencao' && styles.statusButtonSelected]}
+          onPress={() => setStatus('manutencao')}
+        >
+          <Text style={[styles.statusButtonText, status === 'manutencao' && styles.statusButtonTextSelected]}>
+            Manutenção
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.statusButton, status === 'desativada' && styles.statusButtonSelected]}
+          onPress={() => setStatus('desativada')}
+        >
+          <Text style={[styles.statusButtonText, status === 'desativada' && styles.statusButtonTextSelected]}>
+            Desativada
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       <Button title={loading ? "Salvando..." : "Salvar Estufa"} onPress={handleSave} disabled={loading} />
     </ScrollView>
@@ -191,6 +240,30 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 20,
     color: '#333',
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  statusButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#007bff',
+    borderRadius: 5,
+    alignItems: 'center',
+    marginHorizontal: 4, 
+  },
+  statusButtonSelected: {
+    backgroundColor: '#007bff', 
+  },
+  statusButtonText: {
+    color: '#007bff', 
+    fontWeight: 'bold',
+  },
+  statusButtonTextSelected: {
+    color: '#fff', 
   }
 });
 

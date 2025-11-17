@@ -30,6 +30,7 @@ export interface Estufa extends BaseDoc {
   observacoes: string | null;
 }
 
+// ****** INTERFACE MODIFICADA ******
 export interface Plantio extends BaseDoc {
   estufaId: string;
   safraId: string | null;
@@ -43,6 +44,7 @@ export interface Plantio extends BaseDoc {
   previsaoColheita: Timestamp | null;
   status: "em_desenvolvimento" | "em_colheita" | "finalizado";
   observacoes: string | null;
+  fornecedorId: string | null; // <-- CAMPO NOVO ADICIONADO
 }
 
 export interface Colheita extends BaseDoc {
@@ -67,7 +69,6 @@ export interface Insumo extends BaseDoc {
   observacoes: string | null;
 }
 
-// ****** NOVA INTERFACE ADICIONADA ******
 export interface Fornecedor extends BaseDoc {
   nome: string;
   contato: string | null;

@@ -6,13 +6,14 @@ import {
   where, 
   getDocs, 
   Timestamp,
-  doc, // Importar
-  getDoc // Importar
+  doc,
+  getDoc,
+  updateDoc
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Plantio } from '../types/domain';
 
-// Dados que vêm do formulário
+// Dados que vêm do formulário (MODIFICADO)
 export type PlantioFormData = {
   estufaId: string;
   cultura: string;
@@ -22,9 +23,11 @@ export type PlantioFormData = {
   dataPlantio: Timestamp;
   cicloDias: number | null;
   status: "em_desenvolvimento" | "em_colheita" | "finalizado";
+  precoEstimadoUnidade: number | null;
+  fornecedorId: string | null; // <-- CAMPO NOVO
 };
 
-// 1. CRIAR PLANTIO
+// 1. CRIAR PLANTIO (MODIFICADO)
 export const createPlantio = async (data: PlantioFormData, userId: string) => {
   
   let previsaoColheita: Timestamp | null = null;
@@ -36,13 +39,12 @@ export const createPlantio = async (data: PlantioFormData, userId: string) => {
   }
 
   const novoPlantio = {
-    ...data,
+    ...data, // data agora contém 'fornecedorId'
     userId: userId,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
     previsaoColheita: previsaoColheita,
     safraId: null,
-    precoEstimadoUnidade: null,
     observacoes: null,
   };
 
@@ -79,7 +81,7 @@ export const listPlantiosByEstufa = async (userId: string, estufaId: string): Pr
   }
 };
 
-// 3. BUSCAR PLANTIO POR ID (Função Nova)
+// 3. BUSCAR PLANTIO POR ID
 export const getPlantioById = async (plantioId: string): Promise<Plantio | null> => {
   try {
     const docRef = doc(db, 'plantios', plantioId);
@@ -94,5 +96,24 @@ export const getPlantioById = async (plantioId: string): Promise<Plantio | null>
   } catch (error) {
     console.error("Erro ao buscar plantio por ID: ", error);
     throw new Error('Não foi possível buscar o plantio.');
+  }
+};
+
+// 4. FINALIZAR PLANTIO
+export const updatePlantioStatus = async (
+  plantioId: string, 
+  status: "em_desenvolvimento" | "em_colheita" | "finalizado"
+) => {
+  const plantioRef = doc(db, 'plantios', plantioId);
+  
+  try {
+    await updateDoc(plantioRef, {
+      status: status,
+      updatedAt: Timestamp.now()
+    });
+    console.log('Status do plantio atualizado:', plantioId);
+  } catch (error) {
+    console.error("Erro ao atualizar status do plantio: ", error);
+    throw new Error('Não foi possível atualizar o status.');
   }
 };
