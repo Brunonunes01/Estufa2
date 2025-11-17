@@ -1,6 +1,14 @@
 // src/screens/Insumos/InsumosListScreen.tsx
 import React, { useState, useEffect } from 'react';
-import { View, Text, Button, FlatList, StyleSheet, ActivityIndicator } from 'react-native';
+import { 
+  View, 
+  Text, 
+  Button, 
+  FlatList, 
+  StyleSheet, 
+  ActivityIndicator,
+  TouchableOpacity // Importar
+} from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { listInsumos } from '../../services/insumoService';
 import { Insumo } from '../../types/domain';
@@ -10,7 +18,7 @@ const InsumosListScreen = ({ navigation }: any) => {
   const { user } = useAuth();
   const [insumos, setInsumos] = useState<Insumo[]>([]);
   const [loading, setLoading] = useState(true);
-  const isFocused = useIsFocused(); // Hook para saber se a tela está ativa
+  const isFocused = useIsFocused(); 
 
   const carregarInsumos = async () => {
     if (user) {
@@ -30,9 +38,8 @@ const InsumosListScreen = ({ navigation }: any) => {
     if (isFocused && user) {
       carregarInsumos();
     }
-  }, [isFocused, user]); // Depende do foco e do usuário
+  }, [isFocused, user]);
 
-  // Função para verificar se o estoque está baixo
   const estaEmAlerta = (item: Insumo) => {
     if (item.estoqueMinimo === null) return false;
     return item.estoqueAtual < item.estoqueMinimo;
@@ -46,21 +53,25 @@ const InsumosListScreen = ({ navigation }: any) => {
     <View style={styles.container}>
       <Button
         title="Adicionar Novo Insumo"
-        onPress={() => navigation.navigate('InsumoForm')}
+        onPress={() => navigation.navigate('InsumoForm', { insumoId: null })} // Navega sem ID
       />
       
       <FlatList
         data={insumos}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <View style={[styles.item, estaEmAlerta(item) && styles.itemAlerta]}>
+          // ****** ITEM AGORA É CLICÁVEL ******
+          <TouchableOpacity 
+            style={[styles.item, estaEmAlerta(item) && styles.itemAlerta]}
+            onPress={() => navigation.navigate('InsumoForm', { insumoId: item.id })} // Navega com ID para Editar
+          >
             <Text style={styles.itemTitle}>{item.nome}</Text>
             <Text>Tipo: {item.tipo}</Text>
             <Text>Estoque: {item.estoqueAtual} {item.unidadePadrao}</Text>
             {estaEmAlerta(item) && (
               <Text style={styles.alertaText}>Estoque baixo! (Mínimo: {item.estoqueMinimo})</Text>
             )}
-          </View>
+          </TouchableOpacity>
         )}
         ListEmptyComponent={<Text style={{ textAlign: 'center', marginTop: 20 }}>Nenhum insumo cadastrado.</Text>}
         onRefresh={carregarInsumos}
@@ -84,7 +95,7 @@ const styles = StyleSheet.create({
     borderColor: '#eee',
   },
   itemAlerta: {
-    borderColor: '#d9534f', // Vermelho para o alerta
+    borderColor: '#d9534f',
     borderWidth: 2,
   },
   itemTitle: {

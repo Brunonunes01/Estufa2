@@ -2,15 +2,18 @@
 import { 
   collection, 
   addDoc, 
-  query,  
+  query, 
+  where, 
   getDocs, 
   Timestamp,
-  where // Importação duplicada, mas não tem problema
+  doc,
+  getDoc,
+  updateDoc // Importar
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Insumo } from '../types/domain';
 
-// Dados que vêm do formulário
+// Dados que vêm do formulário (MODIFICADO)
 export type InsumoFormData = {
   nome: string;
   tipo: "adubo" | "defensivo" | "semente" | "outro";
@@ -18,19 +21,19 @@ export type InsumoFormData = {
   estoqueAtual: number;
   estoqueMinimo: number | null;
   custoUnitario: number | null;
+  tamanhoEmbalagem: string | null; // <-- CAMPO NOVO
+  observacoes: string | null; // <-- CAMPO NOVO (Descrição)
 };
 
-// 1. CRIAR INSUMO
+// 1. CRIAR INSUMO (MODIFICADO)
 export const createInsumo = async (data: InsumoFormData, userId: string) => {
   const novoInsumo = {
     ...data,
     userId: userId,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
-    fornecedorId: null, 
-    observacoes: null,
+    fornecedorId: null, // Deixamos nulo por enquanto
   };
-
   try {
     const docRef = await addDoc(collection(db, 'insumos'), novoInsumo);
     console.log('Insumo criado com ID: ', docRef.id);
@@ -41,7 +44,24 @@ export const createInsumo = async (data: InsumoFormData, userId: string) => {
   }
 };
 
-// 2. LISTAR INSUMOS (Todos)
+// 2. ATUALIZAR INSUMO (Função Nova)
+export const updateInsumo = async (insumoId: string, data: InsumoFormData) => {
+  const insumoRef = doc(db, 'insumos', insumoId);
+  const dadosAtualizados = {
+    ...data,
+    updatedAt: Timestamp.now(),
+  };
+
+  try {
+    await updateDoc(insumoRef, dadosAtualizados);
+    console.log('Insumo atualizado com ID: ', insumoId);
+  } catch (error) {
+    console.error("Erro ao atualizar insumo: ", error);
+    throw new Error('Não foi possível atualizar o insumo.');
+  }
+};
+
+// 3. LISTAR INSUMOS (Todos)
 export const listInsumos = async (userId: string): Promise<Insumo[]> => {
   const insumos: Insumo[] = [];
   try {
@@ -49,47 +69,48 @@ export const listInsumos = async (userId: string): Promise<Insumo[]> => {
       collection(db, 'insumos'), 
       where("userId", "==", userId)
     );
-    
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach((doc) => {
       insumos.push({ id: doc.id, ...doc.data() } as Insumo);
     });
-    
     return insumos;
-
   } catch (error) {
     console.error("Erro ao listar insumos: ", error);
     throw new Error('Não foi possível buscar os insumos.');
   }
 };
 
-// 3. LISTAR INSUMOS EM ALERTA (Função Nova)
+// 4. LISTAR INSUMOS EM ALERTA
 export const listInsumosEmAlerta = async (userId: string): Promise<Insumo[]> => {
   const insumosEmAlerta: Insumo[] = [];
   if (!userId) return insumosEmAlerta;
-
   try {
-    // 1. Busca todos os insumos do usuário
     const insumos = await listInsumos(userId);
-
-    // 2. Filtra no lado do cliente (app)
-    // O Firestore não permite a consulta "<" (estoqueAtual < estoqueMinimo) diretamente
-    // de forma eficiente entre dois campos do mesmo documento.
-    // Como o volume de insumos por produtor é pequeno, filtrar no app é a melhor solução.
-    
     const alertas = insumos.filter(insumo => {
-      // Só alerta se 'estoqueMinimo' estiver definido (não for null)
       if (insumo.estoqueMinimo !== null) {
         return insumo.estoqueAtual < insumo.estoqueMinimo;
       }
       return false;
     });
-
     return alertas;
-
   } catch (error) {
     console.error("Erro ao listar insumos em alerta: ", error);
-    // Retorna vazio em caso de erro, para não quebrar o Dashboard
     return []; 
+  }
+};
+
+// 5. BUSCAR INSUMO POR ID
+export const getInsumoById = async (insumoId: string): Promise<Insumo | null> => {
+  try {
+    const docRef = doc(db, 'insumos', insumoId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() } as Insumo;
+    } else {
+      return null;
+    }
+  } catch (error) {
+    console.error("Erro ao buscar insumo por ID: ", error);
+    throw new Error('Não foi possível buscar o insumo.');
   }
 };

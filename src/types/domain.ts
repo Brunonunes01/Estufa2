@@ -30,7 +30,6 @@ export interface Estufa extends BaseDoc {
   observacoes: string | null;
 }
 
-// ****** INTERFACE MODIFICADA ******
 export interface Plantio extends BaseDoc {
   estufaId: string;
   safraId: string | null;
@@ -44,7 +43,7 @@ export interface Plantio extends BaseDoc {
   previsaoColheita: Timestamp | null;
   status: "em_desenvolvimento" | "em_colheita" | "finalizado";
   observacoes: string | null;
-  fornecedorId: string | null; // <-- CAMPO NOVO ADICIONADO
+  fornecedorId: string | null;
 }
 
 export interface Colheita extends BaseDoc {
@@ -58,6 +57,7 @@ export interface Colheita extends BaseDoc {
   observacoes: string | null;
 }
 
+// ****** INTERFACE MODIFICADA ******
 export interface Insumo extends BaseDoc {
   nome: string;
   tipo: "adubo" | "defensivo" | "semente" | "outro";
@@ -66,14 +66,25 @@ export interface Insumo extends BaseDoc {
   estoqueMinimo: number | null;
   custoUnitario: number | null;
   fornecedorId: string | null; 
-  observacoes: string | null;
+  observacoes: string | null; // Usaremos para a "Descrição"
+  tamanhoEmbalagem: string | null; // <-- CAMPO NOVO
 }
-
+// ... (Interface Fornecedor e Aplicacao) ...
 export interface Fornecedor extends BaseDoc {
   nome: string;
   contato: string | null;
   telefone: string | null;
   email: string | null;
   endereco: string | null;
+  observacoes: string | null;
+}
+
+export interface Aplicacao extends BaseDoc {
+  insumoId: string;
+  plantioId: string;
+  estufaId: string;
+  dataAplicacao: Timestamp;
+  quantidadeAplicada: number;
+  unidade: string;
   observacoes: string | null;
 }

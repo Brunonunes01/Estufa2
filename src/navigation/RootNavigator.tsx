@@ -20,6 +20,7 @@ import InsumosListScreen from '../screens/Insumos/InsumosListScreen';
 import InsumoFormScreen from '../screens/Insumos/InsumoFormScreen';
 import FornecedoresListScreen from '../screens/Fornecedores/FornecedoresListScreen';
 import FornecedorFormScreen from '../screens/Fornecedores/FornecedorFormScreen';
+import AplicacaoFormScreen from '../screens/Aplicacoes/AplicacaoFormScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -48,7 +49,6 @@ const AppStack = () => (
     <Stack.Screen 
       name="EstufaForm" 
       component={EstufaFormScreen} 
-      // O título agora é dinâmico (definido na própria tela)
     />
     <Stack.Screen 
       name="EstufaDetail" 
@@ -73,11 +73,13 @@ const AppStack = () => (
       component={InsumosListScreen} 
       options={{ title: 'Meus Insumos' }}
     />
+    
+    {/* ****** TÍTULO REMOVIDO DAQUI ****** */}
     <Stack.Screen 
       name="InsumoForm" 
       component={InsumoFormScreen} 
-      options={{ title: 'Novo Insumo' }}
     />
+    
     <Stack.Screen 
       name="FornecedoresList" 
       component={FornecedoresListScreen} 
@@ -87,6 +89,11 @@ const AppStack = () => (
       name="FornecedorForm" 
       component={FornecedorFormScreen} 
       options={{ title: 'Novo Fornecedor' }}
+    />
+    <Stack.Screen 
+      name="AplicacaoForm" 
+      component={AplicacaoFormScreen} 
+      options={{ title: 'Registrar Aplicação' }}
     />
     
   </Stack.Navigator>
