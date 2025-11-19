@@ -1,5 +1,5 @@
 // src/screens/Insumos/InsumoFormScreen.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -9,25 +9,25 @@ import {
   Alert, 
   StyleSheet,
   TouchableOpacity,
-  ActivityIndicator
+  ActivityIndicator,
+  KeyboardAvoidingView, // Importar para ajudar com o teclado
+  Platform
 } from 'react-native';
 import { 
   createInsumo, 
-  updateInsumo, // Importar
-  getInsumoById, // Importar
+  updateInsumo, 
+  getInsumoById, 
   InsumoFormData 
 } from '../../services/insumoService';
 import { useAuth } from '../../hooks/useAuth';
-import { Insumo } from '../../types/domain'; // Importar tipo
+import { Picker } from '@react-native-picker/picker'; 
 
-// Nossos tipos
 type TipoInsumo = "adubo" | "defensivo" | "semente" | "outro";
 type UnidadePadrao = "kg" | "g" | "L" | "mL" | "unidade";
 
 const InsumoFormScreen = ({ route, navigation }: any) => {
   const { user } = useAuth();
   
-  // Lógica de Edição
   const insumoId = route.params?.insumoId;
   const isEditMode = !!insumoId;
 
@@ -35,15 +35,20 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
   const [nome, setNome] = useState('');
   const [tipo, setTipo] = useState<TipoInsumo>('adubo');
   const [unidade, setUnidade] = useState<UnidadePadrao>('kg');
-  const [tamanhoEmbalagem, setTamanhoEmbalagem] = useState(''); // <-- NOVO
-  const [descricao, setDescricao] = useState(''); // <-- NOVO
-  const [estoqueAtual, setEstoqueAtual] = useState('');
+  const [tamanhoEmbalagem, setTamanhoEmbalagem] = useState(''); 
+  const [qtdEmbalagens, setQtdEmbalagens] = useState(''); 
+  const [descricao, setDescricao] = useState('');
   const [estoqueMinimo, setEstoqueMinimo] = useState('');
 
   const [loading, setLoading] = useState(false);
-  const [loadingData, setLoadingData] = useState(false); // Loading para buscar dados
+  const [loadingData, setLoadingData] = useState(false);
 
-  // Hook para buscar os dados em modo "Editar"
+  const estoqueTotalCalculado = useMemo(() => {
+    const tam = parseFloat(tamanhoEmbalagem) || 0;
+    const qtd = parseFloat(qtdEmbalagens) || 0;
+    return tam * qtd;
+  }, [tamanhoEmbalagem, qtdEmbalagens]);
+
   useEffect(() => {
     const carregarInsumo = async () => {
       if (isEditMode && insumoId) {
@@ -51,14 +56,20 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
         try {
           const insumo = await getInsumoById(insumoId);
           if (insumo) {
-            // Preenche o formulário
             setNome(insumo.nome);
             setTipo(insumo.tipo);
             setUnidade(insumo.unidadePadrao as UnidadePadrao);
-            setTamanhoEmbalagem(insumo.tamanhoEmbalagem || '');
             setDescricao(insumo.observacoes || '');
-            setEstoqueAtual(insumo.estoqueAtual.toString());
             setEstoqueMinimo(insumo.estoqueMinimo?.toString() || '');
+            
+            if (insumo.tamanhoEmbalagem) {
+              setTamanhoEmbalagem(insumo.tamanhoEmbalagem.toString());
+              const qtdAprox = insumo.estoqueAtual / insumo.tamanhoEmbalagem;
+              setQtdEmbalagens(qtdAprox.toString());
+            } else {
+              setTamanhoEmbalagem('1');
+              setQtdEmbalagens(insumo.estoqueAtual.toString());
+            }
           }
         } catch (error) {
           Alert.alert('Erro', 'Não foi possível carregar o insumo.');
@@ -70,7 +81,6 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
     carregarInsumo();
   }, [insumoId, isEditMode]);
 
-  // Hook para definir o título da tela
   useEffect(() => {
     navigation.setOptions({
       title: isEditMode ? 'Editar Insumo' : 'Novo Insumo'
@@ -83,7 +93,7 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
       return;
     }
     if (!nome || !unidade) {
-      Alert.alert('Campos obrigatórios', 'Preencha Nome e Unidade Padrão.');
+      Alert.alert('Campos obrigatórios', 'Preencha Nome e Unidade.');
       return;
     }
 
@@ -91,11 +101,11 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
       nome: nome,
       tipo: tipo,
       unidadePadrao: unidade,
-      estoqueAtual: parseFloat(estoqueAtual) || 0,
+      estoqueAtual: estoqueTotalCalculado, 
       estoqueMinimo: parseFloat(estoqueMinimo) || null,
-      tamanhoEmbalagem: tamanhoEmbalagem || null,
+      tamanhoEmbalagem: parseFloat(tamanhoEmbalagem) || null,
       observacoes: descricao || null,
-      custoUnitario: null, // Simplificado
+      custoUnitario: null, 
     };
 
     setLoading(true);
@@ -121,94 +131,133 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.label}>Nome do Insumo (obrigatório)</Text>
-      <TextInput
-        style={styles.input}
-        value={nome}
-        onChangeText={setNome}
-        placeholder="Ex: NPK 10-10-10"
-      />
-      
-      {/* ****** MELHORIA 1: SELETOR DE TIPO ****** */}
-      <Text style={styles.label}>Tipo</Text>
-      <View style={styles.selectorContainer}>
-        {(['adubo', 'defensivo', 'semente', 'outro'] as TipoInsumo[]).map(t => (
-          <TouchableOpacity
-            key={t}
-            style={[styles.selectorButton, tipo === t && styles.selectorButtonSelected]}
-            onPress={() => setTipo(t)}
-          >
-            <Text style={[styles.selectorButtonText, tipo === t && styles.selectorButtonTextSelected]}>
-              {/* Capitaliza a primeira letra */}
-              {t.charAt(0).toUpperCase() + t.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+    // KeyboardAvoidingView ajuda a tela subir quando o teclado abre
+    <KeyboardAvoidingView 
+      style={{ flex: 1 }} 
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ScrollView 
+        style={styles.container} 
+        contentContainerStyle={styles.scrollContent} // <-- A CORREÇÃO ESTÁ AQUI
+      >
+        <Text style={styles.label}>Nome do Insumo</Text>
+        <TextInput
+          style={styles.input}
+          value={nome}
+          onChangeText={setNome}
+          placeholder="Ex: NPK 10-10-10"
+        />
 
-      {/* ****** MELHORIA 2: SELETOR DE UNIDADE ****** */}
-      <Text style={styles.label}>Unidade Padrão (para Aplicação/Estoque)</Text>
-      <View style={styles.selectorContainer}>
-        {(['kg', 'g', 'L', 'mL', 'unidade'] as UnidadePadrao[]).map(u => (
-          <TouchableOpacity
-            key={u}
-            style={[styles.selectorButton, unidade === u && styles.selectorButtonSelected]}
-            onPress={() => setUnidade(u)}
-          >
-            <Text style={[styles.selectorButtonText, unidade === u && styles.selectorButtonTextSelected]}>
-              {u}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+        <Text style={styles.label}>Descrição (O que ele faz?)</Text>
+        <TextInput
+          style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+          value={descricao}
+          onChangeText={setDescricao}
+          placeholder="Ex: Adubo para crescimento foliar..."
+          multiline={true}
+        />
+        
+        <Text style={styles.label}>Tipo</Text>
+        <View style={styles.selectorContainer}>
+          {(['adubo', 'defensivo', 'semente', 'outro'] as TipoInsumo[]).map(t => (
+            <TouchableOpacity
+              key={t}
+              style={[styles.selectorButton, tipo === t && styles.selectorButtonSelected]}
+              onPress={() => setTipo(t)}
+            >
+              <Text style={[styles.selectorButtonText, tipo === t && styles.selectorButtonTextSelected]}>
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-      {/* ****** CAMPO NOVO: TAMANHO EMBALAGEM ****** */}
-      <Text style={styles.label}>Tamanho Padrão Embalagem (Opcional)</Text>
-      <TextInput
-        style={styles.input}
-        value={tamanhoEmbalagem}
-        onChangeText={setTamanhoEmbalagem}
-        placeholder={`Ex: Saco 50kg, Frasco 1L`}
-      />
+        <Text style={styles.sectionTitle}>Controle de Estoque</Text>
 
-      {/* ****** CAMPO NOVO: DESCRIÇÃO ****** */}
-      <Text style={styles.label}>Descrição / Observações (Opcional)</Text>
-      <TextInput
-        style={[styles.input, { height: 80 }]} // Input maior
-        value={descricao}
-        onChangeText={setDescricao}
-        placeholder="Para que serve este insumo..."
-        multiline={true}
-      />
-      
-      <Text style={styles.label}>Estoque Atual (em {unidade})</Text>
-      <TextInput
-        style={styles.input}
-        value={estoqueAtual}
-        onChangeText={setEstoqueAtual}
-        keyboardType="numeric"
-        placeholder="Ex: 50"
-      />
-      
-      <Text style={styles.label}>Estoque Mínimo (em {unidade}) (Opcional)</Text>
-      <TextInput
-        style={styles.input}
-        value={estoqueMinimo}
-        onChangeText={setEstoqueMinimo}
-        keyboardType="numeric"
-        placeholder="Avisar quando chegar em..."
-      />
+        <Text style={styles.label}>Unidade da Embalagem</Text>
+        <View style={styles.selectorContainer}>
+          {(['kg', 'g', 'L', 'mL', 'unidade'] as UnidadePadrao[]).map(u => (
+            <TouchableOpacity
+              key={u}
+              style={[styles.selectorButton, unidade === u && styles.selectorButtonSelected]}
+              onPress={() => setUnidade(u)}
+            >
+              <Text style={[styles.selectorButtonText, unidade === u && styles.selectorButtonTextSelected]}>
+                {u}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-      <Button title={loading ? "Salvando..." : "Salvar Insumo"} onPress={handleSave} disabled={loading} />
-    </ScrollView>
+        <View style={styles.row}>
+          <View style={styles.col}>
+            <Text style={styles.label}>Tamanho Embalagem</Text>
+            <TextInput
+              style={styles.input}
+              value={tamanhoEmbalagem}
+              onChangeText={setTamanhoEmbalagem}
+              keyboardType="numeric"
+              placeholder="Ex: 50"
+            />
+          </View>
+          <View style={styles.col}>
+            <Text style={styles.label}>Qtd. Embalagens</Text>
+            <TextInput
+              style={styles.input}
+              value={qtdEmbalagens}
+              onChangeText={setQtdEmbalagens}
+              keyboardType="numeric"
+              placeholder="Ex: 2"
+            />
+          </View>
+        </View>
+
+        <View style={styles.totalBox}>
+          <Text style={styles.totalLabel}>Estoque Total Disponível:</Text>
+          <Text style={styles.totalValue}>
+            {estoqueTotalCalculado} {unidade}
+          </Text>
+          <Text style={styles.totalSubtext}>
+            (O sistema usará este total para as baixas automáticas)
+          </Text>
+        </View>
+        
+        <Text style={styles.label}>Alerta de Estoque Mínimo (em {unidade})</Text>
+        <TextInput
+          style={styles.input}
+          value={estoqueMinimo}
+          onChangeText={setEstoqueMinimo}
+          keyboardType="numeric"
+          placeholder="Ex: 20"
+        />
+
+        <View style={styles.buttonWrapper}>
+          <Button title={loading ? "Salvando..." : "Salvar Insumo"} onPress={handleSave} disabled={loading} />
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#fff', // Fundo branco
+  },
+  // ESTILO NOVO PARA GARANTIR O SCROLL
+  scrollContent: {
     padding: 16,
+    paddingBottom: 100, // Espaço extra no final para o botão não ficar escondido
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginTop: 10,
+    marginBottom: 15,
+    color: '#333',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    paddingBottom: 5,
   },
   label: {
     fontSize: 16,
@@ -225,12 +274,12 @@ const styles = StyleSheet.create({
   },
   selectorContainer: {
     flexDirection: 'row',
-    marginBottom: 20,
+    marginBottom: 16,
     flexWrap: 'wrap', 
   },
   selectorButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     borderWidth: 1,
     borderColor: '#007bff',
     borderRadius: 5,
@@ -248,6 +297,40 @@ const styles = StyleSheet.create({
   selectorButtonTextSelected: {
     color: '#fff',
   },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  col: {
+    width: '48%',
+  },
+  totalBox: {
+    backgroundColor: '#e8f4f8',
+    padding: 15,
+    borderRadius: 8,
+    marginBottom: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#b6e1f2',
+  },
+  totalLabel: {
+    fontSize: 16,
+    color: '#555',
+  },
+  totalValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#007bff',
+    marginVertical: 5,
+  },
+  totalSubtext: {
+    fontSize: 12,
+    color: '#777',
+    textAlign: 'center',
+  },
+  buttonWrapper: {
+    marginTop: 10,
+  }
 });
 
 export default InsumoFormScreen;

@@ -6,22 +6,20 @@ import {
   where, 
   getDocs, 
   Timestamp,
-  runTransaction, // Importar Transação
-  doc // Importar doc
+  runTransaction, 
+  doc 
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
-import { Aplicacao, Insumo } from '../types/domain';
+import { Aplicacao, Insumo, AplicacaoItem } from '../types/domain';
 
-// Dados que vêm do formulário
 export type AplicacaoFormData = {
-  insumoId: string;
-  quantidadeAplicada: number;
-  unidade: string; // A unidade (ex: kg)
   dataAplicacao: Timestamp;
   observacoes: string | null;
+  volumeTanque: number | null;
+  itens: AplicacaoItem[];
 };
 
-// 1. CRIAR APLICAÇÃO (E DAR BAIXA NO ESTOQUE)
+// 1. CRIAR APLICAÇÃO
 export const createAplicacao = async (
   data: AplicacaoFormData, 
   userId: string, 
@@ -29,63 +27,103 @@ export const createAplicacao = async (
   estufaId: string
 ) => {
 
-  // Referência para o Insumo que será atualizado
-  const insumoRef = doc(db, "insumos", data.insumoId);
-  // Referência para a nova Aplicação que será criada
+  if (data.itens.length === 0) {
+    throw new Error("A aplicação precisa ter pelo menos um insumo.");
+  }
+
+  // Consolida itens duplicados (ex: se adicionou o mesmo adubo 2x, soma eles)
+  const itensConsolidados = data.itens.reduce((acc, item) => {
+    const existente = acc.find(i => i.insumoId === item.insumoId);
+    if (existente) {
+      existente.quantidadeAplicada += item.quantidadeAplicada;
+    } else {
+      acc.push({ ...item });
+    }
+    return acc;
+  }, [] as AplicacaoItem[]);
+
   const novaAplicacaoRef = doc(collection(db, "aplicacoes"));
 
-  // Rodamos a Transação
   try {
     await runTransaction(db, async (transaction) => {
-      // 1. Lê o insumo do banco DE DENTRO da transação
-      const insumoDoc = await transaction.get(insumoRef);
-      if (!insumoDoc.exists()) {
-        throw new Error("Insumo não encontrado!");
+      
+      // *** FASE 1: LEITURA RIGOROSA (READS) ***
+      // Lemos todos os documentos necessários ANTES de qualquer escrita.
+      const leituras = [];
+      for (const item of itensConsolidados) {
+        const ref = doc(db, "insumos", item.insumoId);
+        leituras.push(transaction.get(ref));
       }
 
-      const insumoData = insumoDoc.data() as Insumo;
+      // Espera todas as leituras terminarem
+      const docsInsumos = await Promise.all(leituras);
 
-      // 2. Verifica se a unidade é a mesma (nossa regra de simplificação)
-      if (insumoData.unidadePadrao !== data.unidade) {
-        throw new Error(`A aplicação deve ser em ${insumoData.unidadePadrao}, mas foi em ${data.unidade}.`);
+      // *** FASE 2: VERIFICAÇÃO E CÁLCULO (MEMORY) ***
+      // Agora processamos os dados na memória (sem chamar o banco ainda)
+      const updatesParaFazer = [];
+
+      for (let i = 0; i < itensConsolidados.length; i++) {
+        const item = itensConsolidados[i];
+        const insumoDoc = docsInsumos[i];
+
+        if (!insumoDoc.exists()) {
+          throw new Error(`Insumo "${item.nomeInsumo}" não encontrado no estoque!`);
+        }
+
+        const insumoData = insumoDoc.data() as Insumo;
+
+        // Verifica unidade
+        if (insumoData.unidadePadrao !== item.unidade) {
+          throw new Error(`Unidade incorreta para "${item.nomeInsumo}". Esperado: ${insumoData.unidadePadrao}.`);
+        }
+
+        // Verifica estoque
+        const novoEstoque = insumoData.estoqueAtual - item.quantidadeAplicada;
+        if (novoEstoque < 0) {
+          throw new Error(`Estoque insuficiente para "${item.nomeInsumo}"! Disponível: ${insumoData.estoqueAtual}. Necessário: ${item.quantidadeAplicada}.`);
+        }
+
+        // Guarda o update para fazer na fase 3
+        updatesParaFazer.push({
+          ref: insumoDoc.ref,
+          novoEstoque: novoEstoque
+        });
       }
 
-      // 3. Calcula o novo estoque
-      const estoqueAtual = insumoData.estoqueAtual;
-      const novoEstoque = estoqueAtual - data.quantidadeAplicada;
-
-      if (novoEstoque < 0) {
-        throw new Error(`Estoque insuficiente! Restam apenas ${estoqueAtual} ${insumoData.unidadePadrao}.`);
+      // *** FASE 3: ESCRITA (WRITES) ***
+      // Só agora fazemos as escritas.
+      
+      // 1. Atualiza os estoques dos insumos
+      for (const update of updatesParaFazer) {
+        transaction.update(update.ref, { 
+          estoqueAtual: update.novoEstoque,
+          updatedAt: Timestamp.now()
+        });
       }
 
-      // 4. Prepara a atualização do estoque
-      transaction.update(insumoRef, { 
-        estoqueAtual: novoEstoque,
-        updatedAt: Timestamp.now()
-      });
-
-      // 5. Prepara a criação do registro de Aplicação
+      // 2. Salva o registro da aplicação
       const novaAplicacao = {
         ...data,
         userId: userId,
         plantioId: plantioId,
         estufaId: estufaId,
+        itens: itensConsolidados, 
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       };
+      
       transaction.set(novaAplicacaoRef, novaAplicacao);
     });
 
-    console.log("Transação concluída: Aplicação registrada e estoque atualizado!");
+    console.log("Transação concluída com sucesso!");
 
   } catch (error) {
-    console.error("Erro na transação de aplicação: ", error);
-    // Propaga o erro para o formulário (ex: "Estoque insuficiente!")
+    console.error("Erro na transação:", error);
     throw error;
   }
 };
 
-// 2. LISTAR APLICAÇÕES DE UM PLANTIO
+// 2. LISTAR APLICAÇÕES
 export const listAplicacoesByPlantio = async (userId: string, plantioId: string): Promise<Aplicacao[]> => {
   const aplicacoes: Aplicacao[] = [];
   try {
@@ -100,10 +138,11 @@ export const listAplicacoesByPlantio = async (userId: string, plantioId: string)
       aplicacoes.push({ id: doc.id, ...doc.data() } as Aplicacao);
     });
     
+    // Ordena por data
+    aplicacoes.sort((a, b) => b.dataAplicacao.seconds - a.dataAplicacao.seconds);
     return aplicacoes;
-
   } catch (error) {
-    console.error("Erro ao listar aplicações: ", error);
-    throw new Error('Não foi possível buscar as aplicações.');
+    console.error("Erro ao listar aplicações:", error);
+    return [];
   }
 };

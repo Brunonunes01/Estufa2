@@ -8,12 +8,12 @@ import {
   Timestamp,
   doc,
   getDoc,
-  updateDoc // Importar
+  updateDoc
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Insumo } from '../types/domain';
 
-// Dados que vêm do formulário (MODIFICADO)
+// Dados que vêm do formulário
 export type InsumoFormData = {
   nome: string;
   tipo: "adubo" | "defensivo" | "semente" | "outro";
@@ -21,18 +21,18 @@ export type InsumoFormData = {
   estoqueAtual: number;
   estoqueMinimo: number | null;
   custoUnitario: number | null;
-  tamanhoEmbalagem: string | null; // <-- CAMPO NOVO
-  observacoes: string | null; // <-- CAMPO NOVO (Descrição)
+  tamanhoEmbalagem: number | null;
+  observacoes: string | null;
 };
 
-// 1. CRIAR INSUMO (MODIFICADO)
+// 1. CRIAR INSUMO
 export const createInsumo = async (data: InsumoFormData, userId: string) => {
   const novoInsumo = {
     ...data,
     userId: userId,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
-    fornecedorId: null, // Deixamos nulo por enquanto
+    fornecedorId: null, 
   };
   try {
     const docRef = await addDoc(collection(db, 'insumos'), novoInsumo);
@@ -44,7 +44,7 @@ export const createInsumo = async (data: InsumoFormData, userId: string) => {
   }
 };
 
-// 2. ATUALIZAR INSUMO (Função Nova)
+// 2. ATUALIZAR INSUMO
 export const updateInsumo = async (insumoId: string, data: InsumoFormData) => {
   const insumoRef = doc(db, 'insumos', insumoId);
   const dadosAtualizados = {
@@ -61,7 +61,7 @@ export const updateInsumo = async (insumoId: string, data: InsumoFormData) => {
   }
 };
 
-// 3. LISTAR INSUMOS (Todos)
+// 3. LISTAR INSUMOS
 export const listInsumos = async (userId: string): Promise<Insumo[]> => {
   const insumos: Insumo[] = [];
   try {
@@ -75,8 +75,9 @@ export const listInsumos = async (userId: string): Promise<Insumo[]> => {
     });
     return insumos;
   } catch (error) {
-    console.error("Erro ao listar insumos: ", error);
-    throw new Error('Não foi possível buscar os insumos.');
+    // AQUI: Loga o erro real no terminal para você ver
+    console.error("Erro REAL ao listar insumos: ", error);
+    throw error; // Lança o erro original para o componente ver
   }
 };
 

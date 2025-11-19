@@ -1,9 +1,8 @@
 // src/types/domain.ts
 import { Timestamp } from 'firebase/firestore';
 
-// Interface base para todos os documentos
 interface BaseDoc {
-  id: string; // ID do documento
+  id: string; 
   userId: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -57,19 +56,18 @@ export interface Colheita extends BaseDoc {
   observacoes: string | null;
 }
 
-// ****** INTERFACE MODIFICADA ******
 export interface Insumo extends BaseDoc {
   nome: string;
   tipo: "adubo" | "defensivo" | "semente" | "outro";
-  unidadePadrao: string; // kg, L, unidade
-  estoqueAtual: number;
+  unidadePadrao: string; 
+  estoqueAtual: number; 
   estoqueMinimo: number | null;
   custoUnitario: number | null;
   fornecedorId: string | null; 
-  observacoes: string | null; // Usaremos para a "Descrição"
-  tamanhoEmbalagem: string | null; // <-- CAMPO NOVO
+  observacoes: string | null; 
+  tamanhoEmbalagem: number | null; 
 }
-// ... (Interface Fornecedor e Aplicacao) ...
+
 export interface Fornecedor extends BaseDoc {
   nome: string;
   contato: string | null;
@@ -79,12 +77,26 @@ export interface Fornecedor extends BaseDoc {
   observacoes: string | null;
 }
 
-export interface Aplicacao extends BaseDoc {
+// ****** NOVAS ESTRUTURAS ******
+
+// Um item dentro da aplicação (ex: "50ml de Fungicida X")
+export interface AplicacaoItem {
   insumoId: string;
+  nomeInsumo: string; // Salvamos o nome para facilitar a exibição
+  quantidadeAplicada: number; // Total gasto do estoque
+  unidade: string;
+  dosePorTanque?: number | null; // Opcional
+}
+
+export interface Aplicacao extends BaseDoc {
   plantioId: string;
   estufaId: string;
   dataAplicacao: Timestamp;
-  quantidadeAplicada: number;
-  unidade: string;
   observacoes: string | null;
+  
+  // Dados da Calda (Geral)
+  volumeTanque: number | null; // ex: 200 Litros
+  
+  // Lista de produtos usados nesta aplicação
+  itens: AplicacaoItem[]; 
 }
