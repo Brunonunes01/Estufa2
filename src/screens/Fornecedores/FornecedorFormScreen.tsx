@@ -1,11 +1,20 @@
 // src/screens/Fornecedores/FornecedorFormScreen.tsx
-import React, { useState } from 'react';
-import { View, Text, TextInput, Button, ScrollView, Alert, StyleSheet } from 'react-native';
-import { createFornecedor, FornecedorFormData } from '../../services/fornecedorService';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, Button, ScrollView, Alert, StyleSheet, ActivityIndicator } from 'react-native';
+import { 
+  createFornecedor, 
+  FornecedorFormData,
+  getFornecedorById, 
+  updateFornecedor 
+} from '../../services/fornecedorService';
 import { useAuth } from '../../hooks/useAuth';
 
-const FornecedorFormScreen = ({ navigation }: any) => {
+const FornecedorFormScreen = ({ route, navigation }: any) => {
   const { user } = useAuth();
+  
+  // NOVO: Detecta se estamos editando
+  const fornecedorId = route.params?.fornecedorId;
+  const isEditMode = !!fornecedorId;
   
   // Estados do formulário
   const [nome, setNome] = useState('');
@@ -14,6 +23,38 @@ const FornecedorFormScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState('');
   
   const [loading, setLoading] = useState(false);
+  const [loadingData, setLoadingData] = useState(false); // Para carregar dados iniciais
+
+  // Hook para carregar dados em modo edição e definir título
+  useEffect(() => {
+    // NOVO: Define o título da tela
+    navigation.setOptions({
+      title: isEditMode ? 'Editar Fornecedor' : 'Novo Fornecedor'
+    });
+
+    const carregarDadosFornecedor = async () => {
+      if (isEditMode && fornecedorId) {
+        setLoadingData(true);
+        try {
+          const fornecedor = await getFornecedorById(fornecedorId);
+          if (fornecedor) {
+            setNome(fornecedor.nome);
+            setContato(fornecedor.contato || '');
+            setTelefone(fornecedor.telefone || '');
+            setEmail(fornecedor.email || '');
+            // outros campos...
+          }
+        } catch (error) {
+          Alert.alert('Erro', 'Não foi possível carregar os dados do fornecedor.');
+          navigation.goBack();
+        } finally {
+          setLoadingData(false);
+        }
+      }
+    };
+    carregarDadosFornecedor();
+  }, [fornecedorId, isEditMode, navigation]);
+
 
   const handleSave = async () => {
     if (!user) {
@@ -30,22 +71,33 @@ const FornecedorFormScreen = ({ navigation }: any) => {
       contato: contato || null,
       telefone: telefone || null,
       email: email || null,
-      endereco: null, // Simplificado
-      observacoes: null, // Simplificado
+      endereco: null, 
+      observacoes: null, 
     };
 
     setLoading(true);
     try {
-      await createFornecedor(formData, user.uid);
-      Alert.alert('Sucesso!', 'Fornecedor cadastrado.');
+      if (isEditMode) {
+        // NOVO: Atualizar
+        await updateFornecedor(fornecedorId, formData);
+        Alert.alert('Sucesso!', 'Fornecedor atualizado.');
+      } else {
+        // Criação
+        await createFornecedor(formData, user.uid);
+        Alert.alert('Sucesso!', 'Fornecedor cadastrado.');
+      }
       navigation.goBack(); // Volta para a lista
     } catch (error) {
-      Alert.alert('Erro', 'Não foi possível salvar o fornecedor.');
+      Alert.alert('Erro', `Não foi possível ${isEditMode ? 'atualizar' : 'salvar'} o fornecedor.`);
       console.error(error);
     } finally {
       setLoading(false);
     }
   };
+
+  if (loadingData) {
+    return <ActivityIndicator size="large" style={{ flex: 1, justifyContent: 'center' }} />;
+  }
 
   return (
     <ScrollView style={styles.container}>

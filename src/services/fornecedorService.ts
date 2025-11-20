@@ -5,7 +5,10 @@ import {
   query, 
   where, 
   getDocs, 
-  Timestamp 
+  Timestamp,
+  doc, // NOVO: para referenciar documentos
+  getDoc, // NOVO: para buscar por ID
+  updateDoc // NOVO: para atualizar dados
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Fornecedor } from '../types/domain';
@@ -58,8 +61,41 @@ export const listFornecedores = async (userId: string): Promise<Fornecedor[]> =>
     
     return fornecedores;
 
-  } catch (error) { // Correção do 'catch' anterior
+  } catch (error) { 
     console.error("Erro ao listar fornecedores: ", error);
     throw new Error('Não foi possível buscar os fornecedores.');
+  }
+};
+
+// 3. BUSCAR FORNECEDOR POR ID (NOVO)
+export const getFornecedorById = async (fornecedorId: string): Promise<Fornecedor | null> => {
+  try {
+    const docRef = doc(db, 'fornecedores', fornecedorId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() } as Fornecedor;
+    } else {
+      return null;
+    }
+  } catch (error) {
+    console.error("Erro ao buscar fornecedor por ID: ", error);
+    throw new Error('Não foi possível buscar o fornecedor.');
+  }
+};
+
+// 4. ATUALIZAR FORNECEDOR (NOVO)
+export const updateFornecedor = async (fornecedorId: string, data: FornecedorFormData) => {
+  const fornecedorRef = doc(db, 'fornecedores', fornecedorId);
+  const dadosAtualizados = {
+    ...data,
+    updatedAt: Timestamp.now(),
+  };
+
+  try {
+    await updateDoc(fornecedorRef, dadosAtualizados);
+    console.log('Fornecedor atualizado com ID: ', fornecedorId);
+  } catch (error) {
+    console.error("Erro ao atualizar fornecedor: ", error);
+    throw new Error('Não foi possível atualizar o fornecedor.');
   }
 };

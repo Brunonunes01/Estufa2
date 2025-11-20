@@ -10,7 +10,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  KeyboardAvoidingView, // Importar para ajudar com o teclado
+  KeyboardAvoidingView, 
   Platform
 } from 'react-native';
 import { 
@@ -20,7 +20,6 @@ import {
   InsumoFormData 
 } from '../../services/insumoService';
 import { useAuth } from '../../hooks/useAuth';
-import { Picker } from '@react-native-picker/picker'; 
 
 type TipoInsumo = "adubo" | "defensivo" | "semente" | "outro";
 type UnidadePadrao = "kg" | "g" | "L" | "mL" | "unidade";
@@ -35,19 +34,26 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
   const [nome, setNome] = useState('');
   const [tipo, setTipo] = useState<TipoInsumo>('adubo');
   const [unidade, setUnidade] = useState<UnidadePadrao>('kg');
-  const [tamanhoEmbalagem, setTamanhoEmbalagem] = useState(''); 
-  const [qtdEmbalagens, setQtdEmbalagens] = useState(''); 
+  // MODIFICADO: Valores default para evitar NaN
+  const [tamanhoEmbalagem, setTamanhoEmbalagem] = useState('0'); 
+  const [qtdEmbalagens, setQtdEmbalagens] = useState('0'); 
   const [descricao, setDescricao] = useState('');
   const [estoqueMinimo, setEstoqueMinimo] = useState('');
+  // NOVO: Estado para armazenar o estoque atual carregado do Firebase
+  const [estoqueAtualOriginal, setEstoqueAtualOriginal] = useState(0); 
 
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
 
+  // CORRIGIDO: O estoque total retorna o valor do banco em edição (segurança de dados)
   const estoqueTotalCalculado = useMemo(() => {
+    if (isEditMode) {
+      return estoqueAtualOriginal; 
+    }
     const tam = parseFloat(tamanhoEmbalagem) || 0;
     const qtd = parseFloat(qtdEmbalagens) || 0;
     return tam * qtd;
-  }, [tamanhoEmbalagem, qtdEmbalagens]);
+  }, [tamanhoEmbalagem, qtdEmbalagens, isEditMode, estoqueAtualOriginal]);
 
   useEffect(() => {
     const carregarInsumo = async () => {
@@ -62,13 +68,16 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
             setDescricao(insumo.observacoes || '');
             setEstoqueMinimo(insumo.estoqueMinimo?.toString() || '');
             
-            if (insumo.tamanhoEmbalagem) {
-              setTamanhoEmbalagem(insumo.tamanhoEmbalagem.toString());
+            // NOVO: Armazena o estoque atual original
+            setEstoqueAtualOriginal(insumo.estoqueAtual);
+
+            // Preenche os campos de embalagem para visualização
+            setTamanhoEmbalagem(insumo.tamanhoEmbalagem?.toString() || '0');
+            if (insumo.tamanhoEmbalagem && insumo.tamanhoEmbalagem > 0) {
               const qtdAprox = insumo.estoqueAtual / insumo.tamanhoEmbalagem;
-              setQtdEmbalagens(qtdAprox.toString());
+              setQtdEmbalagens(qtdAprox.toFixed(2)); 
             } else {
-              setTamanhoEmbalagem('1');
-              setQtdEmbalagens(insumo.estoqueAtual.toString());
+              setQtdEmbalagens(insumo.estoqueAtual.toFixed(2));
             }
           }
         } catch (error) {
@@ -97,13 +106,26 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
       return;
     }
 
+    // Lógica de SEGURANÇA: Usa o estoque original no modo edição
+    let estoqueParaSalvar = isEditMode ? estoqueAtualOriginal : estoqueTotalCalculado;
+    let tamanhoEmbalagemParaSalvar = parseFloat(tamanhoEmbalagem) || null;
+
+    if (!isEditMode && parseFloat(tamanhoEmbalagem) === 0 && parseFloat(qtdEmbalagens) > 0) {
+      estoqueParaSalvar = parseFloat(qtdEmbalagens);
+      tamanhoEmbalagemParaSalvar = 1; 
+    }
+    if (isEditMode) {
+      estoqueParaSalvar = estoqueAtualOriginal; 
+    }
+    // FIM DA LÓGICA DE SEGURANÇA
+
     const formData: InsumoFormData = {
       nome: nome,
       tipo: tipo,
       unidadePadrao: unidade,
-      estoqueAtual: estoqueTotalCalculado, 
+      estoqueAtual: estoqueParaSalvar, 
       estoqueMinimo: parseFloat(estoqueMinimo) || null,
-      tamanhoEmbalagem: parseFloat(tamanhoEmbalagem) || null,
+      tamanhoEmbalagem: tamanhoEmbalagemParaSalvar, 
       observacoes: descricao || null,
       custoUnitario: null, 
     };
@@ -131,14 +153,13 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
   }
 
   return (
-    // KeyboardAvoidingView ajuda a tela subir quando o teclado abre
     <KeyboardAvoidingView 
       style={{ flex: 1 }} 
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView 
         style={styles.container} 
-        contentContainerStyle={styles.scrollContent} // <-- A CORREÇÃO ESTÁ AQUI
+        contentContainerStyle={styles.scrollContent}
       >
         <Text style={styles.label}>Nome do Insumo</Text>
         <TextInput
@@ -181,8 +202,10 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
               key={u}
               style={[styles.selectorButton, unidade === u && styles.selectorButtonSelected]}
               onPress={() => setUnidade(u)}
+              // Desabilita em modo de edição
+              disabled={isEditMode} 
             >
-              <Text style={[styles.selectorButtonText, unidade === u && styles.selectorButtonTextSelected]}>
+              <Text style={[styles.selectorButtonText, unidade === u && styles.selectorButtonTextSelected, isEditMode && styles.disabledText]}>
                 {u}
               </Text>
             </TouchableOpacity>
@@ -193,29 +216,41 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
           <View style={styles.col}>
             <Text style={styles.label}>Tamanho Embalagem</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, isEditMode && styles.inputDisabled]}
               value={tamanhoEmbalagem}
               onChangeText={setTamanhoEmbalagem}
               keyboardType="numeric"
               placeholder="Ex: 50"
+              // Desabilita em modo de edição
+              editable={!isEditMode} 
             />
           </View>
           <View style={styles.col}>
             <Text style={styles.label}>Qtd. Embalagens</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, isEditMode && styles.inputDisabled]}
               value={qtdEmbalagens}
               onChangeText={setQtdEmbalagens}
               keyboardType="numeric"
               placeholder="Ex: 2"
+              // Desabilita em modo de edição
+              editable={!isEditMode}
             />
           </View>
         </View>
+        
+        {/* Aviso para ajustes de estoque em edição */}
+        {isEditMode && (
+          <Text style={styles.warningText}>
+            * Em modo de edição, o Estoque Total e a Unidade não podem ser alterados diretamente. 
+            Para movimentação, use uma tela de entrada/saída.
+          </Text>
+        )}
 
         <View style={styles.totalBox}>
           <Text style={styles.totalLabel}>Estoque Total Disponível:</Text>
           <Text style={styles.totalValue}>
-            {estoqueTotalCalculado} {unidade}
+            {estoqueTotalCalculado.toFixed(2)} {unidade}
           </Text>
           <Text style={styles.totalSubtext}>
             (O sistema usará este total para as baixas automáticas)
@@ -242,12 +277,11 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff', // Fundo branco
+    backgroundColor: '#fff', 
   },
-  // ESTILO NOVO PARA GARANTIR O SCROLL
   scrollContent: {
     padding: 16,
-    paddingBottom: 100, // Espaço extra no final para o botão não ficar escondido
+    paddingBottom: 100, 
   },
   sectionTitle: {
     fontSize: 20,
@@ -271,6 +305,19 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     marginBottom: 16,
     backgroundColor: '#fff',
+  },
+  // ESTILOS NOVOS PARA UX/UI
+  inputDisabled: { 
+    backgroundColor: '#f0f0f0',
+    color: '#888',
+  },
+  disabledText: { 
+    color: '#aaa',
+  },
+  warningText: { 
+    color: '#d9534f',
+    marginBottom: 10,
+    fontSize: 12,
   },
   selectorContainer: {
     flexDirection: 'row',

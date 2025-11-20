@@ -60,7 +60,7 @@ const InsumosListScreen = ({ navigation }: any) => {
         data={insumos}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          // ****** ITEM AGORA É CLICÁVEL ******
+          // MODIFICADO: Adiciona estilo de fundo suave para o alerta
           <TouchableOpacity 
             style={[styles.item, estaEmAlerta(item) && styles.itemAlerta]}
             onPress={() => navigation.navigate('InsumoForm', { insumoId: item.id })} // Navega com ID para Editar
@@ -94,9 +94,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#eee',
   },
+  // NOVO ESTILO: Borda mais evidente e fundo suave
   itemAlerta: {
     borderColor: '#d9534f',
     borderWidth: 2,
+    backgroundColor: '#fdebeb', 
   },
   itemTitle: {
     fontSize: 18,

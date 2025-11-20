@@ -1,5 +1,5 @@
 // src/screens/Aplicacoes/AplicacaoFormScreen.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   View, Text, TextInput, Button, ScrollView, Alert, 
   StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, TouchableOpacity 
@@ -20,16 +20,32 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
   const [insumosList, setInsumosList] = useState<Insumo[]>([]);
   
   // Dados Gerais
-  const [volumeTanque, setVolumeTanque] = useState(''); 
+  const [volumeTanque, setVolumeTanque] = useState(''); // Volume de UM tanque
+  const [numeroTanques, setNumeroTanques] = useState(''); // NOVO: Quantidade de tanques/máquinas
   const [observacoes, setObservacoes] = useState('');
 
   // Dados do Item Atual (para adicionar)
   const [selectedInsumoId, setSelectedInsumoId] = useState<string | undefined>(undefined);
-  const [qtdItem, setQtdItem] = useState('');
-  const [doseItem, setDoseItem] = useState(''); 
-
+  // REMOVIDO: qtdItem - será calculado!
+  const [doseItem, setDoseItem] = useState(''); // Dose por tanque/máquina
+  
   // Lista de Itens (O Carrinho)
   const [itensAdicionados, setItensAdicionados] = useState<AplicacaoItem[]>([]);
+
+  // NOVO: Calcula o total aplicado do insumo atual com base na Dose e no Número de Tanques
+  const totalAplicadoPorInsumo = useMemo(() => {
+    // 1. Normaliza e converte para número (usando 0 se for inválido)
+    const doseNum = parseFloat(doseItem.replace(',', '.')) || 0;
+    const numTanquesNum = parseFloat(numeroTanques.replace(',', '.')) || 0;
+    
+    // 2. Se ambos forem válidos e maiores que zero, calcula
+    if (doseNum > 0 && numTanquesNum > 0) {
+        // Total Produto Usado = Dose por Tanque * Número de Tanques
+        return doseNum * numTanquesNum;
+    } 
+    return null;
+  }, [doseItem, numeroTanques]);
+
 
   useEffect(() => {
     const carregarInsumos = async () => {
@@ -39,12 +55,16 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
           const lista = await listInsumos(user.uid);
           setInsumosList(lista);
           
-          // LÓGICA DE CLONAR CORRIGIDA
+          // LÓGICA DE CLONAR ATUALIZADA
           if (clonarAplicacao) {
             // 1. Preenche os dados gerais (cabeçalho)
             setObservacoes(clonarAplicacao.observacoes || '');
             if (clonarAplicacao.volumeTanque) {
               setVolumeTanque(String(clonarAplicacao.volumeTanque));
+            }
+            // NOVO: Clonar numeroTanques
+            if (clonarAplicacao.numeroTanques) {
+              setNumeroTanques(String(clonarAplicacao.numeroTanques));
             }
 
             // 2. Preenche a lista de itens (Carrinho)
@@ -77,21 +97,22 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
   const getInsumoSelecionado = () => insumosList.find(i => i.id === selectedInsumoId);
   const getUnidadeSelecionada = () => getInsumoSelecionado()?.unidadePadrao || "...";
   
-  const isInsumoDefensivo = () => {
-    const i = getInsumoSelecionado();
-    return i?.tipo === 'defensivo';
-  };
-
   const handleAddItem = () => {
     const insumo = getInsumoSelecionado();
     if (!insumo) return;
 
-    const qtdString = qtdItem.replace(',', '.');
-    const qtd = parseFloat(qtdString);
+    const doseString = doseItem.replace(',', '.');
+    const doseNum = parseFloat(doseString);
     
-    if (isNaN(qtd) || qtd <= 0) {
-      Alert.alert("Atenção", "Digite uma quantidade válida.");
+    if (isNaN(doseNum) || doseNum <= 0) {
+      Alert.alert("Atenção", "Digite uma dose por tanque válida.");
       return;
+    }
+    
+    // Verifica se o cálculo resultou em um valor válido (depende de numeroTanques > 0)
+    if (!totalAplicadoPorInsumo || totalAplicadoPorInsumo <= 0) {
+        Alert.alert("Atenção", "Preencha o 'Número de Tanques' acima para calcular a Quantidade Total.");
+        return;
     }
 
     // Verifica se já está na lista
@@ -99,22 +120,21 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
       Alert.alert("Duplicado", "Este insumo já está na lista. Remova-o da lista abaixo se quiser alterar.");
       return;
     }
-
-    const doseString = doseItem.replace(',', '.');
-    const doseNum = parseFloat(doseString);
+    
+    // O total aplicado é o valor calculado!
+    const totalAplicado = totalAplicadoPorInsumo;
 
     const novoItem: AplicacaoItem = {
       insumoId: insumo.id,
       nomeInsumo: insumo.nome,
-      quantidadeAplicada: qtd,
+      quantidadeAplicada: totalAplicado, // <--- VALOR CALCULADO
       unidade: insumo.unidadePadrao,
-      dosePorTanque: isNaN(doseNum) ? null : doseNum
+      dosePorTanque: doseNum
     };
 
     setItensAdicionados([...itensAdicionados, novoItem]);
     
     // Limpa os campos de adição para o próximo item
-    setQtdItem('');
     setDoseItem('');
   };
 
@@ -137,11 +157,21 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
 
     const volString = volumeTanque.replace(',', '.');
     const volNum = parseFloat(volString);
+    
+    const numTanquesString = numeroTanques.replace(',', '.');
+    const numTanquesNum = parseFloat(numTanquesString); // NOVO: Captura o número de tanques
+
+    // A validação de Tanques é importante, mas permitimos null se não for inserido
+    if (isNaN(numTanquesNum) || numTanquesNum <= 0) {
+        Alert.alert("Atenção", "O Número de Tanques aplicados deve ser maior que zero.");
+        return;
+    }
 
     const formData: AplicacaoFormData = {
       dataAplicacao: Timestamp.now(),
       observacoes: observacoes || null,
       volumeTanque: isNaN(volNum) ? null : volNum,
+      numeroTanques: numTanquesNum, // NOVO CAMPO
       itens: itensAdicionados
     };
 
@@ -187,13 +217,23 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
             placeholder="Ex: Preventivo Fungicida + Adubo"
           />
           
-          <Text style={styles.label}>Volume do Tanque/Recipiente (L) (Opcional)</Text>
+          <Text style={styles.label}>Volume de **UM** Tanque/Recipiente (L) (Opcional)</Text>
           <TextInput
             style={styles.input}
             value={volumeTanque}
             onChangeText={setVolumeTanque}
             keyboardType="numeric"
             placeholder="Ex: 200"
+          />
+          
+          {/* NOVO CAMPO: Número de Tanques/Máquinas */}
+          <Text style={styles.label}>Número de Tanques/Máquinas Aplicadas</Text>
+          <TextInput
+            style={styles.input}
+            value={numeroTanques}
+            onChangeText={setNumeroTanques}
+            keyboardType="numeric"
+            placeholder="Ex: 5"
           />
         </View>
 
@@ -218,33 +258,38 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
           </View>
 
           <View style={styles.row}>
+            {/* NOVO: Dose por Tanque */}
             <View style={styles.col}>
-              <Text style={styles.label}>Qtd. Total ({getUnidadeSelecionada()})</Text>
+              <Text style={styles.label}>Dose por Tanque ({getUnidadeSelecionada()})</Text>
               <TextInput
                 style={styles.input}
-                value={qtdItem}
-                onChangeText={setQtdItem}
+                value={doseItem}
+                onChangeText={setDoseItem}
                 keyboardType="numeric"
                 placeholder="Ex: 500"
               />
             </View>
             
-            {/* Mostra Dose apenas se for defensivo */}
-            {isInsumoDefensivo() && (
-              <View style={styles.col}>
-                <Text style={styles.label}>Dose (Opcional)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={doseItem}
-                  onChangeText={setDoseItem}
-                  keyboardType="numeric"
-                  placeholder="Por tanque"
-                />
-              </View>
-            )}
+            {/* CÁLCULO VISUAL */}
+            <View style={styles.col}>
+                <Text style={styles.label}>Qtd. Total Calculada</Text>
+                <Text style={styles.calculatedText}>
+                    {totalAplicadoPorInsumo === null 
+                        ? 'N/A' 
+                        : `${totalAplicadoPorInsumo.toFixed(2)} ${getUnidadeSelecionada()}`}
+                </Text>
+                {totalAplicadoPorInsumo !== null && <Text style={styles.calculationDetail}>
+                    ({doseItem || 0} x {numeroTanques || 0} Tanques)
+                </Text>}
+            </View>
           </View>
 
-          <Button title="Adicionar Item à Lista" onPress={handleAddItem} />
+          <Button 
+            title="Adicionar Item à Lista" 
+            onPress={handleAddItem} 
+            // Desabilita se o cálculo não foi realizado (depende de dose e numeroTanques)
+            disabled={totalAplicadoPorInsumo === null || totalAplicadoPorInsumo <= 0} 
+          />
         </View>
 
         {/* LISTA DE ITENS (O CARRINHO) */}
@@ -257,7 +302,12 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
               <View key={index} style={styles.itemRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.itemName}>{item.nomeInsumo}</Text>
-                  <Text>Total: {item.quantidadeAplicada} {item.unidade} {item.dosePorTanque ? `(Dose: ${item.dosePorTanque})` : ''}</Text>
+                  <Text>
+                    Total Gasto (Estoque): {item.quantidadeAplicada.toFixed(2)} {item.unidade}
+                  </Text>
+                  <Text style={{fontSize: 12, color: '#666'}}>
+                    Dose/Tanque: {item.dosePorTanque} | Total Tanques: {numeroTanques || 'N/A'}
+                  </Text>
                 </View>
                 <TouchableOpacity onPress={() => handleRemoveItem(index)} style={styles.removeBtn}>
                   <Text style={styles.removeText}>X</Text>
@@ -287,6 +337,19 @@ const styles = StyleSheet.create({
   pickerContainer: { borderWidth: 1, borderColor: '#ccc', borderRadius: 5, marginBottom: 10, backgroundColor: '#fff' },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   col: { width: '48%' },
+  
+  // NOVO: Estilos para o texto calculado
+  calculatedText: { 
+    fontSize: 18, 
+    fontWeight: 'bold', 
+    color: '#007bff', 
+    marginTop: 5, 
+    marginBottom: 5
+  },
+  calculationDetail: {
+    fontSize: 12,
+    color: '#666'
+  },
   
   // Lista de Itens
   itemRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#eee' },

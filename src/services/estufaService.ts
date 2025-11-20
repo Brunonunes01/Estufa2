@@ -8,7 +8,8 @@ import {
   Timestamp,
   doc,
   getDoc,
-  updateDoc // Importar
+  updateDoc,
+  deleteDoc // NOVO: Importar
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Estufa } from '../types/domain';
@@ -66,7 +67,7 @@ export const listEstufas = async (userId: string): Promise<Estufa[]> => {
   }
 };
 
-// 3. BUSCAR ESTUFA POR ID (Já tínhamos)
+// 3. BUSCAR ESTUFA POR ID 
 export const getEstufaById = async (estufaId: string): Promise<Estufa | null> => {
   try {
     const docRef = doc(db, 'estufas', estufaId);
@@ -82,7 +83,7 @@ export const getEstufaById = async (estufaId: string): Promise<Estufa | null> =>
   }
 };
 
-// 4. ATUALIZAR ESTUFA (Função Nova)
+// 4. ATUALIZAR ESTUFA 
 export const updateEstufa = async (estufaId: string, data: EstufaFormData) => {
   const estufaRef = doc(db, 'estufas', estufaId);
 
@@ -99,5 +100,17 @@ export const updateEstufa = async (estufaId: string, data: EstufaFormData) => {
   } catch (error) {
     console.error("Erro ao atualizar estufa: ", error);
     throw new Error('Não foi possível atualizar a estufa.');
+  }
+};
+
+// 5. DELETAR ESTUFA (FUNÇÃO NOVA)
+export const deleteEstufa = async (estufaId: string) => {
+  const estufaRef = doc(db, 'estufas', estufaId);
+  try {
+    await deleteDoc(estufaRef);
+    console.log('Estufa deletada com sucesso: ', estufaId);
+  } catch (error) {
+    console.error("Erro ao deletar estufa: ", error);
+    throw new Error('Não foi possível deletar a estufa.');
   }
 };

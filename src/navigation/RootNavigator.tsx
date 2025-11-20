@@ -21,6 +21,7 @@ import InsumoFormScreen from '../screens/Insumos/InsumoFormScreen';
 import FornecedoresListScreen from '../screens/Fornecedores/FornecedoresListScreen';
 import FornecedorFormScreen from '../screens/Fornecedores/FornecedorFormScreen';
 import AplicacaoFormScreen from '../screens/Aplicacoes/AplicacaoFormScreen';
+import AplicacoesHistoryScreen from '../screens/Aplicacoes/AplicacoesHistoryScreen'; // NOVO IMPORT
 
 const Stack = createNativeStackNavigator();
 
@@ -74,7 +75,6 @@ const AppStack = () => (
       options={{ title: 'Meus Insumos' }}
     />
     
-    {/* ****** TÍTULO REMOVIDO DAQUI ****** */}
     <Stack.Screen 
       name="InsumoForm" 
       component={InsumoFormScreen} 
@@ -88,12 +88,16 @@ const AppStack = () => (
     <Stack.Screen 
       name="FornecedorForm" 
       component={FornecedorFormScreen} 
-      options={{ title: 'Novo Fornecedor' }}
     />
     <Stack.Screen 
       name="AplicacaoForm" 
       component={AplicacaoFormScreen} 
       options={{ title: 'Registrar Aplicação' }}
+    />
+    
+    <Stack.Screen 
+      name="AplicacoesHistory" // NOVA TELA
+      component={AplicacoesHistoryScreen} 
     />
     
   </Stack.Navigator>

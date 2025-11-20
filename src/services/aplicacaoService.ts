@@ -16,10 +16,11 @@ export type AplicacaoFormData = {
   dataAplicacao: Timestamp;
   observacoes: string | null;
   volumeTanque: number | null;
+  numeroTanques: number | null; 
   itens: AplicacaoItem[];
 };
 
-// 1. CRIAR APLICAÇÃO
+// 1. CRIAR APLICAÇÃO (MODIFICADO: Permite estoque negativo)
 export const createAplicacao = async (
   data: AplicacaoFormData, 
   userId: string, 
@@ -48,7 +49,6 @@ export const createAplicacao = async (
     await runTransaction(db, async (transaction) => {
       
       // *** FASE 1: LEITURA RIGOROSA (READS) ***
-      // Lemos todos os documentos necessários ANTES de qualquer escrita.
       const leituras = [];
       for (const item of itensConsolidados) {
         const ref = doc(db, "insumos", item.insumoId);
@@ -59,7 +59,6 @@ export const createAplicacao = async (
       const docsInsumos = await Promise.all(leituras);
 
       // *** FASE 2: VERIFICAÇÃO E CÁLCULO (MEMORY) ***
-      // Agora processamos os dados na memória (sem chamar o banco ainda)
       const updatesParaFazer = [];
 
       for (let i = 0; i < itensConsolidados.length; i++) {
@@ -77,12 +76,9 @@ export const createAplicacao = async (
           throw new Error(`Unidade incorreta para "${item.nomeInsumo}". Esperado: ${insumoData.unidadePadrao}.`);
         }
 
-        // Verifica estoque
+        // AQUI: O novoEstoque pode ser negativo
         const novoEstoque = insumoData.estoqueAtual - item.quantidadeAplicada;
-        if (novoEstoque < 0) {
-          throw new Error(`Estoque insuficiente para "${item.nomeInsumo}"! Disponível: ${insumoData.estoqueAtual}. Necessário: ${item.quantidadeAplicada}.`);
-        }
-
+        
         // Guarda o update para fazer na fase 3
         updatesParaFazer.push({
           ref: insumoDoc.ref,
@@ -91,8 +87,6 @@ export const createAplicacao = async (
       }
 
       // *** FASE 3: ESCRITA (WRITES) ***
-      // Só agora fazemos as escritas.
-      
       // 1. Atualiza os estoques dos insumos
       for (const update of updatesParaFazer) {
         transaction.update(update.ref, { 

@@ -8,11 +8,13 @@ import {
   ActivityIndicator, 
   FlatList, 
   Alert,
-  TouchableOpacity 
+  TouchableOpacity,
+  Platform, // Para melhor compatibilidade com Alert.prompt
+  ScrollView // Para permitir rolagem e acessar o botão Deletar
 } from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { Estufa, Plantio } from '../../types/domain';
-import { getEstufaById } from '../../services/estufaService';
+import { getEstufaById, deleteEstufa } from '../../services/estufaService'; 
 import { listPlantiosByEstufa } from '../../services/plantioService';
 import { useIsFocused } from '@react-navigation/native';
 
@@ -25,6 +27,9 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
   const [loading, setLoading] = useState(true);
   
   const isFocused = useIsFocused(); 
+  
+  // SENHA DE SEGURANÇA FIXA
+  const DELETE_PASSWORD = "8899";
 
   useEffect(() => {
     navigation.setOptions({ title: estufaNome || 'Detalhes da Estufa' });
@@ -49,6 +54,73 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
     }
   }, [estufaId, user, isFocused]); 
 
+  // FUNÇÃO DE EXCLUSÃO
+  const handleDeleteEstufa = () => {
+    if (!estufa) return;
+
+    // 1. Confirmação inicial (se houver plantios)
+    if (plantios.length > 0) {
+      Alert.alert(
+        "Atenção",
+        "Existem plantios associados a esta estufa. Deletar a estufa não deletará os plantios associados. Confirma a exclusão?",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Continuar Exclusão", onPress: promptForPassword, style: "destructive" },
+        ]
+      );
+    } else {
+      promptForPassword();
+    }
+  };
+
+  // Pede a senha usando o Alert.prompt (Tipagem CORRIGIDA)
+  const promptForPassword = () => {
+    if (Platform.OS === 'ios' || Platform.OS === 'android') {
+      Alert.prompt(
+        "Confirmação de Exclusão",
+        `Digite a senha de exclusão (${DELETE_PASSWORD}) para confirmar:`,
+        [
+          { text: "Cancelar", style: "cancel" },
+          { 
+            text: "Excluir", 
+            style: "destructive", 
+            onPress: (password: string | undefined) => { // TIPO EXPLÍCITO AQUI
+              executeDelete(password);
+            } 
+          },
+        ],
+        'secure-text'
+      );
+    } else {
+      const password = prompt(`Digite a senha de exclusão (${DELETE_PASSWORD}) para confirmar:`);
+      executeDelete(password);
+    }
+  };
+
+  const executeDelete = async (password: string | null | undefined) => {
+    if (!estufaId) return;
+
+    if (!password || password.trim() !== DELETE_PASSWORD) {
+      Alert.alert("Erro", "Senha incorreta. A exclusão foi cancelada.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      console.log('Iniciando exclusão da estufa:', estufaId);
+      await deleteEstufa(estufaId);
+      console.log('Exclusão concluída. Navegando para lista.');
+
+      Alert.alert("Sucesso", "Estufa excluída com sucesso!");
+      // Volta para a lista de estufas
+      navigation.navigate('EstufasList'); 
+    } catch (error) {
+      console.error('ERRO CRÍTICO NA EXCLUSÃO:', error); 
+      Alert.alert("Erro", "Não foi possível excluir a estufa. Verifique o console para detalhes.");
+      setLoading(false);
+    }
+  };
+  
   if (loading) {
     return <ActivityIndicator size="large" style={styles.centered} />;
   }
@@ -59,13 +131,14 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
 
   // Renderiza a tela
   return (
-    <View style={styles.container}>
+    // CORRIGIDO: Container principal agora é ScrollView
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}> 
+      
       {/* Seção 1: Detalhes da Estufa */}
       <View style={styles.detailBox}>
         <View style={styles.headerBox}>
           <Text style={styles.title}>Dados da Estufa</Text>
           
-          {/* BOTÃO DE EDITAR NOVO */}
           <Button 
             title="Editar" 
             onPress={() => navigation.navigate('EstufaForm', { estufaId: estufa.id })}
@@ -75,20 +148,23 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
         <Text>Área: {estufa.areaM2} m²</Text>
         <Text>Medidas (CxLxA): {estufa.comprimentoM}m x {estufa.larguraM}m x {estufa.alturaM}m</Text>
         <Text>Status: {estufa.status}</Text>
-        {/* Adicione mais detalhes aqui se quiser, ex: estufa.tipoCobertura */}
       </View>
 
       {/* Seção 2: Ações */}
-      <Button 
-        title="Adicionar Novo Plantio"
-        onPress={() => navigation.navigate('PlantioForm', { estufaId: estufa.id })}
-      />
+      <View style={{ marginBottom: 15 }}>
+        <Button 
+          title="Adicionar Novo Plantio"
+          onPress={() => navigation.navigate('PlantioForm', { estufaId: estufa.id })}
+        />
+      </View>
 
       {/* Seção 3: Lista de Plantios */}
       <Text style={styles.title}>Plantios nesta Estufa</Text>
       <FlatList
         data={plantios}
         keyExtractor={(item) => item.id}
+        // CORREÇÃO ESSENCIAL: Desativa a rolagem da lista para evitar erro de aninhamento
+        scrollEnabled={false} 
         renderItem={({ item }) => (
           <TouchableOpacity
             style={styles.plantioItem}
@@ -101,8 +177,18 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
           </TouchableOpacity>
         )}
         ListEmptyComponent={<Text style={{ textAlign: 'center', margin: 10 }}>Nenhum plantio cadastrado.</Text>}
+        // Removemos o ListFooterComponent
       />
-    </View>
+
+      {/* NOVO BOTÃO: Deletar Estufa */}
+      <View style={styles.deleteButtonContainer}>
+        <Button
+          title="DELETAR ESTUFA"
+          onPress={handleDeleteEstufa} 
+          color="#d9534f"
+        />
+      </View>
+    </ScrollView>
   );
 };
 
@@ -110,6 +196,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 10,
+  },
+  scrollContent: { 
+    paddingBottom: 20
   },
   centered: {
     flex: 1,
@@ -145,6 +234,10 @@ const styles = StyleSheet.create({
   plantioTitle: {
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  deleteButtonContainer: {
+    marginTop: 20,
+    marginBottom: 20,
   }
 });
 

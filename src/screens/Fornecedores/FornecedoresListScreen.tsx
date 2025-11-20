@@ -1,6 +1,6 @@
 // src/screens/Fornecedores/FornecedoresListScreen.tsx
 import React, { useState, useEffect } from 'react';
-import { View, Text, Button, FlatList, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, Button, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { listFornecedores } from '../../services/fornecedorService';
 import { Fornecedor } from '../../types/domain';
@@ -10,7 +10,7 @@ const FornecedoresListScreen = ({ navigation }: any) => {
   const { user } = useAuth();
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [loading, setLoading] = useState(true);
-  const isFocused = useIsFocused(); // Hook para saber se a tela está ativa
+  const isFocused = useIsFocused(); 
 
   const carregarFornecedores = async () => {
     if (user) {
@@ -30,7 +30,7 @@ const FornecedoresListScreen = ({ navigation }: any) => {
     if (isFocused && user) {
       carregarFornecedores();
     }
-  }, [isFocused, user]); // Depende do foco e do usuário
+  }, [isFocused, user]);
 
   if (loading) {
     return <ActivityIndicator size="large" style={{ flex: 1, justifyContent: 'center' }} />;
@@ -40,19 +40,23 @@ const FornecedoresListScreen = ({ navigation }: any) => {
     <View style={styles.container}>
       <Button
         title="Adicionar Novo Fornecedor"
-        onPress={() => navigation.navigate('FornecedorForm')}
+        onPress={() => navigation.navigate('FornecedorForm', { fornecedorId: null })} // Passa null para criação
       />
       
       <FlatList
         data={fornecedores}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <View style={styles.item}>
+          // MODIFICADO: Item Clicável para edição
+          <TouchableOpacity 
+            style={styles.item}
+            onPress={() => navigation.navigate('FornecedorForm', { fornecedorId: item.id })}
+          >
             <Text style={styles.itemTitle}>{item.nome}</Text>
             {item.contato && <Text>Contato: {item.contato}</Text>}
             {item.telefone && <Text>Telefone: {item.telefone}</Text>}
             {item.email && <Text>Email: {item.email}</Text>}
-          </View>
+          </TouchableOpacity>
         )}
         ListEmptyComponent={<Text style={{ textAlign: 'center', marginTop: 20 }}>Nenhum fornecedor cadastrado.</Text>}
         onRefresh={carregarFornecedores}

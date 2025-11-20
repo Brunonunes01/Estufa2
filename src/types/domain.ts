@@ -77,7 +77,7 @@ export interface Fornecedor extends BaseDoc {
   observacoes: string | null;
 }
 
-// ****** NOVAS ESTRUTURAS ******
+// ****** ESTRUTURA CRÍTICA CORRIGIDA ******
 
 // Um item dentro da aplicação (ex: "50ml de Fungicida X")
 export interface AplicacaoItem {
@@ -95,7 +95,8 @@ export interface Aplicacao extends BaseDoc {
   observacoes: string | null;
   
   // Dados da Calda (Geral)
-  volumeTanque: number | null; // ex: 200 Litros
+  volumeTanque: number | null; // ex: 200 Litros (Volume de UM Tanque)
+  numeroTanques: number | null; // CORRIGIDO: Este campo estava causando o erro de tipagem.
   
   // Lista de produtos usados nesta aplicação
   itens: AplicacaoItem[]; 
