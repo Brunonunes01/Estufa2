@@ -1,8 +1,10 @@
 // src/navigation/RootNavigator.tsx
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createNativeStackNavigator, NativeStackNavigationOptions } from '@react-navigation/native-stack';
 import { useAuth } from '../hooks/useAuth';
+// NOVO IMPORT: Importar 'TextStyle' para resolver a tipagem de estilo
+import { TextStyle, ViewStyle } from 'react-native'; 
 
 // Telas de Auth
 import LoginScreen from '../screens/Auth/LoginScreen';
@@ -21,9 +23,23 @@ import InsumoFormScreen from '../screens/Insumos/InsumoFormScreen';
 import FornecedoresListScreen from '../screens/Fornecedores/FornecedoresListScreen';
 import FornecedorFormScreen from '../screens/Fornecedores/FornecedorFormScreen';
 import AplicacaoFormScreen from '../screens/Aplicacoes/AplicacaoFormScreen';
-import AplicacoesHistoryScreen from '../screens/Aplicacoes/AplicacoesHistoryScreen'; // NOVO IMPORT
+import AplicacoesHistoryScreen from '../screens/Aplicacoes/AplicacoesHistoryScreen'; 
 
 const Stack = createNativeStackNavigator();
+
+// Opções de tela padrão para o Material Design (Cabeçalho Verde)
+const defaultScreenOptions = {
+    // headerStyle é do tipo ViewStyle (para o container do cabeçalho)
+    headerStyle: {
+        backgroundColor: '#4CAF50', 
+    } as ViewStyle, 
+    headerTintColor: '#fff', 
+    // headerTitleStyle é do tipo TextStyle
+    headerTitleStyle: {
+        fontWeight: 'bold' as 'bold', 
+    } as TextStyle,
+} as const; // Asserção final para resolver o problema de aninhamento de tipos
+
 
 // Pilha de autenticação
 const AuthStack = () => (
@@ -35,7 +51,8 @@ const AuthStack = () => (
 
 // Pilha principal do app
 const AppStack = () => (
-  <Stack.Navigator>
+  // O TS agora aceita defaultScreenOptions porque ele é um tipo mais estrito (as const)
+  <Stack.Navigator screenOptions={defaultScreenOptions as NativeStackNavigationOptions}>
     <Stack.Screen 
       name="Dashboard" 
       component={DashboardScreen} 
@@ -96,7 +113,7 @@ const AppStack = () => (
     />
     
     <Stack.Screen 
-      name="AplicacoesHistory" // NOVA TELA
+      name="AplicacoesHistory" 
       component={AplicacoesHistoryScreen} 
     />
     

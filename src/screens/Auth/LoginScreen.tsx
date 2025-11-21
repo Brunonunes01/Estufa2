@@ -1,19 +1,29 @@
 // src/screens/Auth/LoginScreen.tsx
 import React, { useState } from 'react';
-import { View, TextInput, Button, Text, ActivityIndicator } from 'react-native';
+import { 
+  View, 
+  TextInput, 
+  Text, 
+  ActivityIndicator, 
+  StyleSheet, 
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView
+} from 'react-native';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../services/firebaseConfig';
+import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ícones
 
 const LoginScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false); // Para mostrar um "carregando"
+  const [loading, setLoading] = useState(false); 
 
   const handleLogin = () => {
-    console.log('Botão "Entrar" pressionado.'); // LOG 1
     setError('');
-    setLoading(true); // Começa a carregar
+    setLoading(true); 
 
     if (email === '' || password === '') {
       setError('Por favor, preencha e-mail e senha.');
@@ -21,70 +31,189 @@ const LoginScreen = ({ navigation }: any) => {
       return;
     }
     
-    console.log('Tentando logar com:', email); // LOG 2
-
     signInWithEmailAndPassword(auth, email, password)
-      .then((userCredential) => {
-        // Sucesso!
-        console.log('Login bem-sucedido:', userCredential.user.uid); // LOG 3
-        // O AuthContext vai cuidar do redirecionamento
+      .then(() => {
+        // Sucesso! O AuthContext cuidará do redirecionamento
         setLoading(false);
       })
       .catch((err) => {
-        // Erro!
-        console.error('ERRO NO LOGIN:', err.code, err.message); // LOG 4
         setLoading(false);
 
-        // Traduzindo erros comuns do Firebase
-        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-email') {
-          setError('Usuário não encontrado com este e-mail.');
+        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-email' || err.code === 'auth/invalid-credential') {
+          setError('Credenciais inválidas. Verifique o e-mail e a senha.');
         } else if (err.code === 'auth/wrong-password') {
           setError('Senha incorreta. Tente novamente.');
-        } else if (err.code === 'auth/invalid-credential') {
-          // Erro genérico para "email não existe" OU "senha errada"
-          setError('Credenciais inválidas. Verifique o e-mail e a senha.');
         } else {
-          // Outro erro
           setError('Erro ao tentar logar. Tente mais tarde.');
         }
       });
   };
 
   return (
-    <View style={{ flex: 1, justifyContent: 'center', padding: 20 }}>
-      <Text style={{ fontSize: 24, textAlign: 'center' }}>SGE - Entrar</Text>
-      <TextInput
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        style={{ borderWidth: 1, padding: 10, marginVertical: 10 }}
-      />
-      <TextInput
-        placeholder="Senha"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        style={{ borderWidth: 1, padding: 10, marginVertical: 10 }}
-      />
-      
-      {/* Mensagem de erro melhorada */}
-      {error && <Text style={{ color: 'red', textAlign: 'center', marginBottom: 10 }}>{error}</Text>}
-      
-      {/* Feedback de Loading */}
-      {loading ? (
-        <ActivityIndicator size="large" color="#0000ff" />
-      ) : (
-        <>
-          <Button title="Entrar" onPress={handleLogin} />
-          <Button
-            title="Criar conta"
-            onPress={() => navigation.navigate('Register')}
-          />
-        </>
-      )}
-    </View>
+    <KeyboardAvoidingView 
+        style={styles.fullContainer} 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+        <ScrollView contentContainerStyle={styles.centeredContent}>
+            
+            <View style={styles.card}>
+                <Text style={styles.header}>
+                    <MaterialCommunityIcons name="greenhouse" size={28} color="#4CAF50" /> SGE - Entrar
+                </Text>
+                
+                <Text style={styles.label}>E-mail</Text>
+                <TextInput
+                    placeholder="exemplo@dominio.com"
+                    value={email}
+                    onChangeText={setEmail}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    style={styles.input}
+                />
+                
+                <Text style={styles.label}>Senha</Text>
+                <TextInput
+                    placeholder="Sua senha"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry
+                    style={styles.input}
+                />
+                
+                {/* Mensagem de erro melhorada */}
+                {error ? (
+                    <View style={styles.errorBox}>
+                        <MaterialCommunityIcons name="alert-circle-outline" size={18} color="#D32F2F" />
+                        <Text style={styles.errorText}>{error}</Text>
+                    </View>
+                ) : null}
+                
+                {/* Botão de Login */}
+                <TouchableOpacity 
+                    style={styles.loginButton} 
+                    onPress={handleLogin} 
+                    disabled={loading}
+                >
+                    {loading ? (
+                        <ActivityIndicator color="#fff" />
+                    ) : (
+                        <Text style={styles.loginButtonText}>
+                            Entrar
+                        </Text>
+                    )}
+                </TouchableOpacity>
+
+            </View>
+
+            {/* Botão de Criar Conta (Ação Secundária/Link) */}
+            <TouchableOpacity
+                style={styles.registerButton}
+                onPress={() => navigation.navigate('Register')}
+            >
+                <Text style={styles.registerButtonText}>
+                    Não tem conta? <Text style={styles.registerLink}>Crie uma agora!</Text>
+                </Text>
+            </TouchableOpacity>
+
+        </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
+
+const styles = StyleSheet.create({
+    fullContainer: {
+        flex: 1,
+        backgroundColor: '#FAFAFA', 
+    },
+    centeredContent: {
+        flexGrow: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    // Card Principal
+    card: {
+        width: '100%',
+        maxWidth: 400,
+        backgroundColor: '#fff',
+        padding: 25,
+        borderRadius: 12,
+        marginBottom: 20,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3, 
+    },
+    header: {
+        fontSize: 28,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        marginBottom: 30,
+        color: '#333',
+    },
+    label: {
+        fontSize: 14,
+        marginBottom: 4,
+        fontWeight: 'bold',
+        color: '#555',
+    },
+    input: {
+        borderWidth: 1,
+        borderColor: '#ccc',
+        padding: 14, 
+        borderRadius: 8,
+        marginBottom: 20,
+        backgroundColor: '#fff',
+        fontSize: 16,
+    },
+    
+    // Botão de Login (Primário)
+    loginButton: {
+        backgroundColor: '#4CAF50', // Verde Primário
+        padding: 16,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 10,
+        minHeight: 55,
+    },
+    loginButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
+        fontSize: 18,
+    },
+    
+    // Botão de Cadastro (Secundário/Link)
+    registerButton: {
+        marginTop: 10,
+        padding: 10,
+    },
+    registerButtonText: {
+        fontSize: 14,
+        color: '#666',
+    },
+    registerLink: {
+        color: '#007bff',
+        fontWeight: 'bold',
+    },
+    
+    // Mensagem de Erro
+    errorBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#fdebeb',
+        borderColor: '#d9534f',
+        borderWidth: 1,
+        padding: 10,
+        borderRadius: 8,
+        marginBottom: 20,
+    },
+    errorText: {
+        color: '#d9534f',
+        marginLeft: 8,
+        fontSize: 14,
+    }
+});
 
 export default LoginScreen;

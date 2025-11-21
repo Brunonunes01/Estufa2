@@ -19,6 +19,7 @@ import {
   EstufaFormData 
 } from '../../services/estufaService';
 import { useAuth } from '../../hooks/useAuth';
+import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ícones
 
 const EstufaFormScreen = ({ route, navigation }: any) => {
   const { user } = useAuth();
@@ -28,7 +29,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
 
   // Estados do formulário
   const [nome, setNome] = useState('');
-  const [anoFabricacao, setAnoFabricacao] = useState(''); // <-- NOVO ESTADO
+  const [anoFabricacao, setAnoFabricacao] = useState(''); 
   const [comprimento, setComprimento] = useState('');
   const [largura, setLargura] = useState('');
   const [altura, setAltura] = useState('');
@@ -47,12 +48,11 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
           if (estufa) {
             // Preenche o formulário com os dados existentes
             setNome(estufa.nome);
-            setComprimento(estufa.comprimentoM.toString());
-            setLargura(estufa.larguraM.toString());
-            setAltura(estufa.alturaM.toString());
+            setComprimento(String(estufa.comprimentoM));
+            setLargura(String(estufa.larguraM));
+            setAltura(String(estufa.alturaM));
             setStatus(estufa.status);
             
-            // <-- LÓGICA NOVA: Preenche o ano
             if (estufa.dataFabricacao) {
               setAnoFabricacao(estufa.dataFabricacao.toDate().getFullYear().toString());
             }
@@ -66,7 +66,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
       }
     };
     carregarDadosEstufa();
-  }, [estufaId, isEditMode]);
+  }, [estufaId, isEditMode, navigation]);
 
   // Hook para definir o título da tela (Nova ou Editar)
   useEffect(() => {
@@ -87,21 +87,19 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
       return;
     }
 
-    // <-- LÓGICA NOVA: Converte o Ano (string) para Timestamp
     let dataFabricacaoTimestamp: Timestamp | null = null;
     const ano = parseInt(anoFabricacao);
-    if (ano >= 1900 && ano <= 2100) { // Validação simples do ano
-      // Salva como 1º de Janeiro (mês 0) do ano digitado
+    if (ano >= 1900 && ano <= 2100) { 
       dataFabricacaoTimestamp = Timestamp.fromDate(new Date(ano, 0, 1));
     }
 
     const formData: EstufaFormData = {
       nome: nome,
-      comprimentoM: parseFloat(comprimento) || 0,
-      larguraM: parseFloat(largura) || 0,
-      alturaM: parseFloat(altura) || 0,
+      comprimentoM: parseFloat(comprimento.replace(',', '.')) || 0,
+      larguraM: parseFloat(largura.replace(',', '.')) || 0,
+      alturaM: parseFloat(altura.replace(',', '.')) || 0,
       status: status,
-      dataFabricacao: dataFabricacaoTimestamp, // <-- CAMPO NOVO AQUI
+      dataFabricacao: dataFabricacaoTimestamp, 
       tipoCobertura: null,
       responsavel: null,
       observacoes: null,
@@ -126,121 +124,235 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
   };
 
   // Cálculo da área em tempo real
-  const c = parseFloat(comprimento) || 0;
-  const l = parseFloat(largura) || 0;
+  const c = parseFloat(comprimento.replace(',', '.')) || 0;
+  const l = parseFloat(largura.replace(',', '.')) || 0;
   const area = (c * l).toFixed(2); 
 
   if (loadingData) {
-    return <ActivityIndicator size="large" style={{ flex: 1 }} />;
+    return <ActivityIndicator size="large" style={styles.centered} />;
   }
 
+  // Mapeamento visual para os botões de status
+  const getStatusButtonStyles = (s: typeof status) => {
+    switch (s) {
+      case 'ativa': return { 
+        base: styles.statusButton, 
+        selected: { backgroundColor: '#4CAF50', borderColor: '#4CAF50' }, 
+        text: { color: status === s ? '#fff' : '#4CAF50' } 
+      };
+      case 'manutencao': return { 
+        base: styles.statusButton, 
+        selected: { backgroundColor: '#FF9800', borderColor: '#FF9800' }, 
+        text: { color: status === s ? '#fff' : '#FF9800' } 
+      };
+      case 'desativada': return { 
+        base: styles.statusButton, 
+        selected: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' }, 
+        text: { color: status === s ? '#fff' : '#D32F2F' } 
+      };
+    }
+  };
+
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.label}>Nome da Estufa (obrigatório)</Text>
-      <TextInput
-        style={styles.input}
-        value={nome}
-        onChangeText={setNome}
-        placeholder="Ex: Estufa 1 - Tomates"
-      />
-
-      {/* ****** CAMPO NOVO ADICIONADO ****** */}
-      <Text style={styles.label}>Ano de Construção (Opcional)</Text>
-      <TextInput
-        style={styles.input}
-        value={anoFabricacao}
-        onChangeText={setAnoFabricacao}
-        keyboardType="numeric"
-        maxLength={4}
-        placeholder="Ex: 2023"
-      />
+    <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContent}>
       
-      <Text style={styles.label}>Comprimento (m)</Text>
-      <TextInput
-        style={styles.input}
-        value={comprimento}
-        onChangeText={setComprimento}
-        keyboardType="numeric"
-      />
-      
-      <Text style={styles.label}>Largura (m)</Text>
-      <TextInput
-        style={styles.input}
-        value={largura}
-        onChangeText={setLargura}
-        keyboardType="numeric"
-      />
-      
-      <Text style={styles.label}>Altura (m)</Text>
-      <TextInput
-        style={styles.input}
-        value={altura}
-        onChangeText={setAltura}
-        keyboardType="numeric"
-      />
+      {/* Container Principal em estilo Card */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>
+          <MaterialCommunityIcons name="home-analytics" size={20} color="#333" /> Detalhes da Estufa
+        </Text>
 
-      <Text style={styles.label}>Área (m²)</Text>
-      <Text style={styles.areaText}>{area} m²</Text>
+        <Text style={styles.label}>Nome da Estufa (obrigatório)</Text>
+        <TextInput
+          style={styles.input}
+          value={nome}
+          onChangeText={setNome}
+          placeholder="Ex: Estufa 1 - Tomates"
+        />
 
-      <Text style={styles.label}>Status</Text>
-      <View style={styles.statusContainer}>
-        <TouchableOpacity
-          style={[styles.statusButton, status === 'ativa' && styles.statusButtonSelected]}
-          onPress={() => setStatus('ativa')}
-        >
-          <Text style={[styles.statusButtonText, status === 'ativa' && styles.statusButtonTextSelected]}>
-            Ativa
-          </Text>
-        </TouchableOpacity>
+        <Text style={styles.label}>Ano de Construção (Opcional)</Text>
+        <TextInput
+          style={styles.input}
+          value={anoFabricacao}
+          onChangeText={setAnoFabricacao}
+          keyboardType="numeric"
+          maxLength={4}
+          placeholder="Ex: 2023"
+        />
+        
+        {/* Seção de Medidas */}
+        <Text style={styles.subTitle}>Medidas (em metros)</Text>
+        <View style={styles.row}>
+            <View style={styles.col}>
+                <Text style={styles.label}>Comprimento</Text>
+                <TextInput
+                    style={styles.input}
+                    value={comprimento}
+                    onChangeText={setComprimento}
+                    keyboardType="numeric"
+                />
+            </View>
+            <View style={styles.col}>
+                <Text style={styles.label}>Largura</Text>
+                <TextInput
+                    style={styles.input}
+                    value={largura}
+                    onChangeText={setLargura}
+                    keyboardType="numeric"
+                />
+            </View>
+        </View>
 
-        <TouchableOpacity
-          style={[styles.statusButton, status === 'manutencao' && styles.statusButtonSelected]}
-          onPress={() => setStatus('manutencao')}
-        >
-          <Text style={[styles.statusButtonText, status === 'manutencao' && styles.statusButtonTextSelected]}>
-            Manutenção
-          </Text>
-        </TouchableOpacity>
+        <Text style={styles.label}>Altura</Text>
+        <TextInput
+          style={styles.input}
+          value={altura}
+          onChangeText={setAltura}
+          keyboardType="numeric"
+        />
 
-        <TouchableOpacity
-          style={[styles.statusButton, status === 'desativada' && styles.statusButtonSelected]}
-          onPress={() => setStatus('desativada')}
-        >
-          <Text style={[styles.statusButtonText, status === 'desativada' && styles.statusButtonTextSelected]}>
-            Desativada
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.areaBox}>
+          <Text style={styles.areaLabel}>Área Total:</Text>
+          <Text style={styles.areaValue}>{area} m²</Text>
+        </View>
+        
+        <Text style={styles.label}>Status da Estufa</Text>
+        <View style={styles.statusContainer}>
+          {(['ativa', 'manutencao', 'desativada'] as const).map((s) => {
+            const stylesMap = getStatusButtonStyles(s);
+            return (
+              <TouchableOpacity
+                key={s}
+                style={[stylesMap.base, status === s && stylesMap.selected]}
+                onPress={() => setStatus(s)}
+              >
+                <Text style={[stylesMap.text, status === s && { color: '#fff' }]}>
+                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
       </View>
+      
+      {/* Botão Salvar Customizado */}
+      <TouchableOpacity 
+        style={styles.saveButton} 
+        onPress={handleSave} 
+        disabled={loading}
+      >
+        {loading ? (
+            <ActivityIndicator color="#fff" />
+        ) : (
+            <Text style={styles.saveButtonText}>
+              {isEditMode ? "Atualizar Estufa" : "Salvar Estufa"}
+            </Text>
+        )}
+      </TouchableOpacity>
 
-      <Button title={loading ? "Salvando..." : "Salvar Estufa"} onPress={handleSave} disabled={loading} />
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  scrollContainer: {
     flex: 1,
+    backgroundColor: '#FAFAFA',
+  },
+  scrollContent: {
     padding: 16,
+    paddingBottom: 40,
+    alignItems: 'center',
+  },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  
+  // Estilo de Card (Container principal)
+  card: {
+    width: '100%',
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3, 
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    color: '#333',
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    paddingBottom: 10,
+  },
+  subTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#555',
+    marginTop: 5,
+    marginBottom: 10,
   },
   label: {
-    fontSize: 16,
+    fontSize: 14,
     marginBottom: 4,
     fontWeight: 'bold',
+    color: '#555',
   },
   input: {
     borderWidth: 1,
     borderColor: '#ccc',
-    padding: 10,
-    borderRadius: 5,
+    padding: 12, 
+    borderRadius: 8, 
     marginBottom: 16,
     backgroundColor: '#fff',
+    fontSize: 16,
   },
-  areaText: {
+  
+  // Layout de Colunas
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  col: {
+    width: '48%',
+  },
+
+  // Área Calculada
+  areaBox: {
+    backgroundColor: '#E3F2FD', 
+    padding: 15,
+    borderRadius: 8,
+    marginBottom: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#B3E5FC',
+  },
+  areaLabel: {
+    fontSize: 16,
+    color: '#007bff',
+    fontWeight: 'bold',
+  },
+  areaValue: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 20,
-    color: '#333',
+    color: '#007bff',
   },
+
+  // Seletores de Status
   statusContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -250,21 +362,26 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#007bff',
-    borderRadius: 5,
+    borderColor: '#ccc',
+    borderRadius: 8,
     alignItems: 'center',
     marginHorizontal: 4, 
   },
-  statusButtonSelected: {
-    backgroundColor: '#007bff', 
+  saveButton: {
+    width: '100%',
+    backgroundColor: '#4CAF50', 
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    minHeight: 50,
   },
-  statusButtonText: {
-    color: '#007bff', 
+  saveButtonText: {
+    color: '#fff',
     fontWeight: 'bold',
+    fontSize: 16,
   },
-  statusButtonTextSelected: {
-    color: '#fff', 
-  }
 });
 
 export default EstufaFormScreen;

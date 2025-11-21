@@ -1,4 +1,4 @@
-// App.tsx
+// src/screens/App.tsx
 import React from 'react';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
@@ -8,7 +8,8 @@ export default function App() {
   return (
     <AuthProvider>
       <RootNavigator />
-      <StatusBar style="auto" />
+      {/* Definimos o estilo da barra de status como 'light' para ter bom contraste com o cabeçalho verde escuro. */}
+      <StatusBar style="light" /> 
     </AuthProvider>
   );
 }

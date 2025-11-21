@@ -8,10 +8,14 @@ import {
   ScrollView, 
   Alert, 
   StyleSheet,
-  TouchableOpacity // Importar
+  TouchableOpacity,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
 import { createColheita, ColheitaFormData } from '../../services/colheitaService';
 import { useAuth } from '../../hooks/useAuth';
+import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ícones
 
 // Tipos de unidade que vamos permitir
 type UnidadeColheita = "kg" | "caixa" | "unidade" | "maço";
@@ -25,16 +29,15 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const [unidade, setUnidade] = useState<UnidadeColheita>('kg'); // Padrão 'kg'
   const [preco, setPreco] = useState('');
   const [destino, setDestino] = useState('');
-  
   const [loading, setLoading] = useState(false);
 
-  // ****** MELHORIA 2: CÁLCULO DO VALOR TOTAL ******
-  // usa useMemo para recalcular automaticamente
+  // Cálculo do Valor Total
   const valorTotal = useMemo(() => {
-    const qtd = parseFloat(quantidade) || 0;
-    const precoUnit = parseFloat(preco) || 0;
+    // Substitui vírgula por ponto para garantir o parsing correto
+    const qtd = parseFloat(quantidade.replace(',', '.')) || 0;
+    const precoUnit = parseFloat(preco.replace(',', '.')) || 0;
     return (qtd * precoUnit);
-  }, [quantidade, preco]); // Recalcula se 'quantidade' ou 'preco' mudar
+  }, [quantidade, preco]); 
 
   const handleSave = async () => {
     if (!user) {
@@ -47,9 +50,9 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
     }
 
     const formData: ColheitaFormData = {
-      quantidade: parseFloat(quantidade) || 0,
+      quantidade: parseFloat(quantidade.replace(',', '.')) || 0,
       unidade: unidade,
-      precoUnitario: parseFloat(preco) || null,
+      precoUnitario: parseFloat(preco.replace(',', '.')) || null,
       destino: destino || null,
       observacoes: null,
     };
@@ -68,132 +71,223 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.label}>Quantidade (obrigatório)</Text>
-      <TextInput
-        style={styles.input}
-        value={quantidade}
-        onChangeText={setQuantidade}
-        keyboardType="numeric"
-      />
-      
-      {/* ****** MELHORIA 1: SELETOR DE UNIDADE ****** */}
-      <Text style={styles.label}>Unidade</Text>
-      <View style={styles.selectorContainer}>
-        <TouchableOpacity
-          style={[styles.selectorButton, unidade === 'kg' && styles.selectorButtonSelected]}
-          onPress={() => setUnidade('kg')}
-        >
-          <Text style={[styles.selectorButtonText, unidade === 'kg' && styles.selectorButtonTextSelected]}>
-            Kg
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.selectorButton, unidade === 'caixa' && styles.selectorButtonSelected]}
-          onPress={() => setUnidade('caixa')}
-        >
-          <Text style={[styles.selectorButtonText, unidade === 'caixa' && styles.selectorButtonTextSelected]}>
-            Caixa
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.selectorButton, unidade === 'unidade' && styles.selectorButtonSelected]}
-          onPress={() => setUnidade('unidade')}
-        >
-          <Text style={[styles.selectorButtonText, unidade === 'unidade' && styles.selectorButtonTextSelected]}>
-            Unidade
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.selectorButton, unidade === 'maço' && styles.selectorButtonSelected]}
-          onPress={() => setUnidade('maço')}
-        >
-          <Text style={[styles.selectorButtonText, unidade === 'maço' && styles.selectorButtonTextSelected]}>
-            Maço
-          </Text>
-        </TouchableOpacity>
-      </View>
+    <KeyboardAvoidingView 
+      style={styles.fullContainer} 
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+        <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContent}>
+          
+          {/* CARD 1: DADOS DA COLHEITA */}
+          <View style={styles.card}>
+              <Text style={styles.cardTitle}>
+                  <MaterialCommunityIcons name="basket-fill" size={20} color="#333" /> Registro de Colheita
+              </Text>
 
-      <Text style={styles.label}>Preço Unitário (R$) (opcional)</Text>
-      <TextInput
-        style={styles.input}
-        value={preco}
-        onChangeText={setPreco}
-        keyboardType="numeric"
-        placeholder={`Preço por ${unidade}`}
-      />
+              {/* SELETOR DE UNIDADE */}
+              <Text style={styles.label}>Unidade</Text>
+              <View style={styles.selectorContainer}>
+                {(['kg', 'caixa', 'unidade', 'maço'] as UnidadeColheita[]).map(u => (
+                  <TouchableOpacity
+                    key={u}
+                    style={[
+                      styles.selectorButton, 
+                      unidade === u && styles.selectorButtonSelected
+                    ]}
+                    onPress={() => setUnidade(u)}
+                  >
+                    <Text style={[
+                      styles.selectorButtonText, 
+                      unidade === u && styles.selectorButtonTextSelected
+                    ]}>
+                      {u.charAt(0).toUpperCase() + u.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-      {/* ****** MELHORIA 2: VALOR TOTAL ****** */}
-      <Text style={styles.label}>Valor Total desta Colheita</Text>
-      <Text style={styles.totalText}>
-        R$ {valorTotal.toFixed(2)}
-      </Text>
+              <Text style={styles.label}>Quantidade Colhida</Text>
+              <TextInput
+                style={styles.input}
+                value={quantidade}
+                onChangeText={setQuantidade}
+                keyboardType="numeric"
+                placeholder={`Total em ${unidade}s`}
+              />
+              
+              <Text style={styles.label}>Preço Unitário (R$) (opcional)</Text>
+              <TextInput
+                style={styles.input}
+                value={preco}
+                onChangeText={setPreco}
+                keyboardType="numeric"
+                placeholder={`Preço de venda por ${unidade}`}
+              />
+          </View>
+          
+          {/* CARD 2: RESUMO E DESTINO */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>
+                  <MaterialCommunityIcons name="cash-multiple" size={20} color="#333" /> Resumo e Destino
+              </Text>
+              
+              {/* VALOR TOTAL - DESTAQUE */}
+              <View style={styles.totalBox}>
+                  <Text style={styles.totalLabel}>Valor Total Desta Colheita</Text>
+                  <Text style={styles.totalValue}>
+                      R$ {valorTotal.toFixed(2)}
+                  </Text>
+              </View>
 
-      <Text style={styles.label}>Destino (opcional)</Text>
-      <TextInput
-        style={styles.input}
-        value={destino}
-        onChangeText={setDestino}
-        placeholder="Ex: Feira, Mercado Local"
-      />
+              <Text style={styles.label}>Destino (opcional)</Text>
+              <TextInput
+                style={styles.input}
+                value={destino}
+                onChangeText={setDestino}
+                placeholder="Ex: Feira, Mercado Local, Consumo Próprio"
+              />
+          </View>
 
-      <Button title={loading ? "Salvando..." : "Salvar Colheita"} onPress={handleSave} disabled={loading} />
-    </ScrollView>
+          {/* BOTÃO SALVAR CUSTOMIZADO */}
+          <TouchableOpacity 
+              style={styles.saveButton} 
+              onPress={handleSave} 
+              disabled={loading}
+          >
+              {loading ? (
+                  <ActivityIndicator color="#fff" />
+              ) : (
+                  <Text style={styles.saveButtonText}>
+                      Salvar Colheita
+                  </Text>
+              )}
+          </TouchableOpacity>
+          
+        </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
+// ESTILOS PARA DESIGN PROFISSIONAL
 const styles = StyleSheet.create({
-  container: {
+  fullContainer: {
     flex: 1,
+    backgroundColor: '#FAFAFA',
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
     padding: 16,
+    paddingBottom: 60, 
+    alignItems: 'center',
+  },
+  
+  // Estilo de Card (Container principal)
+  card: {
+    width: '100%',
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3, 
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  cardTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    color: '#333',
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    paddingBottom: 10,
   },
   label: {
-    fontSize: 16,
+    fontSize: 14,
     marginBottom: 4,
     fontWeight: 'bold',
+    color: '#555',
   },
   input: {
     borderWidth: 1,
     borderColor: '#ccc',
-    padding: 10,
-    borderRadius: 5,
+    padding: 12, 
+    borderRadius: 8, 
     marginBottom: 16,
     backgroundColor: '#fff',
+    fontSize: 16,
   },
-  // Estilos para o Seletor
+  
+  // Seletores de Unidade
   selectorContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     marginBottom: 20,
-    flexWrap: 'wrap', // Permite que os botões quebrem a linha se não couberem
+    justifyContent: 'space-between',
   },
   selectorButton: {
-    // flex: 1, // Removemos o flex: 1 para que o tamanho seja automático
+    flex: 1, 
     paddingVertical: 12,
-    paddingHorizontal: 16, // Adiciona padding horizontal
     borderWidth: 1,
-    borderColor: '#007bff',
-    borderRadius: 5,
+    borderColor: '#4CAF50',
+    borderRadius: 8,
     alignItems: 'center',
     marginHorizontal: 2,
-    marginBottom: 8, // Adiciona margem inferior para o caso de quebra de linha
   },
   selectorButtonSelected: {
-    backgroundColor: '#007bff',
+    backgroundColor: '#4CAF50',
   },
   selectorButtonText: {
-    color: '#007bff',
+    color: '#4CAF50',
     fontWeight: 'bold',
+    fontSize: 14,
   },
   selectorButtonTextSelected: {
     color: '#fff',
   },
-  // Estilo para o Total
-  totalText: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  
+  // Box de Valor Total
+  totalBox: {
+    backgroundColor: '#E8F5E9', // Verde suave
+    padding: 15,
+    borderRadius: 8,
     marginBottom: 20,
-    color: '#005500', // Verde
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#C8E6C9',
+  },
+  totalLabel: {
+    fontSize: 16,
+    color: '#006400', // Verde Escuro
+    fontWeight: 'bold',
+  },
+  totalValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#006400',
+    marginTop: 5,
+  },
+
+  // Botão Salvar Customizado
+  saveButton: {
+    width: '100%',
+    backgroundColor: '#4CAF50', 
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    minHeight: 50,
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
 });
 

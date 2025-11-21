@@ -3,21 +3,20 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   View, 
   Text, 
-  Button, 
   StyleSheet, 
   ActivityIndicator, 
   Alert, 
   TouchableOpacity,
-  ScrollView // Importar ScrollView
+  ScrollView,
 } from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
-import { Plantio, Colheita, Fornecedor, Insumo, Aplicacao } from '../../types/domain';
+import { Plantio, Colheita, Fornecedor } from '../../types/domain';
 import { getPlantioById, updatePlantioStatus } from '../../services/plantioService';
 import { listColheitasByPlantio } from '../../services/colheitaService';
 import { listFornecedores } from '../../services/fornecedorService';
-import { listInsumos } from '../../services/insumoService';
-import { listAplicacoesByPlantio } from '../../services/aplicacaoService';
 import { useIsFocused } from '@react-navigation/native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+// REMOVIDO: import { FAB } from 'react-native-paper';
 
 const PlantioDetailScreen = ({ route, navigation }: any) => {
   const { user } = useAuth();
@@ -34,7 +33,6 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
     if (!user || !plantioId) return;
     setLoading(true);
     try {
-      // Simplificamos o carregamento de dados para o que é essencial para esta tela
       const [dadosPlantio, listaColheitas, listaFornecedores] = await Promise.all([
         getPlantioById(plantioId),
         listColheitasByPlantio(user.uid, plantioId),
@@ -63,7 +61,7 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
     if (!plantio) return;
     Alert.alert(
       "Finalizar Plantio?",
-      "Deseja marcar como 'finalizado'? Ação irreversível.",
+      "Deseja marcar como 'finalizado'? Esta ação não afeta registros de colheita/aplicação.",
       [
         { text: "Cancelar", style: "cancel" },
         { text: "Finalizar", onPress: async () => {
@@ -74,7 +72,6 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
     );
   };
 
-  // Função para navegar para o novo histórico
   const handleViewAplicacoes = () => {
     navigation.navigate('AplicacoesHistory', { 
       plantioId: plantio?.id,
@@ -82,6 +79,9 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
       plantioNome: plantio?.cultura
     });
   };
+
+  const handleAddColheita = () => navigation.navigate('ColheitaForm', { plantioId: plantio?.id, estufaId: plantio?.estufaId });
+  const handleAddAplicacao = () => navigation.navigate('AplicacaoForm', { plantioId: plantio?.id, estufaId: plantio?.estufaId });
 
   // Cálculos
   const totalColhido = useMemo(() => {
@@ -96,7 +96,6 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
 
   const custoEstimadoPlantio = useMemo(() => {
     if (!plantio || !plantio.precoEstimadoUnidade) return 0;
-    // CORRIGIDO AQUI: precoEstimadaUnidade -> precoEstimadoUnidade
     return plantio.quantidadePlantada * plantio.precoEstimadoUnidade;
   }, [plantio]);
 
@@ -109,120 +108,280 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
   if (loading) return <ActivityIndicator size="large" style={styles.centered} />;
   if (!plantio) return <View style={styles.centered}><Text>Plantio não encontrado.</Text></View>;
 
-  const statusCor = plantio.status === 'finalizado' ? styles.statusFinalizado : styles.statusAtivo;
+  const isFinalizado = plantio.status === 'finalizado';
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      
-      {/* Detalhes do Plantio */}
-      <View style={styles.detailBox}>
-        <Text style={styles.title}>{plantio.cultura} {plantio.variedade ? `(${plantio.variedade})` : ''}</Text>
-        <Text>Status: <Text style={statusCor}>{plantio.status}</Text></Text>
-        <Text>Data: {plantio.dataPlantio.toDate().toLocaleDateString()}</Text>
-        {nomeFornecedor && <Text>Fornecedor: {nomeFornecedor}</Text>}
-        {custoEstimadoPlantio > 0 && <Text style={styles.costText}>Custo Est.: R$ {custoEstimadoPlantio.toFixed(2)}</Text>}
-        <Text style={styles.totalColhido}>Total Colhido: {totalColhido || 'Nenhuma colheita'}</Text>
-      </View>
-
-      {/* Ações */}
-      {plantio.status !== 'finalizado' && (
-        <View style={styles.actionsRow}>
-          <View style={{flex: 1, marginRight: 5}}>
-            <Button title="Add Colheita" onPress={() => navigation.navigate('ColheitaForm', { plantioId: plantio.id, estufaId: plantio.estufaId })} />
-          </View>
-          <View style={{flex: 1, marginLeft: 5}}>
-            <Button title="Add Aplicação" color="#ff8c00" onPress={() => navigation.navigate('AplicacaoForm', { plantioId: plantio.id, estufaId: plantio.estufaId })} />
-          </View>
-        </View>
-      )}
-      
-      {/* NOVO BLOCO: Link para o Histórico de Aplicações */}
-      <View style={[styles.sectionContainer, { padding: 0 }]}>
-        <TouchableOpacity 
-          style={styles.historyLink} 
-          onPress={handleViewAplicacoes}
-        >
-          <Text style={styles.historyLinkText}>Ver Histórico de Aplicações</Text>
-        </TouchableOpacity>
-      </View>
-      
-      {/* SEÇÃO COLHEITAS (MANTIDA) */}
-      <View style={styles.sectionContainer}>
-        <Text style={styles.sectionHeader}>Histórico de Colheitas</Text>
+    <View style={styles.fullContainer}>
+        {/* Usamos ScrollView como container principal */}
+        <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         
-        {colheitas.length === 0 ? (
-          <Text style={{ textAlign: 'center', margin: 10, color: '#666' }}>Nenhuma colheita registrada.</Text>
-        ) : (
-          colheitas.map((item) => (
-            <View key={item.id} style={styles.colheitaItem}>
-              <Text style={styles.itemTitle}>{item.dataColheita.toDate().toLocaleDateString()}</Text>
-              <Text>Qtd: {item.quantidade} {item.unidade}</Text>
-              {item.precoUnitario && (
-                 <Text style={{ color: 'green' }}>
-                   Total: R$ {((item.quantidade || 0) * (item.precoUnitario || 0)).toFixed(2)}
-                 </Text>
-              )}
+        {/* Detalhes do Plantio - Card Principal */}
+        <View style={styles.card}>
+            <View style={styles.detailHeader}>
+            <Text style={styles.title}>{plantio.cultura} {plantio.variedade ? `(${plantio.variedade})` : ''}</Text>
+            <Text style={[styles.statusBadge, isFinalizado ? styles.statusFinalizado : styles.statusAtivo]}>
+                {isFinalizado ? 'FINALIZADO' : 'ATIVO'}
+            </Text>
             </View>
-          ))
-        )}
-      </View>
 
-      {/* BOTÃO FINALIZAR (MANTIDO) */}
-      {plantio.status !== 'finalizado' && (
-         <View style={{ marginTop: 20 }}>
-           <Button title="Finalizar Plantio" onPress={handleFinalizarPlantio} color="#d9534f" />
-         </View>
-      )}
-    </ScrollView>
+            <View style={styles.detailRow}>
+                <MaterialCommunityIcons name="calendar-month-outline" size={20} color="#333" />
+                <Text style={styles.detailItemText}>Data Plantio: {plantio.dataPlantio.toDate().toLocaleDateString()}</Text>
+            </View>
+            
+            {nomeFornecedor && (
+                <View style={styles.detailRow}>
+                    <MaterialCommunityIcons name="account-tie-outline" size={20} color="#333" />
+                    <Text style={styles.detailItemText}>Fornecedor: {nomeFornecedor}</Text>
+                </View>
+            )}
+            
+            {custoEstimadoPlantio > 0 && (
+                <View style={styles.detailRow}>
+                    <MaterialCommunityIcons name="cash" size={20} color="#8c1515" />
+                    <Text style={styles.detailItemText}>Custo Estimado: R$ {custoEstimadoPlantio.toFixed(2)}</Text>
+                </View>
+            )}
+            
+            <View style={styles.harvestSummary}>
+                <View style={styles.detailRow}>
+                    <MaterialCommunityIcons name="seed-outline" size={20} color="#006400" />
+                    <Text style={styles.totalColhidoTitle}>Total Colhido:</Text>
+                </View>
+                <Text style={styles.totalColhidoValue}>{totalColhido || 'Nenhuma colheita'}</Text>
+            </View>
+        </View>
+
+        {/* NOVO BLOCO: AÇÕES (Substituindo o FAB) */}
+        {!isFinalizado && (
+            <View style={styles.actionsContainer}>
+                <TouchableOpacity 
+                    style={[styles.actionButton, styles.harvestButton]} 
+                    onPress={handleAddColheita}
+                >
+                    <MaterialCommunityIcons name="fruit-cherries" size={24} color="#fff" />
+                    <Text style={styles.actionButtonText}>Colheita</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                    style={[styles.actionButton, styles.applicationButton]} 
+                    onPress={handleAddAplicacao}
+                >
+                    <MaterialCommunityIcons name="sprinkler-variant" size={24} color="#fff" />
+                    <Text style={styles.actionButtonText}>Aplicação</Text>
+                </TouchableOpacity>
+            </View>
+        )}
+
+
+        {/* Seção APLICAÇÕES - Link */}
+        <View style={styles.sectionCard}>
+            <TouchableOpacity style={styles.sectionLink} onPress={handleViewAplicacoes}>
+            <Text style={styles.sectionLinkText}>Histórico de Aplicações</Text>
+            <MaterialCommunityIcons name="arrow-right-circle" size={24} color="#007bff" />
+            </TouchableOpacity>
+        </View>
+        
+        {/* Seção HISTÓRICO DE COLHEITAS */}
+        <View style={styles.sectionCard}>
+            <Text style={styles.sectionHeader}>Histórico de Colheitas ({colheitas.length})</Text>
+            
+            {colheitas.length === 0 ? (
+            <Text style={styles.emptyText}>Nenhuma colheita registrada.</Text>
+            ) : (
+            colheitas.map((item) => (
+                <View key={item.id} style={styles.harvestItem}>
+                <View style={styles.harvestItemRow}>
+                    <Text style={styles.itemTitle}>{item.dataColheita.toDate().toLocaleDateString()}</Text>
+                    <Text style={styles.itemQuantity}>{item.quantidade} {item.unidade}</Text>
+                </View>
+                {item.precoUnitario && (
+                    <Text style={styles.itemTotal}>
+                    Lucro Estimado: R$ {((item.quantidade || 0) * (item.precoUnitario || 0)).toFixed(2)}
+                    </Text>
+                )}
+                </View>
+            ))
+            )}
+        </View>
+
+        {/* Botão Finalizar (só aparece se não estiver finalizado) */}
+        {!isFinalizado && (
+            <TouchableOpacity 
+                style={styles.finalizeButton}
+                onPress={handleFinalizarPlantio}
+            >
+                <Text style={styles.finalizeButtonText}>FINALIZAR PLANTIO</Text>
+            </TouchableOpacity>
+        )}
+
+        </ScrollView>
+    </View>
   );
 };
 
+// DEFINIÇÃO BASE DO CARD (para reuso - CORREÇÃO DO ERRO)
+const BaseCardStyle = {
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3, 
+};
+
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 10, backgroundColor: '#f2f2f2' },
-  scrollContent: { paddingBottom: 50 }, 
+  fullContainer: { flex: 1, backgroundColor: '#FAFAFA' }, 
+  container: { flex: 1, padding: 16 },
+  scrollContent: { paddingBottom: 40 }, // Ajustado para ter menos espaço no fim
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  detailBox: { backgroundColor: '#fff', padding: 12, borderRadius: 5, marginBottom: 15, elevation: 1 },
+
+  // CARD PRINCIPAL - USANDO SPREAD
+  card: {
+    ...BaseCardStyle, 
+    marginBottom: 20,
+    paddingVertical: 15, 
+  },
   
-  title: { fontSize: 18, fontWeight: 'bold', marginTop: 10, marginBottom: 5 },
+  // Detalhes
+  detailHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center',
+    marginBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    paddingBottom: 10,
+  },
+  title: { fontSize: 24, fontWeight: 'bold', color: '#333' },
   
-  // Estilo para o container de seção (Melhora a separação visual)
-  sectionContainer: {
-    backgroundColor: '#fff', 
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 15, 
-    borderWidth: 1,
-    borderColor: '#eee',
-    elevation: 2
+  // Linha de Detalhe com Ícone
+  detailRow: { 
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  detailItemText: { 
+      fontSize: 16, 
+      color: '#555', 
+      marginLeft: 8 
   },
 
-  sectionHeader: { fontSize: 18, fontWeight: 'bold', marginTop: 5, marginBottom: 10, color: '#333' },
+  // Status Badge
+  statusBadge: { 
+    fontSize: 12, 
+    fontWeight: 'bold', 
+    paddingHorizontal: 8, 
+    paddingVertical: 4, 
+    borderRadius: 10, 
+    overflow: 'hidden'
+  },
+  statusAtivo: { color: '#fff', backgroundColor: '#4CAF50' }, 
+  statusFinalizado: { color: '#555', backgroundColor: '#E0E0E0' },
   
-  totalColhido: { fontSize: 14, fontWeight: 'bold', marginTop: 4, color: '#005500' },
-  costText: { fontSize: 14, fontWeight: 'bold', marginTop: 4, color: '#8c1515' },
-  
-  actionsRow: { flexDirection: 'row', marginBottom: 10 },
-  
-  // Estilos para o link de histórico
-  historyLink: {
-    paddingVertical: 15,
-    paddingHorizontal: 10,
-    backgroundColor: '#e3f2fd', // Fundo azul claro
-    borderRadius: 8,
+  // Sumário de Colheita
+  harvestSummary: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  historyLinkText: {
+  totalColhidoTitle: { fontSize: 16, fontWeight: 'bold', color: '#006400', marginLeft: 8 },
+  totalColhidoValue: { fontSize: 18, fontWeight: 'bold', color: '#006400' },
+  
+  // BLOC O DE AÇÕES (Novo)
+  actionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 15,
+    borderRadius: 8,
+    marginHorizontal: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3, 
+  },
+  harvestButton: {
+    backgroundColor: '#4CAF50', // Verde
+  },
+  applicationButton: {
+    backgroundColor: '#FF9800', // Laranja
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginLeft: 10,
+  },
+
+  // Seção de Aplicações/Histórico (Link) - USANDO SPREAD
+  sectionCard: {
+    ...BaseCardStyle, 
+    padding: 0, 
+    marginBottom: 15,
+  },
+  sectionLink: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: '#E3F2FD', 
+    borderRadius: 12,
+  },
+  sectionLinkText: {
     color: '#007bff',
     fontWeight: 'bold',
     fontSize: 16,
   },
 
-  // Estilos de Itens (Colheita)
-  colheitaItem: { backgroundColor: '#f0fdf4', padding: 12, marginVertical: 5, borderRadius: 5, borderWidth: 1, borderColor: '#dcfce7' },
-  itemTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 5 }, 
-
-  statusAtivo: { color: '#005500', fontWeight: 'bold' },
-  statusFinalizado: { color: '#888', fontWeight: 'bold' },
+  // Histórico de Colheitas
+  sectionHeader: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 10, paddingHorizontal: 15, paddingTop: 15 },
+  emptyText: { textAlign: 'center', margin: 10, color: '#666', paddingBottom: 10 },
+  harvestItem: { 
+    backgroundColor: '#fff', 
+    padding: 15, 
+    marginHorizontal: 10,
+    marginVertical: 5, 
+    borderRadius: 8, 
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF9800', 
+    elevation: 1 
+  },
+  harvestItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  itemTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+  itemQuantity: { fontSize: 16, fontWeight: 'bold', color: '#006400' },
+  itemTotal: { fontSize: 14, color: 'green', marginTop: 5 },
+  
+  // Botão Finalizar
+  finalizeButton: {
+    backgroundColor: '#D32F2F', 
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 40,
+  },
+  finalizeButtonText: {
+      color: '#fff',
+      fontWeight: 'bold',
+      fontSize: 16,
+  },
 });
 
 export default PlantioDetailScreen;
