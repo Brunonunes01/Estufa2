@@ -1,20 +1,22 @@
 // src/screens/Dashboard/DashboardScreen.tsx
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, ViewStyle } from 'react-native'; // NOVO IMPORT: ViewStyle
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, ViewStyle } from 'react-native';
 import { auth } from '../../services/firebaseConfig';
 import { useAuth } from '../../hooks/useAuth';
 import { useIsFocused } from '@react-navigation/native';
 import { Insumo } from '../../types/domain';
 import { listInsumosEmAlerta } from '../../services/insumoService';
-import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ícones Vetoriais
+import { MaterialCommunityIcons } from '@expo/vector-icons'; 
+import { getGlobalStats, GlobalStatsResult } from '../../services/globalStatsService';
+import Card from '../../components/Card'; 
 
 // Mapeia nomes das ações para os ícones MaterialCommunityIcons
 const getIconName = (name: string) => {
     switch (name) {
-        case 'estufa': return 'greenhouse'; // Estufas
-        case 'insumo': return 'flask-outline'; // Insumos
-        case 'fornecedor': return 'truck-delivery-outline'; // Fornecedores
-        case 'alerta': return 'alert-octagon-outline'; // Alertas
+        case 'estufa': return 'greenhouse'; 
+        case 'insumo': return 'flask-outline'; 
+        case 'fornecedor': return 'truck-delivery-outline'; 
+        case 'alerta': return 'alert-octagon-outline'; 
         default: return 'arrow-right';
     }
 }
@@ -24,41 +26,84 @@ const DashboardScreen = ({ navigation }: any) => {
   const isFocused = useIsFocused();
   
   const [alertas, setAlertas] = useState<Insumo[]>([]);
+  const [stats, setStats] = useState<GlobalStatsResult | null>(null); 
   const [loading, setLoading] = useState(true); 
 
   useEffect(() => {
-    const carregarAlertas = async () => {
+    const loadData = async () => {
       if (!user) {
         setLoading(false);
         return;
       }
       setLoading(true);
-      const listaAlertas = await listInsumosEmAlerta(user.uid);
-      setAlertas(listaAlertas);
-      setLoading(false);
+      try {
+        const [listaAlertas, globalStats] = await Promise.all([
+            listInsumosEmAlerta(user.uid),
+            getGlobalStats(user.uid), 
+        ]);
+        
+        setAlertas(listaAlertas);
+        setStats(globalStats); 
+      } catch (e: any) { 
+          // CORREÇÃO FINAL E ROBUSTA: Garante que o log seja sempre uma string.
+          const message = e ? (e.message || String(e)) : "Erro no Promise.all (verifique serviços internos).";
+          console.error(`Erro ao carregar Dashboard: ${message}`);
+      } finally {
+        setLoading(false);
+      }
     };
 
     if (isFocused) {
-      carregarAlertas();
+      loadData();
     }
   }, [isFocused, user]);
 
   const handleNavigate = (screen: string) => () => navigation.navigate(screen);
 
-  // Componente reutilizável para Ações Rápidas (Card)
+  // Componente reutilizável para Ações Rápidas (Grid Item)
   const ActionCard = ({ title, iconName, onPress }: { title: string, iconName: string, onPress: () => void }) => (
       <TouchableOpacity style={styles.actionCard} onPress={onPress}>
           <MaterialCommunityIcons name={getIconName(iconName) as any} size={30} color="#4CAF50" style={styles.actionIcon} />
           <Text style={styles.actionText}>{title}</Text>
       </TouchableOpacity>
   );
+  
+  const isLucroPositivo = stats?.lucroTotal ? stats.lucroTotal >= 0 : true;
 
   return (
     <ScrollView style={styles.scrollView}>
     <View style={styles.container}>
       <Text style={styles.welcome}>Bem-vindo, {user?.name || 'Usuário'}!</Text>
       
-      {/* Seção de Ações Rápidas - Layout de Grid */}
+      {/* CARD: MÉTRICAS GLOBAIS - Usando Card Componente */}
+      {loading ? (
+        <ActivityIndicator size="small" color="#4CAF50" style={{ marginBottom: 20 }}/>
+      ) : (
+        stats && (
+            <Card style={[styles.statsCard, isLucroPositivo ? styles.lucroPositivo : styles.lucroNegativo]}>
+                <Text style={styles.statsTitle}>
+                    <MaterialCommunityIcons name="finance" size={20} color="#333" /> Lucro Bruto Global
+                </Text>
+                
+                <Text style={styles.lucroTotalValue}>
+                    R$ {stats.lucroTotal.toFixed(2)}
+                </Text>
+                
+                <View style={styles.statsRow}>
+                    <Text style={styles.statsLabel}>Receita: </Text>
+                    <Text style={[styles.statsValue, styles.statsReceita]}>+ R$ {stats.totalReceita.toFixed(2)}</Text>
+                </View>
+                <View style={styles.statsRow}>
+                    <Text style={styles.statsLabel}>Custo Total: </Text>
+                    <Text style={[styles.statsValue, styles.statsCusto]}>- R$ {stats.totalCusto.toFixed(2)}</Text>
+                </View>
+                <Text style={styles.statsCount}>{stats.totalPlantios} Plantios Calculados</Text>
+            </Card>
+        )
+      )}
+
+
+      {/* Seção de Ações Rápidas */}
       <Text style={styles.sectionTitle}>Ações Rápidas</Text>
       <View style={styles.actionsGrid}>
         <ActionCard title="Minhas Estufas" iconName="estufa" onPress={handleNavigate('EstufasList')} />
@@ -66,8 +111,8 @@ const DashboardScreen = ({ navigation }: any) => {
         <ActionCard title="Fornecedores" iconName="fornecedor" onPress={handleNavigate('FornecedoresList')} />
       </View>
 
-      {/* Seção de Alertas de Insumos */}
-      <View style={styles.alertCard}>
+      {/* CARD: ALERTAS DE INSUMOS - Usando Card Componente */}
+      <Card style={styles.alertCard}>
         <Text style={[styles.boxTitle, styles.alertTitle]}>
             <MaterialCommunityIcons name={getIconName('alerta') as any} size={20} color="#D32F2F" /> Alertas de Estoque ({alertas.length})
         </Text>
@@ -90,7 +135,7 @@ const DashboardScreen = ({ navigation }: any) => {
             ))
           )
         )}
-      </View>
+      </Card>
 
       <View style={{ marginTop: 20 }}>
         <TouchableOpacity 
@@ -105,19 +150,7 @@ const DashboardScreen = ({ navigation }: any) => {
   );
 };
 
-// OBJETO BASE PARA REUTILIZAÇÃO DE ESTILOS (CASTING CORRIGIDO)
-const BaseCardStyle: ViewStyle = {
-    width: '100%',
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3, 
-    marginBottom: 20,
-};
+// REMOVIDO: BaseCardStyle, pois o Card Componente faz o trabalho
 
 const styles = StyleSheet.create({
   scrollView: { flex: 1, backgroundColor: '#FAFAFA' },
@@ -134,10 +167,7 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   
-  // CARD BASE - USANDO SPREAD
-  card: { 
-    ...BaseCardStyle, 
-  },
+  // Estilo Base de Títulos (reutilizado)
   boxTitle: {
     fontSize: 20,
     fontWeight: 'bold',
@@ -152,7 +182,74 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   
-  // Ações
+  // CARD: ALERTAS (Apenas overrides de cor e borda)
+  alertCard: {
+    borderColor: '#FF9800', 
+    borderWidth: 2,
+    backgroundColor: '#FFFBE5', 
+    flex: 1, 
+    minHeight: 150,
+  },
+  alertTitle: {
+    color: '#D32F2F', 
+    borderBottomWidth: 1,
+    borderBottomColor: '#FF9800',
+    paddingBottom: 10,
+  },
+  
+  // CARD: ESTATÍSTICAS GLOBAIS (Apenas overrides de cor e layout)
+  statsCard: {
+      borderLeftWidth: 5,
+      paddingVertical: 15,
+      alignItems: 'center',
+  },
+  statsTitle: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: '#333',
+      marginBottom: 10,
+  },
+  lucroTotalValue: {
+      fontSize: 32,
+      fontWeight: 'bold',
+      marginBottom: 15,
+  },
+  lucroPositivo: {
+      backgroundColor: '#E8F5E9',
+      borderColor: '#C8E6C9',
+      color: '#006400',
+  },
+  lucroNegativo: {
+      backgroundColor: '#FFEBEE',
+      borderColor: '#FFCDD2',
+      color: '#D32F2F',
+  },
+  statsRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      width: '80%',
+  },
+  statsLabel: {
+      fontSize: 14,
+      color: '#555',
+  },
+  statsValue: {
+      fontSize: 14,
+      fontWeight: 'bold',
+  },
+  statsReceita: {
+      color: '#006400',
+  },
+  statsCusto: {
+      color: '#D32F2F',
+  },
+  statsCount: {
+      fontSize: 12,
+      color: '#888',
+      marginTop: 10,
+  },
+  
+  // Ações (Grid)
   actionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -186,31 +283,7 @@ const styles = StyleSheet.create({
       color: '#555',
   },
 
-  // Estilos para a caixa de Alertas (REPLICA PROPRIEDADES DO CARD BASE)
-  alertCard: {
-    width: '100%',
-    backgroundColor: '#FFFBE5', 
-    padding: 20,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3, 
-    marginBottom: 20,
-    
-    // Estilos Específicos do Alerta
-    borderColor: '#FF9800', 
-    borderWidth: 2,
-    flex: 1, 
-    minHeight: 150,
-  },
-  alertTitle: {
-    color: '#D32F2F', 
-    borderBottomWidth: 1,
-    borderBottomColor: '#FF9800',
-    paddingBottom: 10,
-  },
+  // Estilos de Alerta Internos
   alertaItem: {
     paddingVertical: 10,
     paddingHorizontal: 5,

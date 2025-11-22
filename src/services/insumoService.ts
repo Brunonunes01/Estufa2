@@ -25,6 +25,14 @@ export type InsumoFormData = {
   observacoes: string | null;
 };
 
+// Dados para o formulário de Entrada/Compra
+export type InsumoEntryData = {
+    quantidadeComprada: number;
+    custoUnitarioCompra: number;
+    fornecedorId: string | null;
+    observacoes: string | null;
+}
+
 // 1. CRIAR INSUMO
 export const createInsumo = async (data: InsumoFormData, userId: string) => {
   const novoInsumo = {
@@ -75,9 +83,8 @@ export const listInsumos = async (userId: string): Promise<Insumo[]> => {
     });
     return insumos;
   } catch (error) {
-    // AQUI: Loga o erro real no terminal para você ver
     console.error("Erro REAL ao listar insumos: ", error);
-    throw error; // Lança o erro original para o componente ver
+    throw error;
   }
 };
 
@@ -115,3 +122,60 @@ export const getInsumoById = async (insumoId: string): Promise<Insumo | null> =>
     throw new Error('Não foi possível buscar o insumo.');
   }
 };
+
+// ****** NOVA FUNÇÃO PARA ENTRADA DE ESTOQUE ******
+export const addEstoqueToInsumo = async (
+    insumoId: string, 
+    data: InsumoEntryData
+) => {
+    const insumoRef = doc(db, 'insumos', insumoId);
+
+    try {
+        const docSnap = await getDoc(insumoRef);
+        if (!docSnap.exists()) {
+            throw new Error("Insumo não encontrado.");
+        }
+        
+        const insumoAtual = docSnap.data() as Insumo;
+        
+        const novaQuantidade = insumoAtual.estoqueAtual + data.quantidadeComprada;
+        
+        // CÁLCULO DE CUSTO MÉDIO PONDERADO (Melhoria de funcionalidade!)
+        let novoCustoUnitario = insumoAtual.custoUnitario;
+
+        if (insumoAtual.custoUnitario !== null && insumoAtual.estoqueAtual > 0) {
+            // Calcula o custo total antigo
+            const custoTotalAntigo = insumoAtual.custoUnitario * insumoAtual.estoqueAtual;
+            
+            // Calcula o custo total da nova compra
+            const custoTotalNovo = data.custoUnitarioCompra * data.quantidadeComprada;
+
+            // Calcula o novo Custo Médio Ponderado
+            const estoqueTotal = insumoAtual.estoqueAtual + data.quantidadeComprada;
+            novoCustoUnitario = (custoTotalAntigo + custoTotalNovo) / estoqueTotal;
+        } else {
+            // Se o estoque atual é zero ou o custo antigo é nulo, o novo custo é o da compra
+            novoCustoUnitario = data.custoUnitarioCompra;
+        }
+
+        const dadosAtualizados = {
+            estoqueAtual: novaQuantidade,
+            custoUnitario: novoCustoUnitario,
+            fornecedorId: data.fornecedorId || insumoAtual.fornecedorId, // Atualiza o fornecedor, se houver
+            updatedAt: Timestamp.now(),
+        };
+
+        await updateDoc(insumoRef, dadosAtualizados);
+        
+        // Opcional: Adicionar um registro da movimentação em uma nova coleção 'movimentacoes'
+        // Este passo pode ser implementado depois para manter a auditoria.
+        
+        console.log(`Estoque de ${insumoAtual.nome} atualizado.`);
+
+    } catch (error) {
+        console.error("Erro ao adicionar estoque: ", error);
+        throw new Error('Não foi possível registrar a entrada de estoque.');
+    }
+};
+
+// 6. ADICIONAR REGISTRO DE MOVIMENTAÇÃO (Vazio por enquanto)

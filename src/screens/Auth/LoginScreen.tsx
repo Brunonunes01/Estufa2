@@ -13,7 +13,9 @@ import {
 } from 'react-native';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../services/firebaseConfig';
-import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ícones
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+// NOVO IMPORT: Importa o componente Card reutilizável
+import Card from '../../components/Card'; 
 
 const LoginScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState('');
@@ -33,7 +35,6 @@ const LoginScreen = ({ navigation }: any) => {
     
     signInWithEmailAndPassword(auth, email, password)
       .then(() => {
-        // Sucesso! O AuthContext cuidará do redirecionamento
         setLoading(false);
       })
       .catch((err) => {
@@ -56,7 +57,8 @@ const LoginScreen = ({ navigation }: any) => {
     >
         <ScrollView contentContainerStyle={styles.centeredContent}>
             
-            <View style={styles.card}>
+            {/* USO DO COMPONENTE CARD: Removemos todos os estilos visuais do Card daqui */}
+            <Card style={styles.loginCard}>
                 <Text style={styles.header}>
                     <MaterialCommunityIcons name="greenhouse" size={28} color="#4CAF50" /> SGE - Entrar
                 </Text>
@@ -103,7 +105,7 @@ const LoginScreen = ({ navigation }: any) => {
                     )}
                 </TouchableOpacity>
 
-            </View>
+            </Card>
 
             {/* Botão de Criar Conta (Ação Secundária/Link) */}
             <TouchableOpacity
@@ -131,19 +133,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: 20,
     },
-    // Card Principal
-    card: {
-        width: '100%',
+    // Estilos do Card customizados: apenas as propriedades não-padrão.
+    loginCard: {
         maxWidth: 400,
-        backgroundColor: '#fff',
         padding: 25,
-        borderRadius: 12,
         marginBottom: 20,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3, 
     },
     header: {
         fontSize: 28,

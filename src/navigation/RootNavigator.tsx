@@ -3,7 +3,6 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationOptions } from '@react-navigation/native-stack';
 import { useAuth } from '../hooks/useAuth';
-// NOVO IMPORT: Importar 'TextStyle' para resolver a tipagem de estilo
 import { TextStyle, ViewStyle } from 'react-native'; 
 
 // Telas de Auth
@@ -24,21 +23,20 @@ import FornecedoresListScreen from '../screens/Fornecedores/FornecedoresListScre
 import FornecedorFormScreen from '../screens/Fornecedores/FornecedorFormScreen';
 import AplicacaoFormScreen from '../screens/Aplicacoes/AplicacaoFormScreen';
 import AplicacoesHistoryScreen from '../screens/Aplicacoes/AplicacoesHistoryScreen'; 
+import InsumoEntryScreen from '../screens/Insumos/InsumoEntryScreen'; 
 
 const Stack = createNativeStackNavigator();
 
 // Opções de tela padrão para o Material Design (Cabeçalho Verde)
 const defaultScreenOptions = {
-    // headerStyle é do tipo ViewStyle (para o container do cabeçalho)
     headerStyle: {
         backgroundColor: '#4CAF50', 
     } as ViewStyle, 
     headerTintColor: '#fff', 
-    // headerTitleStyle é do tipo TextStyle
     headerTitleStyle: {
         fontWeight: 'bold' as 'bold', 
     } as TextStyle,
-} as const; // Asserção final para resolver o problema de aninhamento de tipos
+} as const;
 
 
 // Pilha de autenticação
@@ -51,7 +49,6 @@ const AuthStack = () => (
 
 // Pilha principal do app
 const AppStack = () => (
-  // O TS agora aceita defaultScreenOptions porque ele é um tipo mais estrito (as const)
   <Stack.Navigator screenOptions={defaultScreenOptions as NativeStackNavigationOptions}>
     <Stack.Screen 
       name="Dashboard" 
@@ -115,6 +112,12 @@ const AppStack = () => (
     <Stack.Screen 
       name="AplicacoesHistory" 
       component={AplicacoesHistoryScreen} 
+    />
+
+    <Stack.Screen 
+      name="InsumoEntry" 
+      component={InsumoEntryScreen} 
+      options={{ title: 'Entrada de Estoque' }}
     />
     
   </Stack.Navigator>

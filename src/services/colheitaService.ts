@@ -9,6 +9,8 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Colheita } from '../types/domain';
+// NOVO IMPORT: Função para atualizar o status do plantio
+import { updatePlantioStatus } from './plantioService'; 
 
 // Dados que vêm do formulário
 export type ColheitaFormData = {
@@ -19,12 +21,12 @@ export type ColheitaFormData = {
   observacoes: string | null;
 };
 
-// 1. CRIAR COLHEITA
+// 1. CRIAR COLHEITA (MODIFICADO: Adiciona atualização de status)
 export const createColheita = async (
   data: ColheitaFormData, 
   userId: string, 
   plantioId: string, 
-  estufaId: string // Redundante, mas facilita filtros [cite: 161]
+  estufaId: string 
 ) => {
 
   const novaColheita = {
@@ -40,6 +42,11 @@ export const createColheita = async (
   try {
     const docRef = await addDoc(collection(db, 'colheitas'), novaColheita);
     console.log('Colheita criada com ID: ', docRef.id);
+    
+    // ****** NOVA FUNCIONALIDADE: ATUALIZAÇÃO DE STATUS ******
+    // Define o status do plantio para "em_colheita"
+    await updatePlantioStatus(plantioId, "em_colheita");
+    
     return docRef.id;
   } catch (error) {
     console.error("Erro ao criar colheita: ", error);

@@ -15,7 +15,9 @@ import {
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { auth, db } from '../../services/firebaseConfig';
-import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ícones
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+// NOVO IMPORT: Importa o componente Card reutilizável
+import Card from '../../components/Card'; 
 
 const RegisterScreen = ({ navigation }: any) => {
   const [name, setName] = useState('');
@@ -82,7 +84,8 @@ const RegisterScreen = ({ navigation }: any) => {
     >
         <ScrollView contentContainerStyle={styles.centeredContent}>
             
-            <View style={styles.card}>
+            {/* USO DO COMPONENTE CARD: Removemos todos os estilos visuais do Card daqui */}
+            <Card style={styles.registerCard}>
                 <Text style={styles.header}>
                     <MaterialCommunityIcons name="account-plus-outline" size={28} color="#4CAF50" /> Criar Conta
                 </Text>
@@ -137,7 +140,7 @@ const RegisterScreen = ({ navigation }: any) => {
                     )}
                 </TouchableOpacity>
 
-            </View>
+            </Card>
 
             {/* Botão de Login (Ação Secundária/Link) */}
             <TouchableOpacity
@@ -165,19 +168,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: 20,
     },
-    // Card Principal
-    card: {
-        width: '100%',
+    // Estilos do Card customizados: apenas as propriedades não-padrão.
+    registerCard: {
         maxWidth: 400,
-        backgroundColor: '#fff',
         padding: 25,
-        borderRadius: 12,
         marginBottom: 20,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3, 
     },
     header: {
         fontSize: 28,

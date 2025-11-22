@@ -69,6 +69,18 @@ const InsumosListScreen = ({ navigation }: any) => {
   return (
     <View style={styles.fullContainer}>
       
+      {/* NOVO BLOCO: Botão de Ação Secundária (Entrada de Estoque) */}
+      <View style={styles.actionContainer}>
+        <TouchableOpacity
+            style={styles.entryButton}
+            onPress={() => navigation.navigate('InsumoEntry')}
+        >
+            <MaterialCommunityIcons name="arrow-down-box" size={20} color="#fff" />
+            <Text style={styles.entryButtonText}>Registrar Entrada</Text>
+        </TouchableOpacity>
+      </View>
+
+
       <FlatList
         data={insumos}
         keyExtractor={(item) => item.id}
@@ -127,7 +139,7 @@ const InsumosListScreen = ({ navigation }: any) => {
         contentContainerStyle={styles.listContent}
       />
       
-      {/* FAB Customizado para Adicionar Insumo */}
+      {/* FAB Customizado para Adicionar Insumo (Cadastro Novo) */}
       <TouchableOpacity
         style={styles.fab}
         onPress={() => navigation.navigate('InsumoForm', { insumoId: null })}
@@ -155,6 +167,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   
+  // NOVO ESTILO: Botão de Ação Secundária (Entrada de Estoque)
+  actionContainer: {
+    paddingHorizontal: 10,
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  entryButton: {
+    backgroundColor: '#007bff', // Azul para Entrada/Compra
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  entryButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginLeft: 10,
+  },
+
   // Estilos de Card
   cardItem: {
     backgroundColor: '#fff',
@@ -262,7 +300,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     right: 20,
     bottom: 20,
-    backgroundColor: '#4CAF50', // Verde Primário
+    backgroundColor: '#FF9800', // Laranja para ação de Cadastro Novo
     borderRadius: 30,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
