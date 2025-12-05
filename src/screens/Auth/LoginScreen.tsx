@@ -160,6 +160,7 @@ const styles = StyleSheet.create({
         marginBottom: 20,
         backgroundColor: '#fff',
         fontSize: 16,
+        color: '#333', // <--- CORREÇÃO: Força a cor do texto para ser visível.
     },
     
     // Botão de Login (Primário)

@@ -27,32 +27,87 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   // Estados do formulário
   const [quantidade, setQuantidade] = useState('');
   const [unidade, setUnidade] = useState<UnidadeColheita>('kg'); // Padrão 'kg'
-  const [preco, setPreco] = useState('');
+  const [preco, setPreco] = useState(''); // Preço da caixa ou preço por kg/unidade
   const [destino, setDestino] = useState('');
   const [loading, setLoading] = useState(false);
+  
+  // NOVO ESTADO: Peso da Caixa (usado apenas se unidade for 'caixa')
+  const [pesoCaixa, setPesoCaixa] = useState(''); 
+  
+  // Função auxiliar para parsear e garantir ponto flutuante
+  const parseNum = (text: string) => parseFloat(text.replace(',', '.')) || 0;
 
-  // Cálculo do Valor Total
+  // Cálculo de conversão e preço por KILO
+  const { precoPorKilo, pesoTotalKilo } = useMemo(() => {
+    const qtd = parseNum(quantidade);
+    const precoUnitario = parseNum(preco);
+    
+    if (unidade === 'caixa') {
+        const peso = parseNum(pesoCaixa);
+        
+        // Calcula o preço real por kg: Preço da Caixa / Peso da Caixa
+        const precoPorKilo = (peso > 0 && precoUnitario > 0) ? (precoUnitario / peso) : 0;
+        
+        // Calcula o peso total em quilos: Quantidade de Caixas * Peso da Caixa
+        const totalKilo = qtd * peso;
+        
+        return {
+            precoPorKilo: precoPorKilo,
+            pesoTotalKilo: totalKilo
+        };
+    }
+    
+    // Para as outras unidades, usa a quantidade inserida (que já está na unidade final)
+    return { precoPorKilo: 0, pesoTotalKilo: qtd };
+    
+  }, [quantidade, preco, unidade, pesoCaixa]);
+
+
+  // Cálculo do Valor Total (Sempre baseado na entrada do usuário para exibição)
   const valorTotal = useMemo(() => {
-    // Substitui vírgula por ponto para garantir o parsing correto
-    const qtd = parseFloat(quantidade.replace(',', '.')) || 0;
-    const precoUnit = parseFloat(preco.replace(',', '.')) || 0;
+    const qtd = parseNum(quantidade);
+    const precoUnit = parseNum(preco);
     return (qtd * precoUnit);
+    
   }, [quantidade, preco]); 
-
+  
+  
   const handleSave = async () => {
     if (!user) {
       Alert.alert('Erro', 'Usuário não autenticado.');
       return;
     }
-    if (!quantidade || !unidade) {
-      Alert.alert('Campos obrigatórios', 'Preencha Quantidade e Unidade.');
-      return;
+
+    // Validação
+    const qtdParsed = parseNum(quantidade);
+    if (qtdParsed <= 0) {
+        Alert.alert('Campos obrigatórios', 'Preencha a Quantidade.');
+        return;
     }
+    
+    // Variáveis para os dados finais a serem salvos
+    let finalQuantity = qtdParsed;
+    let finalUnit = unidade;
+    let finalPriceUnitario = parseNum(preco) || null;
+    
+    // Lógica de Salvamento para 'caixa'
+    if (unidade === 'caixa') {
+        if (parseNum(pesoCaixa) <= 0) {
+            Alert.alert('Campos obrigatórios', 'Preencha o Peso da Caixa para esta unidade.');
+            return;
+        }
+        
+        // Conversão: Salva o total em quilos (pesoTotalKilo) e o preço por quilo (precoPorKilo)
+        finalQuantity = pesoTotalKilo;
+        finalUnit = 'kg'; 
+        finalPriceUnitario = precoPorKilo || null; 
+    }
+    
 
     const formData: ColheitaFormData = {
-      quantidade: parseFloat(quantidade.replace(',', '.')) || 0,
-      unidade: unidade,
-      precoUnitario: parseFloat(preco.replace(',', '.')) || null,
+      quantidade: finalQuantity,
+      unidade: finalUnit,
+      precoUnitario: finalPriceUnitario,
       destino: destino || null,
       observacoes: null,
     };
@@ -60,7 +115,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
     setLoading(true);
     try {
       await createColheita(formData, user.uid, plantioId, estufaId);
-      Alert.alert('Sucesso!', 'Colheita registrada.');
+      Alert.alert('Sucesso!', `Colheita de ${finalQuantity.toFixed(2)} ${finalUnit} registrada.`); 
       navigation.goBack(); 
     } catch (error) {
       Alert.alert('Erro', 'Não foi possível salvar a colheita.');
@@ -93,7 +148,13 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                       styles.selectorButton, 
                       unidade === u && styles.selectorButtonSelected
                     ]}
-                    onPress={() => setUnidade(u)}
+                    onPress={() => {
+                        setUnidade(u);
+                        // Limpa o peso da caixa se mudar a unidade
+                        if (u !== 'caixa') {
+                            setPesoCaixa('');
+                        }
+                    }}
                   >
                     <Text style={[
                       styles.selectorButtonText, 
@@ -105,22 +166,42 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                 ))}
               </View>
 
-              <Text style={styles.label}>Quantidade Colhida</Text>
+              {/* INPUT DE QUANTIDADE - Título adaptado se for 'caixa' */}
+              <Text style={styles.label}>
+                Quantidade Colhida ({unidade === 'caixa' ? 'Nº de Caixas' : `Total em ${unidade}s`})
+              </Text>
               <TextInput
                 style={styles.input}
                 value={quantidade}
                 onChangeText={setQuantidade}
                 keyboardType="numeric"
-                placeholder={`Total em ${unidade}s`}
+                placeholder={unidade === 'caixa' ? "Total de Caixas" : `Total em ${unidade}s`}
               />
               
-              <Text style={styles.label}>Preço Unitário (R$) (opcional)</Text>
+              {/* === NOVO CAMPO: PESO DA CAIXA (SÓ VISÍVEL SE UNIDADE FOR 'CAIXA') === */}
+              {unidade === 'caixa' && (
+                <>
+                <Text style={styles.label}>Peso de **UMA** Caixa (Kg)</Text>
+                <TextInput
+                    style={styles.input}
+                    value={pesoCaixa}
+                    onChangeText={setPesoCaixa}
+                    keyboardType="numeric"
+                    placeholder="Ex: 10 (kg)"
+                />
+                </>
+              )}
+              
+              {/* INPUT DE PREÇO - Título adaptado se for 'caixa' */}
+              <Text style={styles.label}>
+                Preço Unitário (R$) ({unidade === 'caixa' ? 'Preço por Caixa' : `Preço por ${unidade}`}) (opcional)
+              </Text>
               <TextInput
                 style={styles.input}
                 value={preco}
                 onChangeText={setPreco}
                 keyboardType="numeric"
-                placeholder={`Preço de venda por ${unidade}`}
+                placeholder={unidade === 'caixa' ? "Preço de venda de UMA caixa" : `Preço de venda por ${unidade}`}
               />
           </View>
           
@@ -130,6 +211,22 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                   <MaterialCommunityIcons name="cash-multiple" size={20} color="#333" /> Resumo e Destino
               </Text>
               
+              {/* === BLOCO: CONVERSÃO DE PREÇO (SÓ SE FOR 'CAIXA' E COM DADOS VÁLIDOS) === */}
+              {unidade === 'caixa' && pesoTotalKilo > 0 && parseNum(preco) > 0 && (
+                <View style={[styles.totalBox, styles.conversionBox]}>
+                    <Text style={styles.totalLabel}>Conversão para Armazenamento:</Text>
+                    <View style={styles.conversionDetails}>
+                         <Text style={styles.conversionDetailText}>
+                            <Text style={styles.conversionDetailValue}>{pesoTotalKilo.toFixed(2)} kg</Text> Totais
+                        </Text>
+                        <Text style={styles.conversionDetailText}>
+                            <Text style={styles.conversionDetailValue}>R$ {precoPorKilo.toFixed(2)}</Text> por kg
+                        </Text>
+                    </View>
+                    <Text style={styles.totalLabelSubtext}>* Estes valores (kg e R$/kg) serão salvos na base de dados.</Text>
+                </View>
+              )}
+
               {/* VALOR TOTAL - DESTAQUE */}
               <View style={styles.totalBox}>
                   <Text style={styles.totalLabel}>Valor Total Desta Colheita</Text>
@@ -272,6 +369,35 @@ const styles = StyleSheet.create({
     color: '#006400',
     marginTop: 5,
   },
+
+  // === NOVOS ESTILOS PARA CAIXA DE CONVERSÃO ===
+  conversionBox: {
+    backgroundColor: '#E3F2FD', // Azul suave para conversão/info
+    borderColor: '#B3E5FC',
+    marginBottom: 15,
+  },
+  conversionDetails: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      width: '100%',
+      marginTop: 8,
+  },
+  conversionDetailText: {
+      fontSize: 16,
+      color: '#007bff',
+      textAlign: 'center',
+  },
+  conversionDetailValue: {
+      fontWeight: 'bold',
+      fontSize: 18,
+  },
+  totalLabelSubtext: {
+    fontSize: 10,
+    color: '#555',
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  // ===========================================
 
   // Botão Salvar Customizado
   saveButton: {

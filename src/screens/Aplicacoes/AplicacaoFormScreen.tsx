@@ -243,14 +243,23 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
           
           <Text style={styles.label}>Selecione o Insumo</Text>
           <View style={styles.pickerContainer}>
+            {/* CORREÇÃO: Usar um Text para exibir o valor selecionado */}
+            <Text style={styles.pickerDisplay}>
+                {getInsumoSelecionado() 
+                    ? `${getInsumoSelecionado()?.nome} (Estoque: ${getInsumoSelecionado()?.estoqueAtual.toFixed(2)} ${getInsumoSelecionado()?.unidadePadrao})`
+                    : 'Selecione um Insumo...'}
+            </Text>
+            
+            {/* O Picker é mantido transparente para capturar o toque e abrir a seleção nativa */}
             <Picker
+              style={styles.pickerOverlay}
               selectedValue={selectedInsumoId}
               onValueChange={(itemValue: string) => setSelectedInsumoId(itemValue)}
             >
               {insumosList.map(insumo => (
                 <Picker.Item 
                   key={insumo.id} 
-                  label={`${insumo.nome} (Estoque: ${insumo.estoqueAtual} ${insumo.unidadePadrao})`} 
+                  label={`${insumo.nome} (Estoque: ${insumo.estoqueAtual.toFixed(2)} ${insumo.unidadePadrao})`} 
                   value={insumo.id} 
                 />
               ))}
@@ -400,13 +409,40 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     fontSize: 16
   },
+  
+  // CORREÇÃO: MODIFICAÇÃO DO PICKER CONTAINER PARA O MOCK DE INPUT
   pickerContainer: { 
     borderWidth: 1, 
     borderColor: '#ccc', 
     borderRadius: 8, 
     marginBottom: 16, 
-    backgroundColor: '#fff' 
+    backgroundColor: '#fff',
+    position: 'relative', // Essencial para o overlay
+    minHeight: 45, // Garante que o container tenha altura
+    justifyContent: 'center',
   },
+  pickerDisplay: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#333', // Garante que a cor do texto é escura
+    // Adicione um ícone de seta para indicar que é um dropdown (opcional, mas bom)
+    paddingRight: 30, 
+  },
+  pickerOverlay: {
+    // Torna o Picker transparente e o posiciona sobre o texto de exibição
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+    opacity: 0, // Torna o Picker invisível (mas clicável)
+    zIndex: 10, 
+  },
+  // FIM DA CORREÇÃO
+
   row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
   col: { width: '48%' },
   

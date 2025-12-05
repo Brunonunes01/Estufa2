@@ -5,30 +5,31 @@ import {
   query, 
   where, 
   getDocs, 
-  Timestamp 
+  deleteDoc, // NOVO
+  doc, // NOVO
+  updateDoc, // NOVO
+  Timestamp,
+  orderBy // NOVO
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Colheita } from '../types/domain';
-// NOVO IMPORT: Função para atualizar o status do plantio
 import { updatePlantioStatus } from './plantioService'; 
 
-// Dados que vêm do formulário
 export type ColheitaFormData = {
   quantidade: number;
-  unidade: string; // kg, caixa, maço
+  unidade: string;
   precoUnitario: number | null;
   destino: string | null;
   observacoes: string | null;
 };
 
-// 1. CRIAR COLHEITA (MODIFICADO: Adiciona atualização de status)
+// ... (createColheita existente permanece igual) ...
 export const createColheita = async (
   data: ColheitaFormData, 
   userId: string, 
   plantioId: string, 
   estufaId: string 
 ) => {
-
   const novaColheita = {
     ...data,
     userId: userId,
@@ -42,11 +43,7 @@ export const createColheita = async (
   try {
     const docRef = await addDoc(collection(db, 'colheitas'), novaColheita);
     console.log('Colheita criada com ID: ', docRef.id);
-    
-    // ****** NOVA FUNCIONALIDADE: ATUALIZAÇÃO DE STATUS ******
-    // Define o status do plantio para "em_colheita"
     await updatePlantioStatus(plantioId, "em_colheita");
-    
     return docRef.id;
   } catch (error) {
     console.error("Erro ao criar colheita: ", error);
@@ -54,7 +51,7 @@ export const createColheita = async (
   }
 };
 
-// 2. LISTAR COLHEITAS DE UM PLANTIO
+// ... (listColheitasByPlantio existente permanece igual) ...
 export const listColheitasByPlantio = async (userId: string, plantioId: string): Promise<Colheita[]> => {
   const colheitas: Colheita[] = [];
   try {
@@ -63,16 +60,53 @@ export const listColheitasByPlantio = async (userId: string, plantioId: string):
       where("userId", "==", userId),
       where("plantioId", "==", plantioId)
     );
+    const querySnapshot = await getDocs(q);
+    querySnapshot.forEach((doc) => {
+      colheitas.push({ id: doc.id, ...doc.data() } as Colheita);
+    });
+    return colheitas;
+  } catch (error) {
+    console.error("Erro ao listar colheitas: ", error);
+    throw new Error('Não foi possível buscar as colheitas.');
+  }
+};
+
+// --- NOVAS FUNÇÕES PARA GESTÃO DE VENDAS ---
+
+// 3. LISTAR TODAS AS COLHEITAS (VENDAS) DO USUÁRIO
+export const listAllColheitas = async (userId: string): Promise<Colheita[]> => {
+  const colheitas: Colheita[] = [];
+  try {
+    // Nota: Para usar orderBy com where em campos diferentes, o Firestore pode pedir um índice.
+    // Vamos filtrar por usuário e ordenar em memória por segurança inicial.
+    const q = query(
+      collection(db, 'colheitas'), 
+      where("userId", "==", userId)
+    );
     
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach((doc) => {
       colheitas.push({ id: doc.id, ...doc.data() } as Colheita);
     });
     
+    // Ordenação em memória (Do mais recente para o mais antigo)
+    colheitas.sort((a, b) => b.dataColheita.seconds - a.dataColheita.seconds);
+    
     return colheitas;
-
   } catch (error) {
-    console.error("Erro ao listar colheitas: ", error);
-    throw new Error('Não foi possível buscar as colheitas.');
+    console.error("Erro ao listar todas as colheitas: ", error);
+    throw new Error('Não foi possível buscar o relatório de vendas.');
   }
+};
+
+// 4. DELETAR COLHEITA (Caso tenha lançado errado)
+export const deleteColheita = async (colheitaId: string) => {
+    try {
+        const docRef = doc(db, 'colheitas', colheitaId);
+        await deleteDoc(docRef);
+        console.log("Colheita deletada:", colheitaId);
+    } catch (error) {
+        console.error("Erro ao deletar colheita:", error);
+        throw new Error("Erro ao excluir registro.");
+    }
 };

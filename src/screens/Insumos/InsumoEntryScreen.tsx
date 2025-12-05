@@ -265,7 +265,8 @@ const styles = StyleSheet.create({
         borderRadius: 8, 
         marginBottom: 16, 
         backgroundColor: '#fff',
-        fontSize: 16
+        fontSize: 16,
+        color: '#333', // <--- CORREÇÃO: Garante que o texto digitado é visível.
     },
     pickerContainer: { 
         borderWidth: 1, 
