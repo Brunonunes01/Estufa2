@@ -18,7 +18,7 @@ export interface RentabilidadeResult {
 export const calculateRentabilidadeByPlantio = async (
     userId: string, 
     plantioId: string,
-    estufaAreaM2: number // A área da estufa é necessária para o cálculo do rendimento
+    estufaAreaM2: number
 ): Promise<RentabilidadeResult> => {
 
     // 1. Coleta de Dados
@@ -35,55 +35,65 @@ export const calculateRentabilidadeByPlantio = async (
     // Custo Inicial do Plantio (Sementes/Mudas)
     const custoInicial = (plantio.quantidadePlantada * (plantio.precoEstimadoUnidade || 0));
 
-    // 2. Cálculo da Receita Total
+    // 2. Cálculo da Receita Total (Soma das Colheitas)
     const receitaTotal = colheitas.reduce((total, colheita) => {
         const valorColheita = colheita.quantidade * (colheita.precoUnitario || 0);
         return total + valorColheita;
     }, 0);
 
 
-    // 3. Cálculo do Custo de Insumos (O mais complexo)
+    // 3. Cálculo do Custo de Insumos
     let custoInsumos = 0;
     const insumoIds = new Set<string>();
     
-    // 3a. Coleta de todos os IDs de insumos usados em todas as aplicações
-    aplicacoes.forEach(app => {
-        app.itens.forEach(item => insumoIds.add(item.insumoId));
-    });
+    // --- CORREÇÃO DE SEGURANÇA AQUI ---
+    // 3a. Coleta IDs com verificação se 'app.itens' existe
+    if (Array.isArray(aplicacoes)) {
+        aplicacoes.forEach(app => {
+            // Se app.itens for undefined, usa array vazio [] para não travar
+            const itensSeguros = app.itens || []; 
+            itensSeguros.forEach(item => {
+                if (item.insumoId) insumoIds.add(item.insumoId);
+            });
+        });
+    }
 
-    // 3b. Busca o custo unitário (Custo Médio Ponderado) de todos os insumos usados
+    // 3b. Busca o custo unitário atualizado dos insumos
     const insumosMap = new Map<string, Insumo>();
-    const promisesInsumos = Array.from(insumoIds).map(id => getInsumoById(id));
-    const fetchedInsumos = await Promise.all(promisesInsumos);
     
-    fetchedInsumos.forEach(insumo => {
-        if (insumo) {
-            insumosMap.set(insumo.id, insumo);
-        }
-    });
-
-    // 3c. Soma o custo de insumos para cada aplicação
-    aplicacoes.forEach(app => {
-        app.itens.forEach(item => {
-            const insumoData = insumosMap.get(item.insumoId);
-            
-            if (insumoData && insumoData.custoUnitario !== null) {
-                // Custo = Quantidade Aplicada * Custo Unitário (CMP)
-                custoInsumos += (item.quantidadeAplicada * insumoData.custoUnitario);
-            } else {
-                // Se o custo unitário não estiver cadastrado, ignora (ou loga um aviso)
-                console.warn(`Custo unitário não encontrado ou nulo para o insumo ID: ${item.insumoId}`);
+    if (insumoIds.size > 0) {
+        const promisesInsumos = Array.from(insumoIds).map(id => getInsumoById(id));
+        const fetchedInsumos = await Promise.all(promisesInsumos);
+        
+        fetchedInsumos.forEach(insumo => {
+            if (insumo) {
+                insumosMap.set(insumo.id, insumo);
             }
         });
-    });
+    }
 
-    // 4. Cálculo dos Totais
+    // 3c. Soma o custo final
+    if (Array.isArray(aplicacoes)) {
+        aplicacoes.forEach(app => {
+            const itensSeguros = app.itens || []; // Segurança novamente
+            
+            itensSeguros.forEach(item => {
+                const insumoData = insumosMap.get(item.insumoId);
+                
+                if (insumoData && insumoData.custoUnitario !== null) {
+                    // Custo = Quantidade Aplicada * Custo Unitário (do cadastro)
+                    custoInsumos += (item.quantidadeAplicada * insumoData.custoUnitario);
+                }
+            });
+        });
+    }
+
+    // 4. Totais Finais
     const custoTotal = custoInicial + custoInsumos;
     const lucroBruto = receitaTotal - custoTotal;
     
-    // 5. Rendimento por Área (Receita por M2)
+    // 5. Rendimento (R$/m²)
     const rendimentoM2 = estufaAreaM2 > 0 ? (receitaTotal / estufaAreaM2) : 0;
-
 
     return {
         receitaTotal,

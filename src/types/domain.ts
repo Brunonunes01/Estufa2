@@ -53,6 +53,8 @@ export interface Colheita extends BaseDoc {
   unidade: string; 
   precoUnitario: number | null;
   destino: string | null;
+  clienteId: string | null;
+  metodoPagamento: string | null; // <-- NOVO CAMPO
   observacoes: string | null;
 }
 
@@ -77,15 +79,20 @@ export interface Fornecedor extends BaseDoc {
   observacoes: string | null;
 }
 
-// ****** ESTRUTURA CRÍTICA CORRIGIDA ******
+export interface Cliente extends BaseDoc {
+  nome: string;
+  telefone: string | null;
+  cidade: string | null;
+  tipo: "atacado" | "varejo" | "restaurante" | "outro";
+  observacoes: string | null;
+}
 
-// Um item dentro da aplicação (ex: "50ml de Fungicida X")
 export interface AplicacaoItem {
   insumoId: string;
-  nomeInsumo: string; // Salvamos o nome para facilitar a exibição
-  quantidadeAplicada: number; // Total gasto do estoque
+  nomeInsumo: string; 
+  quantidadeAplicada: number; 
   unidade: string;
-  dosePorTanque?: number | null; // Opcional
+  dosePorTanque?: number | null; 
 }
 
 export interface Aplicacao extends BaseDoc {
@@ -93,11 +100,7 @@ export interface Aplicacao extends BaseDoc {
   estufaId: string;
   dataAplicacao: Timestamp;
   observacoes: string | null;
-  
-  // Dados da Calda (Geral)
-  volumeTanque: number | null; // ex: 200 Litros (Volume de UM Tanque)
-  numeroTanques: number | null; // CORRIGIDO: Este campo estava causando o erro de tipagem.
-  
-  // Lista de produtos usados nesta aplicação
+  volumeTanque: number | null; 
+  numeroTanques: number | null; 
   itens: AplicacaoItem[]; 
 }

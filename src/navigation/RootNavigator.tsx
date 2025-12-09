@@ -24,8 +24,11 @@ import FornecedorFormScreen from '../screens/Fornecedores/FornecedorFormScreen';
 import AplicacaoFormScreen from '../screens/Aplicacoes/AplicacaoFormScreen';
 import AplicacoesHistoryScreen from '../screens/Aplicacoes/AplicacoesHistoryScreen'; 
 import InsumoEntryScreen from '../screens/Insumos/InsumoEntryScreen'; 
-// NOVO IMPORT
 import VendasListScreen from '../screens/Vendas/VendasListScreen'; 
+
+// NOVAS IMPORTAÇÕES
+import ClientesListScreen from '../screens/Clientes/ClientesListScreen';
+import ClienteFormScreen from '../screens/Clientes/ClienteFormScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -48,89 +51,31 @@ const AuthStack = () => (
 
 const AppStack = () => (
   <Stack.Navigator screenOptions={defaultScreenOptions as NativeStackNavigationOptions}>
-    <Stack.Screen 
-      name="Dashboard" 
-      component={DashboardScreen} 
-      options={{ title: 'Painel SGE' }}
-    />
-    
-    <Stack.Screen 
-      name="EstufasList" 
-      component={EstufasListScreen} 
-      options={{ title: 'Minhas Estufas' }}
-    />
-    <Stack.Screen 
-      name="EstufaForm" 
-      component={EstufaFormScreen} 
-    />
-    <Stack.Screen 
-      name="EstufaDetail" 
-      component={EstufaDetailScreen} 
-    />
-    <Stack.Screen 
-      name="PlantioForm" 
-      component={PlantioFormScreen} 
-      options={{ title: 'Novo Plantio' }}
-    />
-    <Stack.Screen 
-      name="PlantioDetail" 
-      component={PlantioDetailScreen} 
-    />
-    <Stack.Screen 
-      name="ColheitaForm" 
-      component={ColheitaFormScreen} 
-      options={{ title: 'Registrar Colheita' }}
-    />
-    <Stack.Screen 
-      name="InsumosList" 
-      component={InsumosListScreen} 
-      options={{ title: 'Meus Insumos' }}
-    />
-    
-    <Stack.Screen 
-      name="InsumoForm" 
-      component={InsumoFormScreen} 
-    />
-    
-    <Stack.Screen 
-      name="FornecedoresList" 
-      component={FornecedoresListScreen} 
-      options={{ title: 'Meus Fornecedores' }}
-    />
-    <Stack.Screen 
-      name="FornecedorForm" 
-      component={FornecedorFormScreen} 
-    />
-    <Stack.Screen 
-      name="AplicacaoForm" 
-      component={AplicacaoFormScreen} 
-      options={{ title: 'Registrar Aplicação' }}
-    />
-    
-    <Stack.Screen 
-      name="AplicacoesHistory" 
-      component={AplicacoesHistoryScreen} 
-    />
+    <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Painel SGE' }} />
+    <Stack.Screen name="EstufasList" component={EstufasListScreen} options={{ title: 'Minhas Estufas' }} />
+    <Stack.Screen name="EstufaForm" component={EstufaFormScreen} />
+    <Stack.Screen name="EstufaDetail" component={EstufaDetailScreen} />
+    <Stack.Screen name="PlantioForm" component={PlantioFormScreen} options={{ title: 'Novo Plantio' }} />
+    <Stack.Screen name="PlantioDetail" component={PlantioDetailScreen} />
+    <Stack.Screen name="ColheitaForm" component={ColheitaFormScreen} options={{ title: 'Registrar Colheita' }} />
+    <Stack.Screen name="InsumosList" component={InsumosListScreen} options={{ title: 'Meus Insumos' }} />
+    <Stack.Screen name="InsumoForm" component={InsumoFormScreen} />
+    <Stack.Screen name="FornecedoresList" component={FornecedoresListScreen} options={{ title: 'Meus Fornecedores' }} />
+    <Stack.Screen name="FornecedorForm" component={FornecedorFormScreen} />
+    <Stack.Screen name="AplicacaoForm" component={AplicacaoFormScreen} options={{ title: 'Registrar Aplicação' }} />
+    <Stack.Screen name="AplicacoesHistory" component={AplicacoesHistoryScreen} />
+    <Stack.Screen name="InsumoEntry" component={InsumoEntryScreen} options={{ title: 'Entrada de Estoque' }} />
+    <Stack.Screen name="VendasList" component={VendasListScreen} options={{ title: 'Gestão de Vendas' }} />
 
-    <Stack.Screen 
-      name="InsumoEntry" 
-      component={InsumoEntryScreen} 
-      options={{ title: 'Entrada de Estoque' }}
-    />
-
-    {/* NOVA ROTA */}
-    <Stack.Screen 
-      name="VendasList" 
-      component={VendasListScreen} 
-      options={{ title: 'Gestão de Vendas' }} 
-    />
+    {/* ROTAS DE CLIENTES */}
+    <Stack.Screen name="ClientesList" component={ClientesListScreen} options={{ title: 'Meus Clientes', headerStyle: { backgroundColor: '#2196F3' } }} />
+    <Stack.Screen name="ClienteForm" component={ClienteFormScreen} options={{ headerStyle: { backgroundColor: '#2196F3' } }} />
     
   </Stack.Navigator>
 );
 
 export const RootNavigator = () => {
   const { user } = useAuth();
-
   return (
     <NavigationContainer>
       {user ? <AppStack /> : <AuthStack />}

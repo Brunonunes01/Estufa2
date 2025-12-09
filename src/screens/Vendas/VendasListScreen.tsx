@@ -1,148 +1,194 @@
 // src/screens/Vendas/VendasListScreen.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  View, 
-  Text, 
-  FlatList, 
-  StyleSheet, 
-  ActivityIndicator, 
-  TouchableOpacity,
-  Alert 
+  View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Alert 
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker'; 
 import { useAuth } from '../../hooks/useAuth';
 import { listAllColheitas, deleteColheita } from '../../services/colheitaService';
-import { Colheita } from '../../types/domain';
+import { listEstufas } from '../../services/estufaService'; 
+import { listAllPlantios } from '../../services/plantioService'; 
+import { listClientes } from '../../services/clienteService'; 
+import { Colheita, Estufa } from '../../types/domain';
 import { useIsFocused } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Card from '../../components/Card';
 
 const VendasListScreen = ({ navigation }: any) => {
   const { user } = useAuth();
-  const [vendas, setVendas] = useState<Colheita[]>([]);
-  const [loading, setLoading] = useState(true);
   const isFocused = useIsFocused();
 
-  const carregarVendas = async () => {
+  const [vendas, setVendas] = useState<Colheita[]>([]);
+  const [estufas, setEstufas] = useState<Estufa[]>([]);
+  const [mapaEstufas, setMapaEstufas] = useState<Record<string, string>>({});
+  const [mapaCulturas, setMapaCulturas] = useState<Record<string, string>>({});
+  const [mapaClientes, setMapaClientes] = useState<Record<string, string>>({}); 
+  const [filtroEstufaId, setFiltroEstufaId] = useState<string>('todas');
+  const [loading, setLoading] = useState(true);
+
+  const carregarDados = async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const lista = await listAllColheitas(user.uid);
-      setVendas(lista);
+      const [listaVendas, listaEstufas, listaPlantios, listaClientes] = await Promise.all([
+        listAllColheitas(user.uid),
+        listEstufas(user.uid),
+        listAllPlantios(user.uid),
+        listClientes(user.uid) 
+      ]);
+
+      setVendas(listaVendas);
+      setEstufas(listaEstufas);
+
+      const mapE: Record<string, string> = {};
+      listaEstufas.forEach(e => mapE[e.id] = e.nome);
+      setMapaEstufas(mapE);
+
+      const mapP: Record<string, string> = {};
+      listaPlantios.forEach(p => {
+        mapP[p.id] = `${p.cultura} ${p.variedade ? '('+p.variedade+')' : ''}`;
+      });
+      setMapaCulturas(mapP);
+
+      const mapC: Record<string, string> = {};
+      listaClientes.forEach(c => mapC[c.id] = c.nome);
+      setMapaClientes(mapC);
+
     } catch (error) {
-      Alert.alert("Erro", "Não foi possível carregar o histórico de vendas.");
+      Alert.alert("Erro", "Não foi possível carregar os dados.");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (isFocused) carregarVendas();
+    if (isFocused) carregarDados();
   }, [isFocused, user]);
 
-  // Função para deletar com confirmação
   const handleDelete = (item: Colheita) => {
     Alert.alert(
-        "Excluir Registro",
-        "Tem certeza que deseja excluir esta venda/colheita? Isso afetará os cálculos de rentabilidade.",
+        "Excluir", "Remover este lançamento?",
         [
             { text: "Cancelar", style: "cancel" },
-            { 
-                text: "Excluir", 
-                style: "destructive",
-                onPress: async () => {
-                    try {
-                        await deleteColheita(item.id);
-                        await carregarVendas(); // Recarrega a lista
-                    } catch (e) {
-                        Alert.alert("Erro", "Falha ao excluir.");
-                    }
-                }
-            }
+            { text: "Excluir", style: "destructive", onPress: async () => {
+                    await deleteColheita(item.id);
+                    carregarDados();
+            }}
         ]
     );
   };
 
-  // Cálculos de Totais
+  const vendasFiltradas = useMemo(() => {
+      if (filtroEstufaId === 'todas') return vendas;
+      return vendas.filter(v => v.estufaId === filtroEstufaId);
+  }, [vendas, filtroEstufaId]);
+
   const resumoFinanceiro = useMemo(() => {
-    let receitaTotal = 0;
-    let volumeTotalKg = 0; // Exemplo simplificado somando tudo que for KG
+    let total = 0;
+    vendasFiltradas.forEach(v => total += (v.quantidade || 0) * (v.precoUnitario || 0));
+    return total;
+  }, [vendasFiltradas]);
 
-    vendas.forEach(v => {
-        const valor = (v.quantidade || 0) * (v.precoUnitario || 0);
-        receitaTotal += valor;
-        
-        // Apenas para ter uma noção de volume (se for a mesma unidade)
-        if (v.unidade?.toLowerCase() === 'kg') {
-            volumeTotalKg += v.quantidade;
-        }
-    });
-
-    return { receitaTotal, volumeTotalKg };
-  }, [vendas]);
+  // Função auxiliar para ícone de pagamento
+  const getPaymentIcon = (method: string | null) => {
+      switch(method) {
+          case 'pix': return 'qrcode';
+          case 'dinheiro': return 'cash';
+          case 'prazo': return 'clock-outline';
+          case 'boleto': return 'barcode';
+          case 'cartao': return 'credit-card';
+          default: return 'help-circle-outline';
+      }
+  }
 
   if (loading) return <ActivityIndicator size="large" style={styles.centered} />;
 
   return (
     <View style={styles.container}>
-      
-      {/* CARD DE RESUMO FINANCEIRO (Topo) */}
       <Card style={styles.summaryCard}>
-        <View style={styles.summaryHeader}>
-            <MaterialCommunityIcons name="cash-multiple" size={24} color="#fff" />
-            <Text style={styles.summaryTitle}>Receita Total (Geral)</Text>
+        <View style={styles.headerRow}>
+            <MaterialCommunityIcons name="cash-multiple" size={28} color="#fff" />
+            <Text style={styles.summaryTitle}>
+                {filtroEstufaId === 'todas' ? 'Total Geral' : 'Total Estufa'}
+            </Text>
         </View>
-        <Text style={styles.summaryValue}>
-            R$ {resumoFinanceiro.receitaTotal.toFixed(2)}
-        </Text>
-        <Text style={styles.summarySubtitle}>
-            Baseado em {vendas.length} registros de colheita
-        </Text>
+        <Text style={styles.summaryValue}>R$ {resumoFinanceiro.toFixed(2)}</Text>
       </Card>
 
-      <Text style={styles.listTitle}>Histórico de Vendas</Text>
+      <View style={styles.filterContainer}>
+          <Text style={styles.filterLabel}>Filtrar:</Text>
+          <View style={styles.pickerWrapper}>
+            <Picker
+                selectedValue={filtroEstufaId}
+                onValueChange={(itemValue) => setFiltroEstufaId(itemValue)}
+                style={styles.picker}
+                dropdownIconColor="#333"
+            >
+                <Picker.Item label="Todas as Estufas" value="todas" style={{fontSize: 16}} />
+                {estufas.map(estufa => (
+                    <Picker.Item key={estufa.id} label={estufa.nome} value={estufa.id} style={{fontSize: 16}} />
+                ))}
+            </Picker>
+          </View>
+      </View>
 
       <FlatList
-        data={vendas}
+        data={vendasFiltradas}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingBottom: 80 }}
-        ListEmptyComponent={
-            <Text style={styles.emptyText}>Nenhuma venda registrada ainda.</Text>
-        }
+        ListEmptyComponent={<Text style={styles.emptyText}>Nada encontrado.</Text>}
         renderItem={({ item }) => {
-            const totalItem = (item.quantidade * (item.precoUnitario || 0));
+            const nomeEstufa = mapaEstufas[item.estufaId] || 'Estufa ?';
+            const nomeCultura = mapaCulturas[item.plantioId] || 'Planta ?';
+            
+            let destinoTexto = item.destino || '';
+            if (item.clienteId && mapaClientes[item.clienteId]) {
+                destinoTexto = mapaClientes[item.clienteId];
+            }
+
             return (
                 <View style={styles.saleItem}>
-                    {/* Lado Esquerdo: Data e Info */}
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.dateText}>
-                            {item.dataColheita.toDate().toLocaleDateString('pt-BR')}
-                        </Text>
-                        <Text style={styles.productText}>
-                            {item.quantidade} {item.unidade}
-                            {item.destino ? ` para ${item.destino}` : ''}
-                        </Text>
+                    <View style={styles.itemOriginHeader}>
+                        <View style={styles.rowCenter}>
+                            <MaterialCommunityIcons name="greenhouse" size={12} color="#777" />
+                            <Text style={styles.originText}> {nomeEstufa} • {nomeCultura}</Text>
+                        </View>
+                        <Text style={styles.dateText}>{item.dataColheita.toDate().toLocaleDateString('pt-BR')}</Text>
                     </View>
-
-                    {/* Lado Direito: Valor e Delete */}
-                    <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={styles.priceText}>
-                            R$ {totalItem.toFixed(2)}
-                        </Text>
-                        <Text style={styles.unitPriceText}>
-                            ({item.precoUnitario ? `R$ ${item.precoUnitario}/${item.unidade}` : 'S/ Preço'})
-                        </Text>
-                        
-                        <TouchableOpacity 
-                            onPress={() => handleDelete(item)}
-                            style={styles.deleteLink}
-                        >
-                            <Text style={styles.deleteLinkText}>Excluir</Text>
-                        </TouchableOpacity>
+                    <View style={styles.itemContent}>
+                        <View style={{ flex: 1 }}>
+                            <View style={styles.rowCenter}>
+                                <MaterialCommunityIcons name="account" size={14} color="#333" />
+                                <Text style={styles.clientText}> {destinoTexto || 'Avulso'}</Text>
+                            </View>
+                            <Text style={styles.productText}>
+                                {item.quantidade} {item.unidade}
+                            </Text>
+                            {/* EXIBIÇÃO DO PAGAMENTO */}
+                            <View style={[styles.rowCenter, {marginTop: 4}]}>
+                                <MaterialCommunityIcons name={getPaymentIcon(item.metodoPagamento) as any} size={12} color="#888" />
+                                <Text style={styles.paymentText}> {item.metodoPagamento ? item.metodoPagamento.toUpperCase() : 'N/A'}</Text>
+                            </View>
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                            <Text style={styles.priceText}>R$ {(item.quantidade * (item.precoUnitario || 0)).toFixed(2)}</Text>
+                            <TouchableOpacity onPress={() => handleDelete(item)}>
+                                <Text style={styles.deleteButtonText}>Excluir</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
             );
         }}
       />
+
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => navigation.navigate('ColheitaForm')} 
+      >
+        <MaterialCommunityIcons name="plus" size={32} color="#fff" />
+      </TouchableOpacity>
+
     </View>
   );
 };
@@ -150,96 +196,36 @@ const VendasListScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FAFAFA', padding: 16 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  summaryCard: { backgroundColor: '#4CAF50', alignItems: 'center', paddingVertical: 15, marginBottom: 15, borderWidth: 0 },
   
-  // Resumo
-  summaryCard: {
-    backgroundColor: '#4CAF50', // Verde forte
-    alignItems: 'center',
-    paddingVertical: 25,
-    borderWidth: 0, // Remove borda padrão do componente Card
-  },
-  summaryHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 5,
-  },
-  summaryTitle: {
-      color: '#fff',
-      fontSize: 18,
-      fontWeight: 'bold',
-      marginLeft: 10,
-  },
-  summaryValue: {
-      color: '#fff',
-      fontSize: 36,
-      fontWeight: 'bold',
-      marginVertical: 5,
-  },
-  summarySubtitle: {
-      color: '#E8F5E9',
-      fontSize: 12,
-  },
+  headerRow: { flexDirection: 'row', alignItems: 'center' },
+  rowCenter: { flexDirection: 'row', alignItems: 'center' },
 
-  listTitle: {
-      fontSize: 20,
-      fontWeight: 'bold',
-      color: '#333',
-      marginTop: 10,
-      marginBottom: 10,
-  },
+  summaryTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 8 },
+  summaryValue: { color: '#fff', fontSize: 28, fontWeight: 'bold', marginTop: 5 },
+  
+  filterContainer: { marginBottom: 10, flexDirection: 'row', alignItems: 'center' },
+  filterLabel: { fontSize: 14, fontWeight: 'bold', marginRight: 10 },
+  pickerWrapper: { flex: 1, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#ddd', height: 55, justifyContent: 'center' },
+  picker: { height: 55, width: '100%', color: '#333' },
 
-  // Item da Lista
-  saleItem: {
-      backgroundColor: '#fff',
-      padding: 15,
-      borderRadius: 10,
-      marginBottom: 10,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      borderLeftWidth: 4,
-      borderLeftColor: '#4CAF50',
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.1,
-      shadowRadius: 2,
-      elevation: 2,
+  saleItem: { backgroundColor: '#fff', borderRadius: 8, marginBottom: 10, borderLeftWidth: 4, borderLeftColor: '#4CAF50', elevation: 2 },
+  itemOriginHeader: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#f5f5f5', padding: 8, borderTopRightRadius: 8 },
+  originText: { fontSize: 11, fontWeight: 'bold', color: '#777' },
+  dateText: { fontSize: 11, color: '#888' },
+  itemContent: { padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  clientText: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+  productText: { fontSize: 14, color: '#555', marginTop: 2 },
+  paymentText: { fontSize: 10, color: '#888', fontWeight: 'bold' },
+  priceText: { fontSize: 18, fontWeight: 'bold', color: '#006400' },
+  deleteButtonText: { fontSize: 12, color: '#D32F2F', marginTop: 5, textDecorationLine: 'underline' },
+  emptyText: { textAlign: 'center', marginTop: 30, color: '#888', fontSize: 16 },
+
+  fab: {
+    position: 'absolute', width: 60, height: 60, alignItems: 'center', justifyContent: 'center',
+    right: 20, bottom: 20, backgroundColor: '#FF9800', borderRadius: 30, elevation: 8,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4,
   },
-  dateText: {
-      fontSize: 12,
-      color: '#888',
-      fontWeight: 'bold',
-      marginBottom: 2,
-  },
-  productText: {
-      fontSize: 16,
-      color: '#333',
-      fontWeight: '500',
-  },
-  priceText: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      color: '#006400',
-  },
-  unitPriceText: {
-      fontSize: 10,
-      color: '#888',
-  },
-  deleteLink: {
-      marginTop: 8,
-      padding: 4,
-  },
-  deleteLinkText: {
-      color: '#D32F2F',
-      fontSize: 12,
-      fontWeight: 'bold',
-  },
-  emptyText: {
-      textAlign: 'center',
-      marginTop: 30,
-      color: '#888',
-      fontSize: 16,
-  }
 });
 
 export default VendasListScreen;

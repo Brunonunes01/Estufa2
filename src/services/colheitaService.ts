@@ -5,11 +5,9 @@ import {
   query, 
   where, 
   getDocs, 
-  deleteDoc, // NOVO
-  doc, // NOVO
-  updateDoc, // NOVO
-  Timestamp,
-  orderBy // NOVO
+  deleteDoc, 
+  doc, 
+  Timestamp
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Colheita } from '../types/domain';
@@ -20,10 +18,12 @@ export type ColheitaFormData = {
   unidade: string;
   precoUnitario: number | null;
   destino: string | null;
+  clienteId: string | null;
+  metodoPagamento: string | null; // <-- NOVO CAMPO NO FORM
   observacoes: string | null;
 };
 
-// ... (createColheita existente permanece igual) ...
+// 1. CRIAR COLHEITA
 export const createColheita = async (
   data: ColheitaFormData, 
   userId: string, 
@@ -31,7 +31,7 @@ export const createColheita = async (
   estufaId: string 
 ) => {
   const novaColheita = {
-    ...data,
+    ...data, 
     userId: userId,
     plantioId: plantioId,
     estufaId: estufaId,
@@ -51,7 +51,7 @@ export const createColheita = async (
   }
 };
 
-// ... (listColheitasByPlantio existente permanece igual) ...
+// 2. LISTAR COLHEITAS DE UM PLANTIO
 export const listColheitasByPlantio = async (userId: string, plantioId: string): Promise<Colheita[]> => {
   const colheitas: Colheita[] = [];
   try {
@@ -71,27 +71,19 @@ export const listColheitasByPlantio = async (userId: string, plantioId: string):
   }
 };
 
-// --- NOVAS FUNÇÕES PARA GESTÃO DE VENDAS ---
-
-// 3. LISTAR TODAS AS COLHEITAS (VENDAS) DO USUÁRIO
+// 3. LISTAR TODAS
 export const listAllColheitas = async (userId: string): Promise<Colheita[]> => {
   const colheitas: Colheita[] = [];
   try {
-    // Nota: Para usar orderBy com where em campos diferentes, o Firestore pode pedir um índice.
-    // Vamos filtrar por usuário e ordenar em memória por segurança inicial.
     const q = query(
       collection(db, 'colheitas'), 
       where("userId", "==", userId)
     );
-    
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach((doc) => {
       colheitas.push({ id: doc.id, ...doc.data() } as Colheita);
     });
-    
-    // Ordenação em memória (Do mais recente para o mais antigo)
     colheitas.sort((a, b) => b.dataColheita.seconds - a.dataColheita.seconds);
-    
     return colheitas;
   } catch (error) {
     console.error("Erro ao listar todas as colheitas: ", error);
@@ -99,12 +91,11 @@ export const listAllColheitas = async (userId: string): Promise<Colheita[]> => {
   }
 };
 
-// 4. DELETAR COLHEITA (Caso tenha lançado errado)
+// 4. DELETAR
 export const deleteColheita = async (colheitaId: string) => {
     try {
         const docRef = doc(db, 'colheitas', colheitaId);
         await deleteDoc(docRef);
-        console.log("Colheita deletada:", colheitaId);
     } catch (error) {
         console.error("Erro ao deletar colheita:", error);
         throw new Error("Erro ao excluir registro.");

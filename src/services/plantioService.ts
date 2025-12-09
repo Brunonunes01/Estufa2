@@ -13,7 +13,7 @@ import {
 import { db } from './firebaseConfig';
 import { Plantio } from '../types/domain';
 
-// Dados que vêm do formulário (MODIFICADO)
+// Dados que vêm do formulário
 export type PlantioFormData = {
   estufaId: string;
   cultura: string;
@@ -24,10 +24,10 @@ export type PlantioFormData = {
   cicloDias: number | null;
   status: "em_desenvolvimento" | "em_colheita" | "finalizado";
   precoEstimadoUnidade: number | null;
-  fornecedorId: string | null; // <-- CAMPO NOVO
+  fornecedorId: string | null;
 };
 
-// 1. CRIAR PLANTIO (MODIFICADO)
+// 1. CRIAR PLANTIO
 export const createPlantio = async (data: PlantioFormData, userId: string) => {
   
   let previsaoColheita: Timestamp | null = null;
@@ -39,7 +39,7 @@ export const createPlantio = async (data: PlantioFormData, userId: string) => {
   }
 
   const novoPlantio = {
-    ...data, // data agora contém 'fornecedorId'
+    ...data,
     userId: userId,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
@@ -115,5 +115,26 @@ export const updatePlantioStatus = async (
   } catch (error) {
     console.error("Erro ao atualizar status do plantio: ", error);
     throw new Error('Não foi possível atualizar o status.');
+  }
+};
+
+// 5. LISTAR TODOS OS PLANTIOS (NOVO - Para relatórios gerenciais)
+export const listAllPlantios = async (userId: string): Promise<Plantio[]> => {
+  const plantios: Plantio[] = [];
+  try {
+    const q = query(
+      collection(db, 'plantios'), 
+      where("userId", "==", userId)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    querySnapshot.forEach((doc) => {
+      plantios.push({ id: doc.id, ...doc.data() } as Plantio);
+    });
+    
+    return plantios;
+  } catch (error) {
+    console.error("Erro ao listar todos os plantios: ", error);
+    return []; 
   }
 };
