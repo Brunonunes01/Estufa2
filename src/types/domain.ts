@@ -14,8 +14,6 @@ export interface User {
   email: string;
   role: "admin" | "operator";
   createdAt: Timestamp;
-  // Lista de IDs de usuários que compartilharam a conta com este usuário
-  // Ex: [{ uid: '123', name: 'Fazenda do João' }]
   sharedAccess?: { uid: string; name: string }[]; 
 }
 
@@ -57,7 +55,8 @@ export interface Colheita extends BaseDoc {
   precoUnitario: number | null;
   destino: string | null;
   clienteId: string | null;
-  metodoPagamento: string | null; // <-- NOVO CAMPO
+  metodoPagamento: string | null;
+  registradoPor: string | null; // <-- NOVO CAMPO: Nome de quem lançou
   observacoes: string | null;
 }
 

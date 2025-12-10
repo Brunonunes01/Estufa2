@@ -15,8 +15,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Card from '../../components/Card';
 
 const VendasListScreen = ({ navigation }: any) => {
-  // 1. PEGAR O ID SELECIONADO
-  const { user, selectedTenantId } = useAuth();
+  const { user, selectedTenantId, isOwner } = useAuth();
   const isFocused = useIsFocused();
 
   const [vendas, setVendas] = useState<Colheita[]>([]);
@@ -28,13 +27,11 @@ const VendasListScreen = ({ navigation }: any) => {
   const [loading, setLoading] = useState(true);
 
   const carregarDados = async () => {
-    // 2. DEFINIR QUAL ID USAR
     const idBusca = selectedTenantId || user?.uid;
     if (!idBusca) return;
 
     setLoading(true);
     try {
-      // 3. PASSAR ESSE ID PARA TODOS OS SERVIÇOS
       const [listaVendas, listaEstufas, listaPlantios, listaClientes] = await Promise.all([
         listAllColheitas(idBusca),
         listEstufas(idBusca),
@@ -68,7 +65,7 @@ const VendasListScreen = ({ navigation }: any) => {
 
   useEffect(() => {
     if (isFocused) carregarDados();
-  }, [isFocused, selectedTenantId]); // Recarrega se mudar a conta
+  }, [isFocused, selectedTenantId]);
 
   const handleDelete = (item: Colheita) => {
     Alert.alert(
@@ -172,12 +169,19 @@ const VendasListScreen = ({ navigation }: any) => {
                                 <MaterialCommunityIcons name={getPaymentIcon(item.metodoPagamento) as any} size={12} color="#888" />
                                 <Text style={styles.paymentText}> {item.metodoPagamento ? item.metodoPagamento.toUpperCase() : 'N/A'}</Text>
                             </View>
+                            {/* MOSTRAR QUEM REGISTROU - NOVO */}
+                            {item.registradoPor && (
+                                <Text style={styles.registeredByText}>Vendido por: {item.registradoPor}</Text>
+                            )}
                         </View>
                         <View style={{ alignItems: 'flex-end' }}>
                             <Text style={styles.priceText}>R$ {(item.quantidade * (item.precoUnitario || 0)).toFixed(2)}</Text>
-                            <TouchableOpacity onPress={() => handleDelete(item)}>
-                                <Text style={styles.deleteButtonText}>Excluir</Text>
-                            </TouchableOpacity>
+                            
+                            {isOwner && (
+                                <TouchableOpacity onPress={() => handleDelete(item)}>
+                                    <Text style={styles.deleteButtonText}>Excluir</Text>
+                                </TouchableOpacity>
+                            )}
                         </View>
                     </View>
                 </View>
@@ -216,6 +220,7 @@ const styles = StyleSheet.create({
   clientText: { fontSize: 16, fontWeight: 'bold', color: '#333' },
   productText: { fontSize: 14, color: '#555', marginTop: 2 },
   paymentText: { fontSize: 10, color: '#888', fontWeight: 'bold' },
+  registeredByText: { fontSize: 10, color: '#AAA', fontStyle: 'italic', marginTop: 2 },
   priceText: { fontSize: 18, fontWeight: 'bold', color: '#006400' },
   deleteButtonText: { fontSize: 12, color: '#D32F2F', marginTop: 5, textDecorationLine: 'underline' },
   emptyText: { textAlign: 'center', marginTop: 30, color: '#888', fontSize: 16 },

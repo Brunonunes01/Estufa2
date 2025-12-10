@@ -10,6 +10,7 @@ import { listAllPlantios } from '../../services/plantioService';
 import { listEstufas } from '../../services/estufaService';
 import { listClientes } from '../../services/clienteService'; 
 import { useAuth } from '../../hooks/useAuth';
+// IMPORT CORRIGIDO:
 import { MaterialCommunityIcons } from '@expo/vector-icons'; 
 import { Plantio, Cliente } from '../../types/domain';
 
@@ -17,7 +18,7 @@ type UnidadeColheita = "kg" | "caixa" | "unidade" | "maço";
 type MetodoPagamento = "pix" | "dinheiro" | "boleto" | "prazo" | "cartao" | "outro";
 
 const ColheitaFormScreen = ({ route, navigation }: any) => {
-  const { user } = useAuth();
+  const { user, selectedTenantId } = useAuth();
   
   const params = route.params || {};
   const { plantioId: paramPlantioId, estufaId: paramEstufaId } = params;
@@ -36,20 +37,19 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const [selectedClienteId, setSelectedClienteId] = useState<string | null>(null); 
   const [destino, setDestino] = useState(''); 
   const [pesoCaixa, setPesoCaixa] = useState(''); 
-  
-  // NOVO ESTADO: Método de Pagamento
   const [metodoPagamento, setMetodoPagamento] = useState<MetodoPagamento>('pix');
-
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (user) {
+    const targetId = selectedTenantId || user?.uid;
+
+    if (targetId) {
       setLoadingData(true);
-      const promises: Promise<any>[] = [listClientes(user.uid)];
+      const promises: Promise<any>[] = [listClientes(targetId)];
       
       if (isSelectionMode) {
-          promises.push(listAllPlantios(user.uid));
-          promises.push(listEstufas(user.uid));
+          promises.push(listAllPlantios(targetId));
+          promises.push(listEstufas(targetId));
       }
 
       Promise.all(promises).then((results) => {
@@ -72,7 +72,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
       .catch(err => console.error(err))
       .finally(() => setLoadingData(false));
     }
-  }, [isSelectionMode, user]);
+  }, [isSelectionMode, selectedTenantId, user]);
 
   const parseNum = (text: string) => parseFloat(text.replace(',', '.')) || 0;
 
@@ -92,7 +92,9 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   }, [quantidade, preco]); 
 
   const handleSave = async (resetAfterSave: boolean = false) => {
-    if (!user) return;
+    // ID do Dono da Conta (Target)
+    const targetId = selectedTenantId || user?.uid;
+    if (!targetId || !user) return;
 
     let finalPlantioId = paramPlantioId;
     let finalEstufaId = paramEstufaId;
@@ -134,20 +136,21 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
       precoUnitario: finalPriceUnitario,
       clienteId: selectedClienteId,
       destino: destino || null,
-      metodoPagamento: metodoPagamento, // Enviando o novo campo
+      metodoPagamento: metodoPagamento,
+      // AQUI: Pegamos o nome de quem está logado (Operador) para auditar
+      registradoPor: user.name || user.email, 
       observacoes: null,
     };
 
     setLoading(true);
     try {
-      await createColheita(formData, user.uid, finalPlantioId, finalEstufaId);
+      await createColheita(formData, targetId, finalPlantioId, finalEstufaId);
       
       if (resetAfterSave) {
           Alert.alert("Sucesso", "Registrado! Pronto para o próximo.");
           setQuantidade('');
-          // Mantém Unidade, Preço, Destino, Método Pagamento e Peso Caixa para agilizar
       } else {
-          Alert.alert('Sucesso!', 'Venda registrada.'); 
+          Alert.alert('Sucesso!', 'Venda registrada na conta ativa.'); 
           navigation.goBack(); 
       }
     } catch (error) {
@@ -278,7 +281,6 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                 </View>
               )}
 
-              {/* SELEÇÃO DE MÉTODO DE PAGAMENTO - NOVO */}
               <Text style={styles.label}>Método de Pagamento</Text>
               <View style={styles.pickerContainer}>
                 <Picker
@@ -327,31 +329,17 @@ const styles = StyleSheet.create({
   scrollContainer: { flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 60 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  
-  card: {
-    backgroundColor: '#fff', padding: 20, borderRadius: 12, marginBottom: 20,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1, shadowRadius: 4, elevation: 3, 
-    borderWidth: 1, borderColor: '#eee',
-  },
+  card: { backgroundColor: '#fff', padding: 20, borderRadius: 12, marginBottom: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3, borderWidth: 1, borderColor: '#eee' },
   selectionCard: { borderLeftWidth: 5, borderLeftColor: '#4CAF50' },
-  
   titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
   cardTitle: { fontSize: 18, fontWeight: 'bold', marginLeft: 8, color: '#333' },
-  
   label: { fontSize: 14, marginBottom: 4, fontWeight: 'bold', color: '#555' },
-  input: {
-    borderWidth: 1, borderColor: '#ccc', padding: 12, borderRadius: 8, 
-    marginBottom: 16, backgroundColor: '#fff', fontSize: 18,
-  },
+  input: { borderWidth: 1, borderColor: '#ccc', padding: 12, borderRadius: 8, marginBottom: 16, backgroundColor: '#fff', fontSize: 18 },
   pickerContainer: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, marginBottom: 16 },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   col: { width: '48%' },
   selectorContainer: { flexDirection: 'row', marginBottom: 15, justifyContent: 'space-between' },
-  selectorButton: {
-    flex: 1, paddingVertical: 10, borderWidth: 1, borderColor: '#4CAF50',
-    borderRadius: 8, alignItems: 'center', marginHorizontal: 2,
-  },
+  selectorButton: { flex: 1, paddingVertical: 10, borderWidth: 1, borderColor: '#4CAF50', borderRadius: 8, alignItems: 'center', marginHorizontal: 2 },
   selectorButtonSelected: { backgroundColor: '#4CAF50' },
   selectorButtonText: { color: '#4CAF50', fontWeight: 'bold', fontSize: 12 },
   selectorButtonTextSelected: { color: '#fff' },

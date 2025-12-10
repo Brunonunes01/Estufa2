@@ -9,5 +9,13 @@ export const useAuth = () => {
     throw new Error('useAuth deve ser usado dentro de um AuthProvider');
   }
 
-  return context;
+  // Lógica de Segurança:
+  // Se não tem tenant selecionado, ou se o tenant é igual ao meu ID, sou o DONO.
+  // Caso contrário, estou visitando a conta de alguém (Sou Operador/Parceiro).
+  const isOwner = !context.selectedTenantId || context.selectedTenantId === context.user?.uid;
+
+  return {
+    ...context,
+    isOwner, // Exportamos essa variável para usar nas telas
+  };
 };
