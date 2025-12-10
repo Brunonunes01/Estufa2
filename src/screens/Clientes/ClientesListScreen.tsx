@@ -8,16 +8,18 @@ import { useIsFocused } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const ClientesListScreen = ({ navigation }: any) => {
-  const { user } = useAuth();
+  const { user, selectedTenantId } = useAuth(); // <--- ID SELECIONADO
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
   const isFocused = useIsFocused();
 
   const load = async () => {
-    if (!user) return;
+    const idBusca = selectedTenantId || user?.uid;
+    if (!idBusca) return;
+
     setLoading(true);
     try {
-        const lista = await listClientes(user.uid);
+        const lista = await listClientes(idBusca); // <--- BUSCA CORRETA
         setClientes(lista);
     } catch(e) {
         console.error(e);
@@ -28,7 +30,7 @@ const ClientesListScreen = ({ navigation }: any) => {
 
   useEffect(() => {
     if (isFocused) load();
-  }, [isFocused, user]);
+  }, [isFocused, selectedTenantId]);
 
   return (
     <View style={styles.container}>
@@ -36,7 +38,7 @@ const ClientesListScreen = ({ navigation }: any) => {
         data={clientes}
         keyExtractor={item => item.id}
         contentContainerStyle={{ paddingBottom: 80 }}
-        ListEmptyComponent={!loading ? <Text style={styles.empty}>Nenhum cliente cadastrado.</Text> : null}
+        ListEmptyComponent={!loading ? <Text style={styles.empty}>Nenhum cliente cadastrado nesta conta.</Text> : null}
         renderItem={({ item }) => (
           <TouchableOpacity 
             style={styles.item} 
@@ -48,7 +50,10 @@ const ClientesListScreen = ({ navigation }: any) => {
             </View>
             <View style={styles.details}>
                 {item.telefone && (
-                    <Text style={styles.info}><MaterialCommunityIcons name="phone" size={14}/> {item.telefone}</Text>
+                    <View style={styles.rowCenter}>
+                        <MaterialCommunityIcons name="phone" size={14} color="#666"/>
+                        <Text style={styles.info}> {item.telefone}</Text>
+                    </View>
                 )}
                 <Text style={styles.typeBadge}>{item.tipo?.toUpperCase()}</Text>
             </View>
@@ -72,6 +77,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   name: { fontSize: 18, fontWeight: 'bold', color: '#333' },
   details: { flexDirection: 'row', marginTop: 8, alignItems: 'center', gap: 10 },
+  rowCenter: { flexDirection: 'row', alignItems: 'center' },
   info: { color: '#666', fontSize: 14 },
   typeBadge: { backgroundColor: '#E3F2FD', color: '#2196F3', fontSize: 10, padding: 4, borderRadius: 4, fontWeight: 'bold' },
   empty: { textAlign: 'center', marginTop: 50, color: '#888' },

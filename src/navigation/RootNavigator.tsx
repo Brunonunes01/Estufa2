@@ -8,6 +8,8 @@ import { TextStyle, ViewStyle } from 'react-native';
 // Telas de Auth
 import LoginScreen from '../screens/Auth/LoginScreen';
 import RegisterScreen from '../screens/Auth/RegisterScreen';
+// IMPORTANTE: Adicione esta importação
+import ShareAccountScreen from '../screens/Auth/ShareAccountScreen'; 
 
 // Telas do App
 import DashboardScreen from '../screens/Dashboard/DashboardScreen';
@@ -26,7 +28,7 @@ import AplicacoesHistoryScreen from '../screens/Aplicacoes/AplicacoesHistoryScre
 import InsumoEntryScreen from '../screens/Insumos/InsumoEntryScreen'; 
 import VendasListScreen from '../screens/Vendas/VendasListScreen'; 
 
-// NOVAS IMPORTAÇÕES
+// Clientes
 import ClientesListScreen from '../screens/Clientes/ClientesListScreen';
 import ClienteFormScreen from '../screens/Clientes/ClienteFormScreen';
 
@@ -52,6 +54,14 @@ const AuthStack = () => (
 const AppStack = () => (
   <Stack.Navigator screenOptions={defaultScreenOptions as NativeStackNavigationOptions}>
     <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Painel SGE' }} />
+    
+    {/* ROTA DE COMPARTILHAMENTO (ADICIONADA) */}
+    <Stack.Screen 
+      name="ShareAccount" 
+      component={ShareAccountScreen} 
+      options={{ title: 'Compartilhar Acesso' }} 
+    />
+
     <Stack.Screen name="EstufasList" component={EstufasListScreen} options={{ title: 'Minhas Estufas' }} />
     <Stack.Screen name="EstufaForm" component={EstufaFormScreen} />
     <Stack.Screen name="EstufaDetail" component={EstufaDetailScreen} />
@@ -68,8 +78,21 @@ const AppStack = () => (
     <Stack.Screen name="VendasList" component={VendasListScreen} options={{ title: 'Gestão de Vendas' }} />
 
     {/* ROTAS DE CLIENTES */}
-    <Stack.Screen name="ClientesList" component={ClientesListScreen} options={{ title: 'Meus Clientes', headerStyle: { backgroundColor: '#2196F3' } }} />
-    <Stack.Screen name="ClienteForm" component={ClienteFormScreen} options={{ headerStyle: { backgroundColor: '#2196F3' } }} />
+    <Stack.Screen 
+        name="ClientesList" 
+        component={ClientesListScreen} 
+        options={{ 
+            title: 'Meus Clientes', 
+            headerStyle: { backgroundColor: '#2196F3' } 
+        }} 
+    />
+    <Stack.Screen 
+        name="ClienteForm" 
+        component={ClienteFormScreen} 
+        options={{ 
+            headerStyle: { backgroundColor: '#2196F3' } 
+        }} 
+    />
     
   </Stack.Navigator>
 );

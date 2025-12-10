@@ -15,7 +15,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Card from '../../components/Card';
 
 const VendasListScreen = ({ navigation }: any) => {
-  const { user } = useAuth();
+  // 1. PEGAR O ID SELECIONADO
+  const { user, selectedTenantId } = useAuth();
   const isFocused = useIsFocused();
 
   const [vendas, setVendas] = useState<Colheita[]>([]);
@@ -27,14 +28,18 @@ const VendasListScreen = ({ navigation }: any) => {
   const [loading, setLoading] = useState(true);
 
   const carregarDados = async () => {
-    if (!user) return;
+    // 2. DEFINIR QUAL ID USAR
+    const idBusca = selectedTenantId || user?.uid;
+    if (!idBusca) return;
+
     setLoading(true);
     try {
+      // 3. PASSAR ESSE ID PARA TODOS OS SERVIÇOS
       const [listaVendas, listaEstufas, listaPlantios, listaClientes] = await Promise.all([
-        listAllColheitas(user.uid),
-        listEstufas(user.uid),
-        listAllPlantios(user.uid),
-        listClientes(user.uid) 
+        listAllColheitas(idBusca),
+        listEstufas(idBusca),
+        listAllPlantios(idBusca),
+        listClientes(idBusca) 
       ]);
 
       setVendas(listaVendas);
@@ -63,7 +68,7 @@ const VendasListScreen = ({ navigation }: any) => {
 
   useEffect(() => {
     if (isFocused) carregarDados();
-  }, [isFocused, user]);
+  }, [isFocused, selectedTenantId]); // Recarrega se mudar a conta
 
   const handleDelete = (item: Colheita) => {
     Alert.alert(
@@ -89,7 +94,6 @@ const VendasListScreen = ({ navigation }: any) => {
     return total;
   }, [vendasFiltradas]);
 
-  // Função auxiliar para ícone de pagamento
   const getPaymentIcon = (method: string | null) => {
       switch(method) {
           case 'pix': return 'qrcode';
@@ -136,7 +140,7 @@ const VendasListScreen = ({ navigation }: any) => {
         data={vendasFiltradas}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingBottom: 80 }}
-        ListEmptyComponent={<Text style={styles.emptyText}>Nada encontrado.</Text>}
+        ListEmptyComponent={<Text style={styles.emptyText}>Nada encontrado nesta conta.</Text>}
         renderItem={({ item }) => {
             const nomeEstufa = mapaEstufas[item.estufaId] || 'Estufa ?';
             const nomeCultura = mapaCulturas[item.plantioId] || 'Planta ?';
@@ -164,7 +168,6 @@ const VendasListScreen = ({ navigation }: any) => {
                             <Text style={styles.productText}>
                                 {item.quantidade} {item.unidade}
                             </Text>
-                            {/* EXIBIÇÃO DO PAGAMENTO */}
                             <View style={[styles.rowCenter, {marginTop: 4}]}>
                                 <MaterialCommunityIcons name={getPaymentIcon(item.metodoPagamento) as any} size={12} color="#888" />
                                 <Text style={styles.paymentText}> {item.metodoPagamento ? item.metodoPagamento.toUpperCase() : 'N/A'}</Text>
@@ -197,18 +200,14 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FAFAFA', padding: 16 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   summaryCard: { backgroundColor: '#4CAF50', alignItems: 'center', paddingVertical: 15, marginBottom: 15, borderWidth: 0 },
-  
   headerRow: { flexDirection: 'row', alignItems: 'center' },
   rowCenter: { flexDirection: 'row', alignItems: 'center' },
-
   summaryTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 8 },
   summaryValue: { color: '#fff', fontSize: 28, fontWeight: 'bold', marginTop: 5 },
-  
   filterContainer: { marginBottom: 10, flexDirection: 'row', alignItems: 'center' },
   filterLabel: { fontSize: 14, fontWeight: 'bold', marginRight: 10 },
   pickerWrapper: { flex: 1, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#ddd', height: 55, justifyContent: 'center' },
   picker: { height: 55, width: '100%', color: '#333' },
-
   saleItem: { backgroundColor: '#fff', borderRadius: 8, marginBottom: 10, borderLeftWidth: 4, borderLeftColor: '#4CAF50', elevation: 2 },
   itemOriginHeader: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#f5f5f5', padding: 8, borderTopRightRadius: 8 },
   originText: { fontSize: 11, fontWeight: 'bold', color: '#777' },
@@ -220,12 +219,7 @@ const styles = StyleSheet.create({
   priceText: { fontSize: 18, fontWeight: 'bold', color: '#006400' },
   deleteButtonText: { fontSize: 12, color: '#D32F2F', marginTop: 5, textDecorationLine: 'underline' },
   emptyText: { textAlign: 'center', marginTop: 30, color: '#888', fontSize: 16 },
-
-  fab: {
-    position: 'absolute', width: 60, height: 60, alignItems: 'center', justifyContent: 'center',
-    right: 20, bottom: 20, backgroundColor: '#FF9800', borderRadius: 30, elevation: 8,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4,
-  },
+  fab: { position: 'absolute', width: 60, height: 60, alignItems: 'center', justifyContent: 'center', right: 20, bottom: 20, backgroundColor: '#FF9800', borderRadius: 30, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4 },
 });
 
 export default VendasListScreen;

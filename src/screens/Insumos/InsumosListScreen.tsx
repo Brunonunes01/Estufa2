@@ -1,313 +1,87 @@
 // src/screens/Insumos/InsumosListScreen.tsx
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  FlatList, 
-  StyleSheet, 
-  ActivityIndicator,
-  TouchableOpacity 
-} from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { listInsumos } from '../../services/insumoService';
 import { Insumo } from '../../types/domain';
 import { useIsFocused } from '@react-navigation/native';
-import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ícones
-
-// Mapeamento de tipos de insumos para ícones
-const INSUMO_ICONS = {
-  adubo: 'fertilizer',
-  defensivo: 'spray-bottle',
-  semente: 'seed-outline',
-  outro: 'flask-empty-outline',
-} as const;
-
-// Função auxiliar para mapear o tipo de insumo a um ícone
-const getInsumoIcon = (tipo: string) => {
-  if (tipo in INSUMO_ICONS) {
-    return INSUMO_ICONS[tipo as keyof typeof INSUMO_ICONS];
-  }
-  return INSUMO_ICONS.outro;
-};
-
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const InsumosListScreen = ({ navigation }: any) => {
-  const { user } = useAuth();
+  const { user, selectedTenantId } = useAuth(); // <--- ID SELECIONADO
   const [insumos, setInsumos] = useState<Insumo[]>([]);
   const [loading, setLoading] = useState(true);
-  const isFocused = useIsFocused(); 
+  const isFocused = useIsFocused();
 
-  const carregarInsumos = async () => {
-    if (user) {
-      setLoading(true);
-      try {
-        const lista = await listInsumos(user.uid);
-        setInsumos(lista);
-      } catch (error) {
-        console.error(error);
-      } finally {
+  const loadData = async () => {
+    const idBusca = selectedTenantId || user?.uid;
+    if (!idBusca) return;
+
+    setLoading(true);
+    try {
+        const data = await listInsumos(idBusca); // <--- BUSCA COM O ID CORRETO
+        setInsumos(data);
+    } catch (e) {
+        console.error(e);
+    } finally {
         setLoading(false);
-      }
     }
   };
 
   useEffect(() => {
-    if (isFocused && user) {
-      carregarInsumos();
-    }
-  }, [isFocused, user]);
-
-  const estaEmAlerta = (item: Insumo) => {
-    if (item.estoqueMinimo === null) return false;
-    return item.estoqueAtual < item.estoqueMinimo;
-  };
-
-  if (loading && insumos.length === 0) {
-    return <ActivityIndicator size="large" style={styles.centered} />;
-  }
+    if (isFocused) loadData();
+  }, [isFocused, selectedTenantId]);
 
   return (
-    <View style={styles.fullContainer}>
-      
-      {/* NOVO BLOCO: Botão de Ação Secundária (Entrada de Estoque) */}
-      <View style={styles.actionContainer}>
-        <TouchableOpacity
-            style={styles.entryButton}
-            onPress={() => navigation.navigate('InsumoEntry')}
-        >
-            <MaterialCommunityIcons name="arrow-down-box" size={20} color="#fff" />
-            <Text style={styles.entryButtonText}>Registrar Entrada</Text>
-        </TouchableOpacity>
-      </View>
-
-
+    <View style={styles.container}>
       <FlatList
         data={insumos}
-        keyExtractor={(item) => item.id}
+        keyExtractor={item => item.id}
+        contentContainerStyle={{ paddingBottom: 80 }}
+        ListEmptyComponent={<Text style={styles.empty}>Nenhum insumo cadastrado nesta conta.</Text>}
         renderItem={({ item }) => (
-          // Card com estilo condicional para alerta
           <TouchableOpacity 
-            style={[
-              styles.cardItem, 
-              estaEmAlerta(item) ? styles.itemAlerta : styles.itemNormal
-            ]}
+            style={styles.item}
             onPress={() => navigation.navigate('InsumoForm', { insumoId: item.id })}
           >
-            <View style={styles.cardHeader}>
-                {/* CORREÇÃO FINAL APLICADA: Uso de 'as any' para resolver o erro TS2322 */}
-                <MaterialCommunityIcons 
-                    name={getInsumoIcon(item.tipo) as any} 
-                    size={24} 
-                    color={estaEmAlerta(item) ? '#d9534f' : '#4CAF50'} // Cor do ícone baseada no status
-                />
-                <Text style={styles.itemTitle}>{item.nome}</Text>
+            <View>
+                <Text style={styles.name}>{item.nome}</Text>
+                <Text style={styles.detail}>Estoque: {item.estoqueAtual} {item.unidadePadrao}</Text>
             </View>
-
-            <View style={styles.detailRow}>
-                <Text style={styles.detailText}>
-                    Tipo: <Text style={styles.detailValue}>{item.tipo.toUpperCase()}</Text>
-                </Text>
+            <View>
+                {item.estoqueMinimo && item.estoqueAtual <= item.estoqueMinimo && (
+                    <MaterialCommunityIcons name="alert-circle" size={24} color="#D32F2F" />
+                )}
             </View>
-            
-            <View style={styles.stockRow}>
-                <Text style={styles.stockLabel}>Estoque Atual:</Text>
-                <Text style={[
-                    styles.stockValue, 
-                    estaEmAlerta(item) && styles.alertaText
-                ]}>
-                    {item.estoqueAtual.toFixed(2)} {item.unidadePadrao}
-                </Text>
-            </View>
-
-            {estaEmAlerta(item) && (
-              <Text style={styles.minimoText}>
-                {item.estoqueMinimo && `⚠️ Mínimo: ${item.estoqueMinimo} ${item.unidadePadrao}`}
-              </Text>
-            )}
-            
           </TouchableOpacity>
         )}
-        ListEmptyComponent={
-          !loading ? (
-            <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>Nenhum insumo cadastrado.</Text>
-            </View>
-          ) : null
-        }
-        onRefresh={carregarInsumos}
-        refreshing={loading}
-        contentContainerStyle={styles.listContent}
       />
-      
-      {/* FAB Customizado para Adicionar Insumo (Cadastro Novo) */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => navigation.navigate('InsumoForm', { insumoId: null })}
+      <TouchableOpacity 
+        style={styles.fab} 
+        onPress={() => navigation.navigate('InsumoForm')}
       >
-        <MaterialCommunityIcons name="plus" size={28} color="#fff" />
+        <MaterialCommunityIcons name="plus" size={30} color="#fff" />
       </TouchableOpacity>
       
+      {/* Botão de Entrada de Estoque (atalho) */}
+      <TouchableOpacity 
+        style={[styles.fab, styles.fabSecondary]} 
+        onPress={() => navigation.navigate('InsumoEntry')}
+      >
+        <MaterialCommunityIcons name="archive-arrow-down" size={26} color="#fff" />
+      </TouchableOpacity>
     </View>
   );
 };
 
-// ESTILOS PARA DESIGN PROFISSIONAL
 const styles = StyleSheet.create({
-  fullContainer: {
-    flex: 1,
-    backgroundColor: '#FAFAFA', // Fundo claro
-  },
-  listContent: {
-    padding: 10,
-    paddingBottom: 80, // Espaço extra para o FAB
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  
-  // NOVO ESTILO: Botão de Ação Secundária (Entrada de Estoque)
-  actionContainer: {
-    paddingHorizontal: 10,
-    marginTop: 10,
-    marginBottom: 10,
-  },
-  entryButton: {
-    backgroundColor: '#007bff', // Azul para Entrada/Compra
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  entryButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-    marginLeft: 10,
-  },
-
-  // Estilos de Card
-  cardItem: {
-    backgroundColor: '#fff',
-    padding: 16,
-    marginVertical: 8,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  itemNormal: {
-    borderLeftWidth: 5,
-    borderLeftColor: '#4CAF50', // Verde para status normal
-  },
-  itemAlerta: {
-    borderWidth: 2,
-    borderColor: '#d9534f', // Borda vermelha para alerta
-    backgroundColor: '#fdebeb', // Fundo suave para alerta
-  },
-  
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-    paddingBottom: 5,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  itemTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginLeft: 10,
-  },
-  
-  // Detalhes
-  detailRow: {
-    marginBottom: 5,
-  },
-  detailText: {
-    fontSize: 14,
-    color: '#555',
-  },
-  detailValue: {
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  
-  // Linha de Estoque
-  stockRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 5,
-    paddingTop: 5,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-  },
-  stockLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  stockValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#006400', // Verde escuro para estoque
-  },
-  
-  // Estilos de Alerta
-  alertaText: {
-    color: '#d9534f',
-  },
-  minimoText: {
-    color: '#d9534f',
-    fontWeight: 'bold',
-    fontSize: 12,
-    marginTop: 5,
-  },
-  
-  // Lista Vazia
-  emptyContainer: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 8,
-    marginTop: 20,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  emptyText: {
-    textAlign: 'center',
-    marginTop: 10,
-    color: '#666',
-    fontSize: 16,
-  },
-
-  // Floating Action Button (FAB) Customizado
-  fab: {
-    position: 'absolute',
-    width: 60,
-    height: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-    right: 20,
-    bottom: 20,
-    backgroundColor: '#FF9800', // Laranja para ação de Cadastro Novo
-    borderRadius: 30,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 8,
-  },
+  container: { flex: 1, backgroundColor: '#FAFAFA', padding: 16 },
+  item: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: 15, borderRadius: 10, marginBottom: 10, elevation: 2 },
+  name: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+  detail: { fontSize: 14, color: '#666' },
+  empty: { textAlign: 'center', marginTop: 50, color: '#888' },
+  fab: { position: 'absolute', right: 20, bottom: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#4CAF50', alignItems: 'center', justifyContent: 'center', elevation: 5 },
+  fabSecondary: { bottom: 90, backgroundColor: '#2196F3', width: 50, height: 50, borderRadius: 25, right: 25 },
 });
 
 export default InsumosListScreen;

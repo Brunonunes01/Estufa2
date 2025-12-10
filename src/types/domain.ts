@@ -14,6 +14,9 @@ export interface User {
   email: string;
   role: "admin" | "operator";
   createdAt: Timestamp;
+  // Lista de IDs de usuários que compartilharam a conta com este usuário
+  // Ex: [{ uid: '123', name: 'Fazenda do João' }]
+  sharedAccess?: { uid: string; name: string }[]; 
 }
 
 export interface Estufa extends BaseDoc {
