@@ -1,356 +1,189 @@
 // src/screens/Aplicacoes/AplicacaoFormScreen.tsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  View, Text, TextInput, Button, ScrollView, Alert, 
-  StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, TouchableOpacity 
+  View, Text, TextInput, ScrollView, Alert, StyleSheet, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform 
 } from 'react-native';
-import { Timestamp } from 'firebase/firestore';
-import { createAplicacao, AplicacaoFormData } from '../../services/aplicacaoService';
-import { listInsumos } from '../../services/insumoService'; 
-import { useAuth } from '../../hooks/useAuth';
-import { Insumo, AplicacaoItem } from '../../types/domain';
 import { Picker } from '@react-native-picker/picker'; 
-import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ícones
+import { useAuth } from '../../hooks/useAuth';
+import { listAllPlantios } from '../../services/plantioService';
+import { listInsumos } from '../../services/insumoService';
+import { createAplicacao, AplicacaoFormData, AplicacaoItemData } from '../../services/aplicacaoService';
+import { Plantio, Insumo } from '../../types/domain';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+
+const COLORS = {
+  background: '#F3F4F6',
+  surface: '#FFFFFF',
+  primary: '#3B82F6', // Azul para Aplicações (Química/Água)
+  secondary: '#60A5FA',
+  border: '#E5E7EB',
+  inputBg: '#F9FAFB',
+  textDark: '#111827',
+  textGray: '#6B7280',
+  danger: '#EF4444'
+};
 
 const AplicacaoFormScreen = ({ route, navigation }: any) => {
-  const { user } = useAuth();
-  const { plantioId, estufaId, clonarAplicacao } = route.params;
-
+  const { user, selectedTenantId } = useAuth();
+  const params = route.params || {};
+  
+  const [plantios, setPlantios] = useState<Plantio[]>([]);
+  const [insumos, setInsumos] = useState<Insumo[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [loadingInsumos, setLoadingInsumos] = useState(true);
-  const [insumosList, setInsumosList] = useState<Insumo[]>([]);
-  
-  // Dados Gerais
-  const [volumeTanque, setVolumeTanque] = useState(''); // Volume de UM tanque
-  const [numeroTanques, setNumeroTanques] = useState(''); // Quantidade de tanques/máquinas
+
+  const [plantioId, setPlantioId] = useState(params.plantioId || '');
+  const [volumeTanque, setVolumeTanque] = useState('');
+  const [numTanques, setNumTanques] = useState('1');
   const [observacoes, setObservacoes] = useState('');
-
-  // Dados do Item Atual (para adicionar)
-  const [selectedInsumoId, setSelectedInsumoId] = useState<string | undefined>(undefined);
-  const [doseItem, setDoseItem] = useState(''); // Dose por tanque/máquina
   
-  // Lista de Itens (O Carrinho)
-  const [itensAdicionados, setItensAdicionados] = useState<AplicacaoItem[]>([]);
-
-  // Calcula o total aplicado do insumo atual com base na Dose e no Número de Tanques
-  const totalAplicadoPorInsumo = useMemo(() => {
-    // 1. Normaliza e converte para número (usando 0 se for inválido)
-    const doseNum = parseFloat(doseItem.replace(',', '.')) || 0;
-    const numTanquesNum = parseFloat(numeroTanques.replace(',', '.')) || 0;
-    
-    // 2. Se ambos forem válidos e maiores que zero, calcula
-    if (doseNum > 0 && numTanquesNum > 0) {
-        // Total Produto Usado = Dose por Tanque * Número de Tanques
-        return doseNum * numTanquesNum;
-    } 
-    return null;
-  }, [doseItem, numeroTanques]);
-
+  const [itens, setItens] = useState<AplicacaoItemData[]>([]);
+  const [tempInsumoId, setTempInsumoId] = useState('');
+  const [tempDose, setTempDose] = useState('');
 
   useEffect(() => {
-    const carregarInsumos = async () => {
-      if (user) {
-        setLoadingInsumos(true);
-        try {
-          const lista = await listInsumos(user.uid);
-          setInsumosList(lista);
-          
-          if (clonarAplicacao) {
-            setObservacoes(clonarAplicacao.observacoes || '');
-            if (clonarAplicacao.volumeTanque) {
-              setVolumeTanque(String(clonarAplicacao.volumeTanque));
-            }
-            if (clonarAplicacao.numeroTanques) {
-              setNumeroTanques(String(clonarAplicacao.numeroTanques));
-            }
+    const load = async () => {
+      const targetId = selectedTenantId || user?.uid;
+      if (!targetId) return;
 
-            if (clonarAplicacao.itens && Array.isArray(clonarAplicacao.itens)) {
-              setItensAdicionados(clonarAplicacao.itens);
-            }
+      try {
+        const [listaPlantios, listaInsumos] = await Promise.all([
+            listAllPlantios(targetId),
+            listInsumos(targetId)
+        ]);
+        const ativos = listaPlantios.filter(p => p.status !== 'finalizado');
+        setPlantios(ativos);
+        setInsumos(listaInsumos);
 
-            Alert.alert("Modo Clonar", "Os itens e dados da aplicação anterior foram carregados.");
-          
-          } else {
-            // Modo Novo: seleciona o primeiro insumo por padrão
-            if (lista.length > 0) {
-              setSelectedInsumoId(lista[0].id);
-            } else {
-              setSelectedInsumoId(undefined);
-            }
-          }
-
-        } catch (error) {
-          console.error(error);
-          Alert.alert("Erro", "Não foi possível carregar seus insumos.");
-        } finally {
-          setLoadingInsumos(false);
-        }
-      }
+        if (!plantioId && ativos.length > 0) setPlantioId(ativos[0].id);
+        if (listaInsumos.length > 0) setTempInsumoId(listaInsumos[0].id);
+      } catch (e) { Alert.alert("Erro", "Falha ao carregar."); } 
+      finally { setLoadingData(false); }
     };
-    carregarInsumos();
-  }, [user, clonarAplicacao]);
+    load();
+  }, [user, selectedTenantId]);
 
-  const getInsumoSelecionado = () => insumosList.find(i => i.id === selectedInsumoId);
-  const getUnidadeSelecionada = () => getInsumoSelecionado()?.unidadePadrao || "...";
-  
   const handleAddItem = () => {
-    const insumo = getInsumoSelecionado();
-    if (!insumo) return;
+      if (!tempInsumoId || !tempDose) return;
+      const insumo = insumos.find(i => i.id === tempInsumoId);
+      if (!insumo) return;
+      const dose = parseFloat(tempDose.replace(',', '.'));
+      if (isNaN(dose) || dose <= 0) return;
 
-    const doseString = doseItem.replace(',', '.');
-    const doseNum = parseFloat(doseString);
-    
-    if (isNaN(doseNum) || doseNum <= 0) {
-      Alert.alert("Atenção", "Digite uma dose por tanque válida.");
-      return;
-    }
-    
-    if (!totalAplicadoPorInsumo || totalAplicadoPorInsumo <= 0) {
-        Alert.alert("Atenção", "Preencha o 'Número de Tanques' acima para calcular a Quantidade Total.");
-        return;
-    }
-
-    // Verifica se já está na lista
-    if (itensAdicionados.some(i => i.insumoId === insumo.id)) {
-      Alert.alert("Duplicado", "Este insumo já está na lista. Remova-o da lista abaixo se quiser alterar.");
-      return;
-    }
-    
-    const totalAplicado = totalAplicadoPorInsumo;
-
-    const novoItem: AplicacaoItem = {
-      insumoId: insumo.id,
-      nomeInsumo: insumo.nome,
-      quantidadeAplicada: totalAplicado, // <--- VALOR CALCULADO
-      unidade: insumo.unidadePadrao,
-      dosePorTanque: doseNum
-    };
-
-    setItensAdicionados([...itensAdicionados, novoItem]);
-    
-    // Limpa os campos de adição para o próximo item
-    setDoseItem('');
+      setItens([...itens, {
+          insumoId: tempInsumoId,
+          nomeInsumo: insumo.nome,
+          dosePorTanque: dose,
+          unidade: insumo.unidadePadrao
+      }]);
+      setTempDose('');
   };
 
   const handleRemoveItem = (index: number) => {
-    const novaLista = [...itensAdicionados];
-    novaLista.splice(index, 1);
-    setItensAdicionados(novaLista);
+      const newItens = [...itens];
+      newItens.splice(index, 1);
+      setItens(newItens);
   };
 
-  const handleSaveAll = async () => {
-    if (!user) {
-      Alert.alert("Erro", "Usuário não autenticado.");
-      return;
-    }
+  const handleSave = async () => {
+      const targetId = selectedTenantId || user?.uid;
+      if (!targetId || !plantioId || itens.length === 0) return Alert.alert("Erro", "Adicione itens.");
+      
+      setLoading(true);
+      try {
+          const p = plantios.find(pl => pl.id === plantioId);
+          if (!p) return;
+          
+          const vol = parseFloat(volumeTanque) || 0;
+          const tanques = parseFloat(numTanques) || 1;
+          const itensFinais = itens.map(i => ({ ...i, quantidadeAplicada: i.dosePorTanque * tanques }));
 
-    if (itensAdicionados.length === 0) {
-      Alert.alert("Vazio", "Adicione pelo menos um insumo à mistura antes de salvar.");
-      return;
-    }
-
-    const volString = volumeTanque.replace(',', '.');
-    const volNum = parseFloat(volString);
-    
-    const numTanquesString = numeroTanques.replace(',', '.');
-    const numTanquesNum = parseFloat(numTanquesString); 
-
-    if (isNaN(numTanquesNum) || numTanquesNum <= 0) {
-        Alert.alert("Atenção", "O Número de Tanques aplicados deve ser maior que zero.");
-        return;
-    }
-
-    const formData: AplicacaoFormData = {
-      dataAplicacao: Timestamp.now(),
-      observacoes: observacoes || null,
-      volumeTanque: isNaN(volNum) ? null : volNum,
-      numeroTanques: numTanquesNum, 
-      itens: itensAdicionados
-    };
-
-    setLoading(true);
-    try {
-      await createAplicacao(formData, user.uid, plantioId, estufaId);
-      Alert.alert('Sucesso!', 'Aplicação registrada e estoque atualizado.');
-      navigation.goBack(); 
-    } catch (error: any) {
-      let msg = "Ocorreu um erro ao salvar.";
-      if (error.message && error.message.includes("Estoque insuficiente")) {
-        msg = error.message;
-      }
-      Alert.alert('Erro ao Salvar', msg);
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
+          await createAplicacao({
+              plantioId,
+              estufaId: p.estufaId,
+              volumeTanque: vol,
+              numeroTanques: tanques,
+              observacoes,
+              itens: itensFinais
+          }, targetId);
+          Alert.alert("Sucesso", "Aplicação registrada!");
+          navigation.goBack();
+      } catch { Alert.alert("Erro", "Falha ao salvar."); }
+      finally { setLoading(false); }
   };
 
-  if (loadingInsumos) return <ActivityIndicator size="large" style={styles.centered} />;
-
-  if (insumosList.length === 0) {
-      return (
-        // USO CORRIGIDO
-        <View style={styles.containerCenter}>
-          <Text style={styles.emptyFornecedorText}>
-            Você precisa cadastrar insumos com estoque primeiro.
-          </Text>
-        </View>
-      );
-  }
+  if (loadingData) return <ActivityIndicator size="large" style={{flex:1}} color={COLORS.primary} />;
 
   return (
-    <KeyboardAvoidingView style={styles.fullContainer} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-      <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContent}>
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         
-        {/* CARD 1: DADOS DA CALDA (CABEÇALHO) */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>
-            <MaterialCommunityIcons name="water-outline" size={20} color="#333" /> Dados da Calda e Observações
-          </Text>
-          
-          <Text style={styles.label}>Descrição / Alvo (Opcional)</Text>
-          <TextInput
-            style={styles.input}
-            value={observacoes}
-            onChangeText={setObservacoes}
-            placeholder="Ex: Preventivo Fungicida + Adubo"
-          />
-          
-          <Text style={styles.label}>Volume de **UM** Tanque/Recipiente (L)</Text>
-          <TextInput
-            style={styles.input}
-            value={volumeTanque}
-            onChangeText={setVolumeTanque}
-            keyboardType="numeric"
-            placeholder="Ex: 200 (Opcional)"
-          />
-          
-          <Text style={styles.label}>Número de Tanques/Máquinas Aplicadas (Obrigatório)</Text>
-          <TextInput
-            style={styles.input}
-            value={numeroTanques}
-            onChangeText={setNumeroTanques}
-            keyboardType="numeric"
-            placeholder="Ex: 5"
-          />
-        </View>
-
-        {/* CARD 2: ÁREA DE ADICIONAR ITEM */}
-        <View style={[styles.card, styles.addItemCard]}>
-          <Text style={styles.addItemTitle}>
-            <MaterialCommunityIcons name="plus-circle-outline" size={20} color="#4CAF50" /> Adicionar Insumo à Mistura
-          </Text>
-          
-          <Text style={styles.label}>Selecione o Insumo</Text>
-          <View style={styles.pickerContainer}>
-            {/* CORREÇÃO: Usar um Text para exibir o valor selecionado */}
-            <Text style={styles.pickerDisplay}>
-                {getInsumoSelecionado() 
-                    ? `${getInsumoSelecionado()?.nome} (Estoque: ${getInsumoSelecionado()?.estoqueAtual.toFixed(2)} ${getInsumoSelecionado()?.unidadePadrao})`
-                    : 'Selecione um Insumo...'}
-            </Text>
+            <Text style={styles.sectionHeader}>Local e Equipamento</Text>
             
-            {/* O Picker é mantido transparente para capturar o toque e abrir a seleção nativa */}
-            <Picker
-              style={styles.pickerOverlay}
-              selectedValue={selectedInsumoId}
-              onValueChange={(itemValue: string) => setSelectedInsumoId(itemValue)}
-            >
-              {insumosList.map(insumo => (
-                <Picker.Item 
-                  key={insumo.id} 
-                  label={`${insumo.nome} (Estoque: ${insumo.estoqueAtual.toFixed(2)} ${insumo.unidadePadrao})`} 
-                  value={insumo.id} 
-                />
-              ))}
-            </Picker>
-          </View>
-
-          <View style={styles.row}>
-            {/* Dose por Tanque */}
-            <View style={styles.col}>
-              <Text style={styles.label}>Dose por Tanque ({getUnidadeSelecionada()})</Text>
-              <TextInput
-                style={styles.input}
-                value={doseItem}
-                onChangeText={setDoseItem}
-                keyboardType="numeric"
-                placeholder="Ex: 500"
-              />
-            </View>
-            
-            {/* CÁLCULO VISUAL */}
-            <View style={styles.col}>
-                <Text style={styles.label}>Qtd. Total Calculada</Text>
-                <View style={styles.calculatedBox}>
-                    <Text style={styles.calculatedText}>
-                        {totalAplicadoPorInsumo === null 
-                            ? 'N/A' 
-                            : totalAplicadoPorInsumo.toFixed(2)}
-                    </Text>
-                    <Text style={styles.calculatedUnit}>{getUnidadeSelecionada()}</Text>
-                    {totalAplicadoPorInsumo !== null && <Text style={styles.calculationDetail}>
-                        ({doseItem || 0} x {numeroTanques || 0} Tanques)
-                    </Text>}
+            <View style={styles.inputGroup}>
+                <Text style={styles.label}>Plantio Alvo</Text>
+                <View style={styles.pickerWrapper}>
+                    <Picker selectedValue={plantioId} onValueChange={setPlantioId}>
+                        {plantios.map(p => <Picker.Item key={p.id} label={`${p.cultura} (${p.variedade || 'Comum'})`} value={p.id} />)}
+                    </Picker>
                 </View>
             </View>
-          </View>
 
-          <TouchableOpacity 
-            style={styles.addButton}
-            onPress={handleAddItem} 
-            disabled={totalAplicadoPorInsumo === null || totalAplicadoPorInsumo <= 0} 
-          >
-            <Text style={styles.addButtonText}>Adicionar Item à Lista</Text>
-            {/* Dica visual de por que está desabilitado */}
-            {(totalAplicadoPorInsumo === null || totalAplicadoPorInsumo <= 0) && (
-              <MaterialCommunityIcons name="lock" size={16} color="#fff" style={{marginLeft: 10}} />
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {/* CARD 3: LISTA DE ITENS (O CARRINHO) */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>
-            <MaterialCommunityIcons name="cart-variant" size={20} color="#333" /> Itens na Mistura ({itensAdicionados.length})
-          </Text>
-          {itensAdicionados.length === 0 ? (
-            <Text style={styles.emptyListText}>Nenhum item adicionado ainda.</Text>
-          ) : (
-            itensAdicionados.map((item, index) => (
-              <View key={index} style={styles.itemRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.itemName}>{item.nomeInsumo}</Text>
-                  <Text style={styles.itemDetailText}>
-                    Total Gasto (Estoque): <Text style={styles.itemQuantityValue}>
-                      {item.quantidadeAplicada.toFixed(2)} {item.unidade}
-                    </Text>
-                  </Text>
-                  <Text style={styles.itemCalculationDetail}>
-                    Dose/Tanque: {item.dosePorTanque} | Total Tanques: {numeroTanques || 'N/A'}
-                  </Text>
+            <View style={styles.row}>
+                <View style={[styles.inputGroup, {flex: 1, marginRight: 15}]}>
+                    <Text style={styles.label}>Nº Tanques</Text>
+                    <TextInput style={styles.input} value={numTanques} onChangeText={setNumTanques} keyboardType="numeric" />
                 </View>
-                <TouchableOpacity onPress={() => handleRemoveItem(index)} style={styles.removeBtn}>
-                  <MaterialCommunityIcons name="delete-outline" size={24} color="white" />
-                </TouchableOpacity>
-              </View>
-            ))
-          )}
+                <View style={[styles.inputGroup, {flex: 1}]}>
+                    <Text style={styles.label}>Volume (L)</Text>
+                    <TextInput style={styles.input} value={volumeTanque} onChangeText={setVolumeTanque} keyboardType="numeric" placeholder="Opcional" />
+                </View>
+            </View>
         </View>
 
-        {/* BOTÃO SALVAR GERAL */}
-        <TouchableOpacity 
-            style={styles.saveButton} 
-            onPress={handleSaveAll} 
-            disabled={loading || itensAdicionados.length === 0}
-        >
-            {loading ? (
-                <ActivityIndicator color="#fff" />
-            ) : (
-                <Text style={styles.saveButtonText}>
-                    CONCLUIR APLICAÇÃO
-                </Text>
-            )}
+        <View style={styles.card}>
+            <Text style={styles.sectionHeader}>Receita / Mistura</Text>
+            
+            <View style={styles.addBox}>
+                <Text style={styles.label}>Produto</Text>
+                <View style={styles.pickerWrapper}>
+                    <Picker selectedValue={tempInsumoId} onValueChange={setTempInsumoId}>
+                        {insumos.map(i => <Picker.Item key={i.id} label={`${i.nome} (Est: ${i.estoqueAtual})`} value={i.id} />)}
+                    </Picker>
+                </View>
+                
+                <View style={[styles.row, {marginTop: 15, alignItems: 'flex-end'}]}>
+                    <View style={{flex: 1}}>
+                        <Text style={styles.label}>Dose por Tanque</Text>
+                        <TextInput style={styles.input} value={tempDose} onChangeText={setTempDose} keyboardType="numeric" placeholder="Ex: 0.5" />
+                    </View>
+                    <TouchableOpacity style={styles.addBtn} onPress={handleAddItem}>
+                        <MaterialCommunityIcons name="plus" size={24} color="#FFF" />
+                    </TouchableOpacity>
+                </View>
+            </View>
+
+            {itens.length > 0 && <View style={styles.divider} />}
+
+            {itens.map((item, index) => (
+                <View key={index} style={styles.itemRow}>
+                    <View style={styles.itemIcon}>
+                        <MaterialCommunityIcons name="flask" size={20} color={COLORS.primary} />
+                    </View>
+                    <View style={{flex: 1, paddingHorizontal: 10}}>
+                        <Text style={styles.itemName}>{item.nomeInsumo}</Text>
+                        <Text style={styles.itemDose}>{item.dosePorTanque} {item.unidade} / tanque</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => handleRemoveItem(index)} style={{padding: 5}}>
+                        <MaterialCommunityIcons name="close-circle" size={24} color={COLORS.danger} />
+                    </TouchableOpacity>
+                </View>
+            ))}
+        </View>
+
+        <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={loading}>
+            {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveText}>Registrar Aplicação</Text>}
         </TouchableOpacity>
 
       </ScrollView>
@@ -358,236 +191,29 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
   );
 };
 
-// ESTILOS PARA DESIGN PROFISSIONAL
 const styles = StyleSheet.create({
-  fullContainer: { flex: 1, backgroundColor: '#FAFAFA' },
-  scrollContainer: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 60, alignItems: 'center' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  screen: { flex: 1, backgroundColor: COLORS.background },
+  scrollContent: { padding: 20 },
+  card: { backgroundColor: COLORS.surface, padding: 20, borderRadius: 16, marginBottom: 20, shadowColor: "#000", shadowOpacity: 0.05, elevation: 2 },
+  sectionHeader: { fontSize: 16, fontWeight: '700', color: COLORS.primary, marginBottom: 15, textTransform: 'uppercase' },
+  inputGroup: { marginBottom: 15 },
+  label: { fontSize: 14, fontWeight: '600', color: COLORS.textDark, marginBottom: 8 },
+  input: { backgroundColor: COLORS.inputBg, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, padding: 12, fontSize: 16 },
+  pickerWrapper: { backgroundColor: COLORS.inputBg, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, overflow: 'hidden' },
+  row: { flexDirection: 'row' },
   
-  // CORREÇÃO: Estilo para centralizar o aviso de lista vazia
-  containerCenter: { 
-    flex: 1, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    padding: 20 
-  },
-
-  // Estilo de Card (Container principal)
-  card: { 
-    width: '100%',
-    backgroundColor: '#fff', 
-    padding: 20, 
-    borderRadius: 12, 
-    marginBottom: 20, 
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3, 
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  cardTitle: { 
-    fontSize: 20, 
-    fontWeight: 'bold', 
-    marginBottom: 20, 
-    color: '#333',
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    paddingBottom: 10,
-  },
-  label: { fontSize: 14, marginBottom: 4, fontWeight: 'bold', color: '#555' },
-  input: { 
-    borderWidth: 1, 
-    borderColor: '#ccc', 
-    padding: 12, 
-    borderRadius: 8, 
-    marginBottom: 16, 
-    backgroundColor: '#fff',
-    fontSize: 16
-  },
+  addBox: { backgroundColor: '#EFF6FF', padding: 15, borderRadius: 12 },
+  addBtn: { backgroundColor: COLORS.primary, width: 50, height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginLeft: 15 },
   
-  // CORREÇÃO: MODIFICAÇÃO DO PICKER CONTAINER PARA O MOCK DE INPUT
-  pickerContainer: { 
-    borderWidth: 1, 
-    borderColor: '#ccc', 
-    borderRadius: 8, 
-    marginBottom: 16, 
-    backgroundColor: '#fff',
-    position: 'relative', // Essencial para o overlay
-    minHeight: 45, // Garante que o container tenha altura
-    justifyContent: 'center',
-  },
-  pickerDisplay: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#333', // Garante que a cor do texto é escura
-    // Adicione um ícone de seta para indicar que é um dropdown (opcional, mas bom)
-    paddingRight: 30, 
-  },
-  pickerOverlay: {
-    // Torna o Picker transparente e o posiciona sobre o texto de exibição
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: '100%',
-    height: '100%',
-    opacity: 0, // Torna o Picker invisível (mas clicável)
-    zIndex: 10, 
-  },
-  // FIM DA CORREÇÃO
-
-  row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
-  col: { width: '48%' },
+  divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 15 },
   
-  // ESTILOS DE ADICIONAR ITEM
-  addItemCard: {
-    borderLeftWidth: 5,
-    borderLeftColor: '#4CAF50',
-  },
-  addItemTitle: { 
-    fontSize: 20, 
-    fontWeight: 'bold', 
-    marginBottom: 20, 
-    color: '#4CAF50',
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    paddingBottom: 10,
-  },
+  itemRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', padding: 12, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border },
+  itemIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#DBEAFE', alignItems: 'center', justifyContent: 'center' },
+  itemName: { fontWeight: '700', color: COLORS.textDark },
+  itemDose: { fontSize: 12, color: COLORS.textGray },
 
-  // Estilos para o texto calculado (Destaque)
-  calculatedBox: {
-    backgroundColor: '#E8F5E9', // Verde suave
-    padding: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 90, // Altura fixa para alinhar
-  },
-  calculatedText: { 
-    fontSize: 24, 
-    fontWeight: 'bold', 
-    color: '#006400', 
-  },
-  calculatedUnit: {
-    fontSize: 14,
-    color: '#006400',
-  },
-  calculationDetail: {
-    fontSize: 10,
-    color: '#666',
-    marginTop: 5,
-  },
-  
-  // Botão Adicionar Item
-  addButton: {
-    backgroundColor: '#FF9800', // Laranja
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  addButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-
-  // ESTILOS DE LISTA DE ITENS ("CARRINHO")
-  itemRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingVertical: 10, 
-    paddingHorizontal: 5,
-    borderBottomWidth: 1, 
-    borderBottomColor: '#eee',
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
-    marginBottom: 8
-  },
-  itemName: { 
-    fontWeight: 'bold', 
-    fontSize: 16 
-  },
-  itemDetailText: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 2,
-  },
-  itemQuantityValue: {
-    fontWeight: 'bold',
-    color: '#333'
-  },
-  itemCalculationDetail: {
-    fontSize: 12, 
-    color: '#888'
-  },
-  removeBtn: { 
-    padding: 10, 
-    backgroundColor: '#d9534f', // Vermelho
-    borderRadius: 8,
-    marginLeft: 10,
-  },
-  emptyListText: { 
-    fontStyle: 'italic', 
-    color: '#888', 
-    textAlign: 'center',
-    padding: 10,
-  },
-  emptyFornecedorText: { 
-    textAlign: 'center', 
-    marginTop: 10, 
-    color: '#666', 
-    fontSize: 16 
-  },
-  
-  // Box de Valor Total
-  totalBox: {
-    backgroundColor: '#E8F5E9', // Verde suave
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 20,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#C8E6C9',
-  },
-  totalLabel: {
-    fontSize: 16,
-    color: '#006400', // Verde Escuro
-    fontWeight: 'bold',
-  },
-  totalValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#006400',
-    marginTop: 5,
-  },
-
-  // Botão Salvar Geral
-  saveButton: {
-    width: '100%',
-    backgroundColor: '#006400', // Verde Escuro para Ação Final
-    padding: 18,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-    minHeight: 55,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 18,
-  }
+  saveBtn: { backgroundColor: COLORS.primary, height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 30 },
+  saveText: { color: '#FFF', fontWeight: '700', fontSize: 16 }
 });
 
 export default AplicacaoFormScreen;
