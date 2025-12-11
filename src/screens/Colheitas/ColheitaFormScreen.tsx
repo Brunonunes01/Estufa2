@@ -10,16 +10,25 @@ import { listAllPlantios } from '../../services/plantioService';
 import { listEstufas } from '../../services/estufaService';
 import { listClientes } from '../../services/clienteService'; 
 import { useAuth } from '../../hooks/useAuth';
-// IMPORT CORRIGIDO:
 import { MaterialCommunityIcons } from '@expo/vector-icons'; 
 import { Plantio, Cliente } from '../../types/domain';
+
+// --- TEMA ---
+const COLORS = {
+  background: '#F3F4F6',
+  surface: '#FFFFFF',
+  primary: '#059669',
+  inputBorder: '#E5E7EB',
+  inputBg: '#F9FAFB',
+  textDark: '#111827',
+  textGray: '#6B7280',
+};
 
 type UnidadeColheita = "kg" | "caixa" | "unidade" | "maço";
 type MetodoPagamento = "pix" | "dinheiro" | "boleto" | "prazo" | "cartao" | "outro";
 
 const ColheitaFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
-  
   const params = route.params || {};
   const { plantioId: paramPlantioId, estufaId: paramEstufaId } = params;
 
@@ -41,315 +50,279 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    // Garante que existe um ID para buscar (seja o do parceiro ou o próprio)
     const targetId = selectedTenantId || user?.uid;
-
+    
     if (targetId) {
       setLoadingData(true);
-      const promises: Promise<any>[] = [listClientes(targetId)];
-      
-      if (isSelectionMode) {
-          promises.push(listAllPlantios(targetId));
-          promises.push(listEstufas(targetId));
-      }
-
-      Promise.all(promises).then((results) => {
-        const clientes = results[0];
+      Promise.all([
+          listClientes(targetId), 
+          isSelectionMode ? listAllPlantios(targetId) : Promise.resolve([]),
+          isSelectionMode ? listEstufas(targetId) : Promise.resolve([])
+      ]).then(([clientes, plantios, estufas]) => {
         setClientesList(clientes);
-
         if (isSelectionMode) {
-            const listaPlantios = results[1];
-            const listaEstufas = results[2];
-            
-            const mapE: Record<string, string> = {};
-            listaEstufas.forEach((e: any) => mapE[e.id] = e.nome);
+            const mapE: any = {};
+            estufas.forEach((e: any) => mapE[e.id] = e.nome);
             setEstufasMap(mapE);
-
-            const ativos = listaPlantios.filter((p: any) => p.status !== 'finalizado');
+            const ativos = plantios.filter((p: any) => p.status !== 'finalizado');
             setPlantiosDisponiveis(ativos);
             if (ativos.length > 0) setSelectedPlantioId(ativos[0].id);
         }
-      })
-      .catch(err => console.error(err))
-      .finally(() => setLoadingData(false));
+      }).finally(() => setLoadingData(false));
     }
   }, [isSelectionMode, selectedTenantId, user]);
 
-  const parseNum = (text: string) => parseFloat(text.replace(',', '.')) || 0;
-
-  const { precoPorKilo, pesoTotalKilo } = useMemo(() => {
-    const qtd = parseNum(quantidade);
-    const precoUnitario = parseNum(preco);
-    if (unidade === 'caixa') {
-        const peso = parseNum(pesoCaixa);
-        const pKilo = (peso > 0 && precoUnitario > 0) ? (precoUnitario / peso) : 0;
-        return { precoPorKilo: pKilo, pesoTotalKilo: qtd * peso };
-    }
-    return { precoPorKilo: 0, pesoTotalKilo: qtd };
-  }, [quantidade, preco, unidade, pesoCaixa]);
-
   const valorTotal = useMemo(() => {
-    return parseNum(quantidade) * parseNum(preco);
-  }, [quantidade, preco]); 
+    const qtd = parseFloat(quantidade.replace(',','.')) || 0;
+    const prc = parseFloat(preco.replace(',','.')) || 0;
+    return qtd * prc;
+  }, [quantidade, preco]);
 
-  const handleSave = async (resetAfterSave: boolean = false) => {
-    // ID do Dono da Conta (Target)
-    const targetId = selectedTenantId || user?.uid;
-    if (!targetId || !user) return;
-
-    let finalPlantioId = paramPlantioId;
-    let finalEstufaId = paramEstufaId;
-
-    if (isSelectionMode) {
-        finalPlantioId = selectedPlantioId;
-        const p = plantiosDisponiveis.find(pp => pp.id === selectedPlantioId);
-        if (p) finalEstufaId = p.estufaId;
-    }
-
-    if (!finalPlantioId || !finalEstufaId) {
-        Alert.alert("Erro", "Selecione um plantio válido.");
-        return;
-    }
-
-    const qtdParsed = parseNum(quantidade);
-    if (qtdParsed <= 0) {
-        Alert.alert('Atenção', 'Digite uma Quantidade válida.');
-        return;
-    }
-    
-    let finalQuantity = qtdParsed;
-    let finalUnit = unidade;
-    let finalPriceUnitario = parseNum(preco) || null;
-    
-    if (unidade === 'caixa') {
-        if (parseNum(pesoCaixa) <= 0) {
-            Alert.alert('Atenção', 'Informe o Peso da Caixa.');
-            return;
-        }
-        finalQuantity = pesoTotalKilo;
-        finalUnit = 'kg'; 
-        finalPriceUnitario = precoPorKilo || null; 
-    }
-
-    const formData: ColheitaFormData = {
-      quantidade: finalQuantity,
-      unidade: finalUnit,
-      precoUnitario: finalPriceUnitario,
-      clienteId: selectedClienteId,
-      destino: destino || null,
-      metodoPagamento: metodoPagamento,
-      // AQUI: Pegamos o nome de quem está logado (Operador) para auditar
-      registradoPor: user.name || user.email, 
-      observacoes: null,
-    };
-
-    setLoading(true);
-    try {
-      await createColheita(formData, targetId, finalPlantioId, finalEstufaId);
-      
-      if (resetAfterSave) {
-          Alert.alert("Sucesso", "Registrado! Pronto para o próximo.");
-          setQuantidade('');
-      } else {
-          Alert.alert('Sucesso!', 'Venda registrada na conta ativa.'); 
-          navigation.goBack(); 
+  const handleSave = async (reset: boolean) => {
+      // CORREÇÃO: Verificação de segurança para o TypeScript
+      if (!user) {
+          Alert.alert("Erro", "Usuário não autenticado.");
+          return;
       }
-    } catch (error) {
-      Alert.alert('Erro', 'Não foi possível salvar.');
-    } finally {
-      setLoading(false);
-    }
+
+      const targetId = selectedTenantId || user.uid;
+      
+      if (!quantidade) {
+          Alert.alert("Erro", "Informe a quantidade");
+          return;
+      }
+
+      setLoading(true);
+      try {
+          const finalPlantio = isSelectionMode ? selectedPlantioId : paramPlantioId;
+          // Busca o ID da estufa correspondente ao plantio selecionado
+          const finalEstufa = isSelectionMode 
+            ? plantiosDisponiveis.find(p => p.id === selectedPlantioId)?.estufaId 
+            : paramEstufaId;
+          
+          if (!finalPlantio || !finalEstufa) {
+              Alert.alert("Erro", "Selecione um plantio válido.");
+              setLoading(false);
+              return;
+          }
+
+          const data: ColheitaFormData = {
+              quantidade: parseFloat(quantidade.replace(',', '.')),
+              unidade,
+              precoUnitario: parseFloat(preco.replace(',', '.')) || 0,
+              clienteId: selectedClienteId,
+              destino: destino || null,
+              metodoPagamento,
+              registradoPor: user.name, // Agora seguro pois verificamos if (!user) antes
+              observacoes: null
+          };
+
+          await createColheita(data, targetId, finalPlantio, finalEstufa);
+          
+          if (reset) {
+              setQuantidade('');
+              Alert.alert("Sucesso", "+1 Venda Registrada!");
+          } else {
+              navigation.goBack();
+          }
+      } catch (e) { 
+          Alert.alert("Erro ao salvar", "Verifique os dados e tente novamente."); 
+      } finally { 
+          setLoading(false); 
+      }
   };
 
-  if (loadingData) return <ActivityIndicator size="large" style={styles.centered} />;
+  if (loadingData) return <ActivityIndicator size="large" color={COLORS.primary} style={{flex:1}} />;
 
   return (
-    <KeyboardAvoidingView style={styles.fullContainer} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContent}>
-          
-          {isSelectionMode && (
-              <View style={[styles.card, styles.selectionCard]}>
-                  <View style={styles.titleRow}>
-                      <MaterialCommunityIcons name="sprout" size={20} color="#4CAF50" />
-                      <Text style={styles.cardTitle}>O que você está vendendo?</Text>
-                  </View>
-                  <View style={styles.pickerContainer}>
-                    <Picker
-                        selectedValue={selectedPlantioId}
-                        onValueChange={(itemValue) => setSelectedPlantioId(itemValue)}
-                    >
-                        {plantiosDisponiveis.map(p => (
-                            <Picker.Item 
-                                key={p.id} 
-                                label={`${p.cultura} (${estufasMap[p.estufaId] || '?'})`} 
-                                value={p.id} 
-                            />
-                        ))}
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        
+        {/* Seção 1: Origem e Cliente */}
+        <View style={styles.section}>
+            <Text style={styles.sectionHeader}>Informações Gerais</Text>
+            
+            {isSelectionMode && (
+                <View style={styles.inputGroup}>
+                    <Text style={styles.label}>O que foi vendido?</Text>
+                    <View style={styles.pickerWrapper}>
+                        <Picker selectedValue={selectedPlantioId} onValueChange={setSelectedPlantioId}>
+                            {plantiosDisponiveis.map(p => (
+                                <Picker.Item key={p.id} label={`${p.cultura} - ${estufasMap[p.estufaId] || '?'}`} value={p.id} style={styles.pickerItem}/>
+                            ))}
+                        </Picker>
+                    </View>
+                </View>
+            )}
+
+            <View style={styles.inputGroup}>
+                <Text style={styles.label}>Cliente</Text>
+                <View style={styles.pickerWrapper}>
+                    <Picker selectedValue={selectedClienteId} onValueChange={setSelectedClienteId}>
+                        <Picker.Item label="Venda Avulsa" value={null} />
+                        {clientesList.map(c => <Picker.Item key={c.id} label={c.nome} value={c.id} />)}
                     </Picker>
-                  </View>
-              </View>
-          )}
+                </View>
+            </View>
+        </View>
 
-          <View style={styles.card}>
-              <View style={styles.titleRow}>
-                  <MaterialCommunityIcons name="account-cash" size={20} color="#333" />
-                  <Text style={styles.cardTitle}>Para quem?</Text>
-              </View>
-              
-              <Text style={styles.label}>Selecione o Cliente</Text>
-              <View style={styles.pickerContainer}>
-                <Picker
-                    selectedValue={selectedClienteId}
-                    onValueChange={(itemValue) => setSelectedClienteId(itemValue)}
-                >
-                    <Picker.Item label="Venda Avulsa / Sem Cadastro" value={null} />
-                    {clientesList.map(c => (
-                        <Picker.Item key={c.id} label={c.nome} value={c.id} />
-                    ))}
-                </Picker>
-              </View>
-              
-              {!selectedClienteId && (
-                  <>
-                    <Text style={styles.label}>Destino (Texto Livre)</Text>
-                    <TextInput
-                        style={styles.input}
-                        value={destino}
-                        onChangeText={setDestino}
-                        placeholder="Ex: Consumidor final"
-                    />
-                  </>
-              )}
-          </View>
-
-          <View style={styles.card}>
-              <View style={styles.titleRow}>
-                  <MaterialCommunityIcons name="scale" size={20} color="#333" /> 
-                  <Text style={styles.cardTitle}>Detalhes da Venda</Text>
-              </View>
-
-              <Text style={styles.label}>Unidade de Venda</Text>
-              <View style={styles.selectorContainer}>
-                {(['kg', 'caixa', 'unidade', 'maço'] as UnidadeColheita[]).map(u => (
-                  <TouchableOpacity
-                    key={u}
-                    style={[styles.selectorButton, unidade === u && styles.selectorButtonSelected]}
-                    onPress={() => {
-                        setUnidade(u);
-                        if (u !== 'caixa') setPesoCaixa('');
-                    }}
-                  >
-                    <Text style={[styles.selectorButtonText, unidade === u && styles.selectorButtonTextSelected]}>
-                      {u.charAt(0).toUpperCase() + u.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <View style={styles.row}>
-                <View style={styles.col}>
-                    <Text style={styles.label}>Qtd. ({unidade})</Text>
-                    <TextInput
-                        style={styles.input}
-                        value={quantidade}
-                        onChangeText={setQuantidade}
-                        keyboardType="numeric"
-                        placeholder="Ex: 5"
+        {/* Seção 2: Valores */}
+        <View style={styles.section}>
+            <Text style={styles.sectionHeader}>Valores e Quantidades</Text>
+            
+            <View style={styles.row}>
+                <View style={[styles.inputGroup, { flex: 1, marginRight: 15 }]}>
+                    <Text style={styles.label}>Quantidade</Text>
+                    <TextInput 
+                        style={styles.input} 
+                        keyboardType="numeric" 
+                        value={quantidade} 
+                        onChangeText={setQuantidade} 
+                        placeholder="0"
                     />
                 </View>
-                <View style={styles.col}>
-                    <Text style={styles.label}>Preço Unit. (R$)</Text>
-                    <TextInput
-                        style={styles.input}
-                        value={preco}
-                        onChangeText={setPreco}
-                        keyboardType="numeric"
-                        placeholder="Ex: 40.00"
-                    />
+                <View style={[styles.inputGroup, { width: 100 }]}>
+                    <Text style={styles.label}>Unidade</Text>
+                    <View style={styles.pickerWrapper}>
+                        <Picker selectedValue={unidade} onValueChange={setUnidade}>
+                            <Picker.Item label="KG" value="kg" />
+                            <Picker.Item label="CX" value="caixa" />
+                            <Picker.Item label="UN" value="unidade" />
+                        </Picker>
+                    </View>
                 </View>
-              </View>
-              
-              {unidade === 'caixa' && (
-                <View>
-                    <Text style={styles.label}>Peso Médio da Caixa (kg)</Text>
-                    <TextInput
-                        style={styles.input}
-                        value={pesoCaixa}
-                        onChangeText={setPesoCaixa}
-                        keyboardType="numeric"
-                        placeholder="Para baixar estoque em KG"
-                    />
-                </View>
-              )}
+            </View>
 
-              <Text style={styles.label}>Método de Pagamento</Text>
-              <View style={styles.pickerContainer}>
-                <Picker
-                    selectedValue={metodoPagamento}
-                    onValueChange={(itemValue) => setMetodoPagamento(itemValue)}
-                >
+            <View style={styles.inputGroup}>
+                <Text style={styles.label}>Preço Unitário (R$)</Text>
+                <TextInput 
+                    style={styles.input} 
+                    keyboardType="numeric" 
+                    value={preco} 
+                    onChangeText={setPreco} 
+                    placeholder="0,00"
+                />
+            </View>
+
+            <View style={styles.totalContainer}>
+                <Text style={styles.totalLabel}>TOTAL ESTIMADO</Text>
+                <Text style={styles.totalValue}>R$ {valorTotal.toFixed(2)}</Text>
+            </View>
+        </View>
+
+        {/* Seção 3: Pagamento */}
+        <View style={styles.section}>
+            <Text style={styles.sectionHeader}>Pagamento</Text>
+            <View style={styles.pickerWrapper}>
+                <Picker selectedValue={metodoPagamento} onValueChange={setMetodoPagamento}>
                     <Picker.Item label="Pix" value="pix" />
                     <Picker.Item label="Dinheiro" value="dinheiro" />
-                    <Picker.Item label="A Prazo / Fiado" value="prazo" />
-                    <Picker.Item label="Boleto" value="boleto" />
                     <Picker.Item label="Cartão" value="cartao" />
-                    <Picker.Item label="Outro" value="outro" />
+                    <Picker.Item label="Fiado / Prazo" value="prazo" />
                 </Picker>
-              </View>
+            </View>
+        </View>
 
-              <View style={styles.totalBox}>
-                  <Text style={styles.totalLabel}>Total a Receber: R$ {valorTotal.toFixed(2)}</Text>
-              </View>
-          </View>
+        {/* Botões de Ação */}
+        <View style={styles.footerButtons}>
+            <TouchableOpacity 
+                style={[styles.button, styles.buttonOutline]} 
+                onPress={() => handleSave(false)}
+                disabled={loading}
+            >
+                <Text style={[styles.buttonText, {color: COLORS.textDark}]}>Salvar e Sair</Text>
+            </TouchableOpacity>
 
-          <View style={styles.actionButtonsContainer}>
-              <TouchableOpacity 
-                  style={[styles.saveButton, styles.saveExitButton]} 
-                  onPress={() => handleSave(false)} 
-                  disabled={loading}
-              >
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Salvar e Sair</Text>}
-              </TouchableOpacity>
+            <TouchableOpacity 
+                style={[styles.button, styles.buttonPrimary]} 
+                onPress={() => handleSave(true)}
+                disabled={loading}
+            >
+                {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Salvar e Novo (+)</Text>}
+            </TouchableOpacity>
+        </View>
 
-              <TouchableOpacity 
-                  style={[styles.saveButton, styles.saveNextButton]} 
-                  onPress={() => handleSave(true)} 
-                  disabled={loading}
-              >
-                  <Text style={styles.saveButtonText}>Salvar e +1</Text>
-              </TouchableOpacity>
-          </View>
-          
-        </ScrollView>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
-  fullContainer: { flex: 1, backgroundColor: '#FAFAFA' },
-  scrollContainer: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 60 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  card: { backgroundColor: '#fff', padding: 20, borderRadius: 12, marginBottom: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3, borderWidth: 1, borderColor: '#eee' },
-  selectionCard: { borderLeftWidth: 5, borderLeftColor: '#4CAF50' },
-  titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-  cardTitle: { fontSize: 18, fontWeight: 'bold', marginLeft: 8, color: '#333' },
-  label: { fontSize: 14, marginBottom: 4, fontWeight: 'bold', color: '#555' },
-  input: { borderWidth: 1, borderColor: '#ccc', padding: 12, borderRadius: 8, marginBottom: 16, backgroundColor: '#fff', fontSize: 18 },
-  pickerContainer: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, marginBottom: 16 },
-  row: { flexDirection: 'row', justifyContent: 'space-between' },
-  col: { width: '48%' },
-  selectorContainer: { flexDirection: 'row', marginBottom: 15, justifyContent: 'space-between' },
-  selectorButton: { flex: 1, paddingVertical: 10, borderWidth: 1, borderColor: '#4CAF50', borderRadius: 8, alignItems: 'center', marginHorizontal: 2 },
-  selectorButtonSelected: { backgroundColor: '#4CAF50' },
-  selectorButtonText: { color: '#4CAF50', fontWeight: 'bold', fontSize: 12 },
-  selectorButtonTextSelected: { color: '#fff' },
-  totalBox: { alignItems: 'flex-end', marginTop: 5, padding: 10, backgroundColor: '#E8F5E9', borderRadius: 8 },
-  totalLabel: { fontSize: 18, fontWeight: 'bold', color: '#006400' },
-  actionButtonsContainer: { flexDirection: 'row', justifyContent: 'space-between' },
-  saveButton: { flex: 1, padding: 15, borderRadius: 8, alignItems: 'center', justifyContent: 'center', minHeight: 50 },
-  saveExitButton: { backgroundColor: '#757575', marginRight: 10 },
-  saveNextButton: { backgroundColor: '#4CAF50' },
-  saveButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  screen: { flex: 1, backgroundColor: COLORS.background },
+  scrollContent: { padding: 20 },
+  
+  section: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  sectionHeader: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.primary,
+    marginBottom: 15,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  
+  inputGroup: { marginBottom: 15 },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textDark,
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: COLORS.inputBg,
+    borderWidth: 1,
+    borderColor: COLORS.inputBorder,
+    borderRadius: 10,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: COLORS.textDark,
+  },
+  pickerWrapper: {
+    backgroundColor: COLORS.inputBg,
+    borderWidth: 1,
+    borderColor: COLORS.inputBorder,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  pickerItem: { fontSize: 14 },
+  
+  row: { flexDirection: 'row' },
+  
+  totalContainer: {
+    backgroundColor: '#ECFDF5',
+    padding: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+  },
+  totalLabel: { fontSize: 12, color: COLORS.primary, fontWeight: '700' },
+  totalValue: { fontSize: 24, color: COLORS.primary, fontWeight: '800', marginTop: 4 },
+
+  footerButtons: { flexDirection: 'row', gap: 15, paddingBottom: 20 },
+  button: {
+    flex: 1,
+    height: 56,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonPrimary: { backgroundColor: COLORS.primary, shadowColor: COLORS.primary, shadowOpacity: 0.3, elevation: 4 },
+  buttonOutline: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#D1D5DB' },
+  buttonText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
 });
 
 export default ColheitaFormScreen;

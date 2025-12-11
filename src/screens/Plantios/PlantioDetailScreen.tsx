@@ -1,6 +1,6 @@
 // src/screens/Plantios/PlantioDetailScreen.tsx
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { getPlantioById, updatePlantioStatus } from '../../services/plantioService';
 import { listColheitasByPlantio } from '../../services/colheitaService';
@@ -9,16 +9,25 @@ import { calculateRentabilidadeByPlantio } from '../../services/rentabilidadeSer
 import { getEstufaById } from '../../services/estufaService';
 import { Plantio, Colheita, Aplicacao } from '../../types/domain';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Card from '../../components/Card';
+
+// --- TEMA ---
+const COLORS = {
+  background: '#F3F4F6',
+  card: '#FFFFFF',
+  primary: '#059669',
+  textDark: '#111827',
+  textGray: '#6B7280',
+  danger: '#EF4444',
+  success: '#10B981',
+  blue: '#3B82F6'
+};
 
 const PlantioDetailScreen = ({ route, navigation }: any) => {
-  // 1. PEGAR 'isOwner'
   const { user, selectedTenantId, isOwner } = useAuth(); 
   const { plantioId } = route.params;
 
   const [plantio, setPlantio] = useState<Plantio | null>(null);
   const [colheitas, setColheitas] = useState<Colheita[]>([]);
-  const [aplicacoes, setAplicacoes] = useState<Aplicacao[]>([]);
   const [financeiro, setFinanceiro] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -31,23 +40,20 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
       const p = await getPlantioById(plantioId);
       if (p) {
         setPlantio(p);
-        
         const estufa = await getEstufaById(p.estufaId);
         const area = estufa?.areaM2 || 0;
 
-        const [listaColheitas, listaAplicacoes, rentabilidade] = await Promise.all([
+        const [listaColheitas, , rentabilidade] = await Promise.all([
             listColheitasByPlantio(targetId, plantioId),
-            listAplicacoesByPlantio(targetId, plantioId),
+            listAplicacoesByPlantio(targetId, plantioId), // (Pode usar depois se quiser listar apps)
             calculateRentabilidadeByPlantio(targetId, plantioId, area)
         ]);
 
         setColheitas(listaColheitas);
-        setAplicacoes(listaAplicacoes);
         setFinanceiro(rentabilidade);
       }
     } catch (error) {
       console.error(error);
-      Alert.alert("Erro", "Falha ao carregar detalhes.");
     } finally {
       setLoading(false);
     }
@@ -58,95 +64,96 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
   }, [plantioId, selectedTenantId]);
 
   const handleFinalizar = () => {
-    Alert.alert(
-        "Finalizar Ciclo", 
-        "Deseja encerrar este plantio? Isso arquivará o histórico.",
-        [
-            { text: "Cancelar", style: "cancel" },
-            { text: "Finalizar", onPress: async () => {
-                await updatePlantioStatus(plantioId, 'finalizado');
-                navigation.goBack();
-            }}
-        ]
-    );
+    Alert.alert("Finalizar", "Deseja encerrar este ciclo?", [
+        { text: "Cancelar", style: "cancel" },
+        { text: "Sim, Finalizar", onPress: async () => {
+            await updatePlantioStatus(plantioId, 'finalizado');
+            navigation.goBack();
+        }}
+    ]);
   };
 
-  if (loading) return <ActivityIndicator size="large" style={styles.centered} />;
-  if (!plantio) return <Text style={styles.errorText}>Plantio não encontrado.</Text>;
+  if (loading) return <ActivityIndicator size="large" style={{flex:1}} color={COLORS.primary} />;
+  if (!plantio) return <Text>Erro</Text>;
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} />}>
+      
+      {/* HEADER SIMPLES */}
       <View style={styles.header}>
-        <Text style={styles.title}>{plantio.cultura} {plantio.variedade && `- ${plantio.variedade}`}</Text>
-        <View style={[styles.badge, plantio.status === 'finalizado' ? styles.bgGray : styles.bgGreen]}>
-            <Text style={styles.badgeText}>{plantio.status.toUpperCase().replace('_', ' ')}</Text>
+        <View>
+            <Text style={styles.title}>{plantio.cultura}</Text>
+            <Text style={styles.subTitle}>{plantio.variedade || 'Variedade Comum'}</Text>
+        </View>
+        <View style={[styles.badge, plantio.status === 'finalizado' ? {backgroundColor:'#E5E7EB'} : {backgroundColor:'#D1FAE5'}]}>
+            <Text style={[styles.badgeText, plantio.status === 'finalizado' ? {color:'#6B7280'} : {color:'#059669'}]}>
+                {plantio.status === 'finalizado' ? 'Finalizado' : 'Em Andamento'}
+            </Text>
         </View>
       </View>
 
+      {/* CARD FINANCEIRO DARK MODE */}
       {financeiro && (
-          <Card style={styles.financeCard}>
+          <View style={styles.financeCard}>
               <View style={styles.financeHeader}>
-                  <MaterialCommunityIcons name="finance" size={24} color="#fff" />
-                  <Text style={styles.financeTitle}>Resultados Financeiros</Text>
+                  <Text style={styles.financeTitle}>Lucro Bruto do Ciclo</Text>
+                  <MaterialCommunityIcons name="trending-up" size={24} color="#FFF" />
               </View>
+              
+              <Text style={[styles.lucroValue, { color: financeiro.lucroBruto >= 0 ? '#FFF' : '#FCA5A5' }]}>
+                  R$ {financeiro.lucroBruto.toFixed(2)}
+              </Text>
+
+              <View style={styles.financeDivider} />
               
               <View style={styles.financeRow}>
-                  <View>
-                      <Text style={styles.financeLabel}>Receita Total</Text>
-                      <Text style={styles.financeValueGreen}>+ R$ {financeiro.receitaTotal.toFixed(2)}</Text>
-                  </View>
-                  <View>
-                      <Text style={styles.financeLabel}>Custos Totais</Text>
-                      <Text style={styles.financeValueRed}>- R$ {financeiro.custoTotal.toFixed(2)}</Text>
-                  </View>
+                  <Text style={styles.financeLabel}>Receita Vendas</Text>
+                  <Text style={[styles.financeNum, {color: '#6EE7B7'}]}>+ R$ {financeiro.receitaTotal.toFixed(2)}</Text>
               </View>
-              
-              <View style={styles.divider} />
-              
-              <View style={styles.financeFooter}>
-                  <Text style={styles.lucroLabel}>Lucro Bruto:</Text>
-                  <Text style={[styles.lucroValue, financeiro.lucroBruto >= 0 ? styles.textGreen : styles.textRed]}>
-                      R$ {financeiro.lucroBruto.toFixed(2)}
-                  </Text>
+              <View style={styles.financeRow}>
+                  <Text style={styles.financeLabel}>Custos Totais</Text>
+                  <Text style={[styles.financeNum, {color: '#FCA5A5'}]}>- R$ {financeiro.custoTotal.toFixed(2)}</Text>
               </View>
-          </Card>
+          </View>
       )}
 
-      {/* AÇÕES (Visíveis para todos) */}
-      <View style={styles.actionsRow}>
+      {/* BOTÕES DE AÇÃO */}
+      <View style={styles.gridBtns}>
           <TouchableOpacity 
-            style={styles.actionButton}
+            style={[styles.btnAction, {backgroundColor: COLORS.card, borderColor: COLORS.primary}]}
             onPress={() => navigation.navigate('ColheitaForm', { plantioId: plantio.id, estufaId: plantio.estufaId })}
           >
-              <MaterialCommunityIcons name="basket-plus" size={24} color="#fff" />
-              <Text style={styles.actionText}>Nova Colheita</Text>
+              <MaterialCommunityIcons name="basket-plus" size={24} color={COLORS.primary} />
+              <Text style={[styles.btnText, {color: COLORS.primary}]}>Nova Venda</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.actionButton, styles.btnBlue]}
+            style={[styles.btnAction, {backgroundColor: COLORS.card, borderColor: COLORS.blue}]}
             onPress={() => navigation.navigate('AplicacaoForm', { plantioId: plantio.id, estufaId: plantio.estufaId })}
           >
-              <MaterialCommunityIcons name="flask-plus" size={24} color="#fff" />
-              <Text style={styles.actionText}>Nova Aplicação</Text>
+              <MaterialCommunityIcons name="flask-plus" size={24} color={COLORS.blue} />
+              <Text style={[styles.btnText, {color: COLORS.blue}]}>Nova Aplicação</Text>
           </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionTitle}>Últimas Colheitas</Text>
-      {colheitas.length === 0 ? (
-          <Text style={styles.emptyText}>Nenhuma colheita registrada.</Text>
-      ) : (
-          colheitas.slice(0, 5).map(c => (
-              <View key={c.id} style={styles.listItem}>
-                  <Text style={styles.itemText}>{c.dataColheita.toDate().toLocaleDateString()} - {c.quantidade} {c.unidade}</Text>
-                  <Text style={styles.itemValue}>R$ {(c.quantidade * (c.precoUnitario || 0)).toFixed(2)}</Text>
+      {/* LISTA RECENTE */}
+      <Text style={styles.sectionTitle}>Últimas Vendas</Text>
+      {colheitas.slice(0, 5).map(c => (
+          <View key={c.id} style={styles.listItem}>
+              <View style={styles.listIcon}>
+                  <MaterialCommunityIcons name="cash" size={20} color={COLORS.primary} />
               </View>
-          ))
-      )}
+              <View style={{flex:1}}>
+                  <Text style={styles.listMain}>{c.quantidade} {c.unidade}</Text>
+                  <Text style={styles.listSub}>{c.dataColheita.toDate().toLocaleDateString()}</Text>
+              </View>
+              <Text style={styles.listValue}>R$ {(c.quantidade * (c.precoUnitario || 0)).toFixed(2)}</Text>
+          </View>
+      ))}
 
-      {/* 2. TRAVA DE SEGURANÇA: Só Dono pode finalizar */}
       {isOwner && plantio.status !== 'finalizado' && (
-          <TouchableOpacity style={styles.finishButton} onPress={handleFinalizar}>
-              <Text style={styles.finishText}>Encerrar Ciclo / Finalizar Plantio</Text>
+          <TouchableOpacity style={styles.dangerBtn} onPress={handleFinalizar}>
+              <Text style={styles.dangerText}>Finalizar este Ciclo</Text>
           </TouchableOpacity>
       )}
       
@@ -156,39 +163,36 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FAFAFA', padding: 16 },
-  centered: { flex: 1, justifyContent: 'center' },
-  header: { marginBottom: 20 },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#333' },
-  badge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginTop: 5 },
-  bgGreen: { backgroundColor: '#4CAF50' },
-  bgGray: { backgroundColor: '#999' },
-  badgeText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
-  financeCard: { backgroundColor: '#333', padding: 15, borderRadius: 10, marginBottom: 20 },
-  financeHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-  financeTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 10 },
-  financeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  financeLabel: { color: '#ccc', fontSize: 12 },
-  financeValueGreen: { color: '#4CAF50', fontSize: 16, fontWeight: 'bold' },
-  financeValueRed: { color: '#FF5252', fontSize: 16, fontWeight: 'bold' },
-  divider: { height: 1, backgroundColor: '#555', marginVertical: 10 },
-  financeFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  lucroLabel: { color: '#fff', fontSize: 16 },
-  lucroValue: { fontSize: 22, fontWeight: 'bold' },
-  textGreen: { color: '#4CAF50' },
-  textRed: { color: '#FF5252' },
-  actionsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
-  actionButton: { flex: 1, backgroundColor: '#FF9800', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: 8, marginRight: 10 },
-  btnBlue: { backgroundColor: '#2196F3', marginRight: 0 },
-  actionText: { color: '#fff', fontWeight: 'bold', marginLeft: 5 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 10, marginTop: 10 },
-  listItem: { flexDirection: 'row', justifyContent: 'space-between', padding: 12, backgroundColor: '#fff', borderRadius: 8, marginBottom: 8, elevation: 1 },
-  itemText: { color: '#333' },
-  itemValue: { fontWeight: 'bold', color: '#006400' },
-  emptyText: { color: '#888', fontStyle: 'italic' },
-  finishButton: { marginTop: 30, padding: 15, borderColor: '#D32F2F', borderWidth: 1, borderRadius: 8, alignItems: 'center' },
-  finishText: { color: '#D32F2F', fontWeight: 'bold' },
-  errorText: { textAlign: 'center', marginTop: 50, fontSize: 18, color: '#D32F2F' }
+  container: { flex: 1, backgroundColor: COLORS.background, padding: 20 },
+  
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
+  title: { fontSize: 24, fontWeight: '800', color: COLORS.textDark },
+  subTitle: { fontSize: 16, color: COLORS.textGray },
+  badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  badgeText: { fontSize: 12, fontWeight: '700' },
+
+  financeCard: { backgroundColor: '#1F2937', padding: 20, borderRadius: 16, marginBottom: 25, shadowColor: "#000", shadowOffset: {width:0, height:4}, shadowOpacity: 0.2, elevation: 5 },
+  financeHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  financeTitle: { color: '#9CA3AF', fontSize: 14, fontWeight: '600', textTransform: 'uppercase' },
+  lucroValue: { color: '#FFF', fontSize: 32, fontWeight: '800' },
+  financeDivider: { height: 1, backgroundColor: '#374151', marginVertical: 15 },
+  financeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
+  financeLabel: { color: '#D1D5DB', fontSize: 14 },
+  financeNum: { fontWeight: '700', fontSize: 14 },
+
+  gridBtns: { flexDirection: 'row', gap: 15, marginBottom: 25 },
+  btnAction: { flex: 1, height: 80, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
+  btnText: { fontWeight: '700', marginTop: 8 },
+
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textDark, marginBottom: 15 },
+  listItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 15, borderRadius: 12, marginBottom: 10 },
+  listIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  listMain: { fontWeight: '700', color: COLORS.textDark },
+  listSub: { fontSize: 12, color: COLORS.textGray },
+  listValue: { fontWeight: '700', color: COLORS.primary },
+
+  dangerBtn: { marginTop: 20, padding: 15, borderWidth: 1, borderColor: COLORS.danger, borderRadius: 12, alignItems: 'center' },
+  dangerText: { color: COLORS.danger, fontWeight: '700' }
 });
 
 export default PlantioDetailScreen;

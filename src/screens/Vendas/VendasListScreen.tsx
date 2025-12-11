@@ -1,7 +1,7 @@
 // src/screens/Vendas/VendasListScreen.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Alert 
+  View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Alert, RefreshControl 
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker'; 
 import { useAuth } from '../../hooks/useAuth';
@@ -12,7 +12,20 @@ import { listClientes } from '../../services/clienteService';
 import { Colheita, Estufa } from '../../types/domain';
 import { useIsFocused } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Card from '../../components/Card';
+import { shareVendaReceipt } from '../../services/receiptService';
+
+// --- PALETA DE CORES MODERNA ---
+const COLORS = {
+  background: '#F8FAFC', // Cinza azulado bem claro (fundo premium)
+  card: '#FFFFFF',
+  primary: '#10B981',    // Verde vibrante
+  textDark: '#1E293B',   // Azul escuro quase preto
+  textGray: '#64748B',   // Cinza médio
+  textLight: '#94A3B8',  // Cinza claro
+  danger: '#EF4444',
+  blue: '#3B82F6',
+  border: '#E2E8F0'
+};
 
 const VendasListScreen = ({ navigation }: any) => {
   const { user, selectedTenantId, isOwner } = useAuth();
@@ -57,7 +70,7 @@ const VendasListScreen = ({ navigation }: any) => {
       setMapaClientes(mapC);
 
     } catch (error) {
-      Alert.alert("Erro", "Não foi possível carregar os dados.");
+      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -68,16 +81,29 @@ const VendasListScreen = ({ navigation }: any) => {
   }, [isFocused, selectedTenantId]);
 
   const handleDelete = (item: Colheita) => {
-    Alert.alert(
-        "Excluir", "Remover este lançamento?",
-        [
-            { text: "Cancelar", style: "cancel" },
-            { text: "Excluir", style: "destructive", onPress: async () => {
-                    await deleteColheita(item.id);
-                    carregarDados();
-            }}
-        ]
-    );
+    Alert.alert("Excluir Venda", "Tem certeza? Isso afetará o caixa.", [
+        { text: "Cancelar", style: "cancel" },
+        { text: "Excluir", style: "destructive", onPress: async () => {
+            await deleteColheita(item.id);
+            carregarDados();
+        }}
+    ]);
+  };
+
+  const handleReceipt = async (item: Colheita) => {
+      try {
+          const nomeEstufa = mapaEstufas[item.estufaId] || 'Estufa';
+          const nomeProduto = mapaCulturas[item.plantioId] || 'Produto';
+          let nomeCliente = item.destino || 'Avulso';
+          if (item.clienteId && mapaClientes[item.clienteId]) {
+              nomeCliente = mapaClientes[item.clienteId];
+          }
+          const nomeProdutor = user?.name || "Produtor Rural";
+
+          await shareVendaReceipt({ venda: item, nomeProdutor, nomeCliente, nomeProduto, nomeEstufa });
+      } catch (e) {
+          Alert.alert("Erro", "Falha ao gerar recibo.");
+      }
   };
 
   const vendasFiltradas = useMemo(() => {
@@ -91,140 +117,280 @@ const VendasListScreen = ({ navigation }: any) => {
     return total;
   }, [vendasFiltradas]);
 
-  const getPaymentIcon = (method: string | null) => {
+  const getPaymentIconInfo = (method: string | null) => {
       switch(method) {
-          case 'pix': return 'qrcode';
-          case 'dinheiro': return 'cash';
-          case 'prazo': return 'clock-outline';
-          case 'boleto': return 'barcode';
-          case 'cartao': return 'credit-card';
-          default: return 'help-circle-outline';
+          case 'pix': return { icon: 'qrcode', color: '#10B981', label: 'Pix' };
+          case 'dinheiro': return { icon: 'cash', color: '#10B981', label: 'Dinheiro' };
+          case 'prazo': return { icon: 'clock-outline', color: '#F59E0B', label: 'A Prazo' }; // Laranja
+          case 'boleto': return { icon: 'barcode', color: '#6366F1', label: 'Boleto' };
+          case 'cartao': return { icon: 'credit-card', color: '#3B82F6', label: 'Cartão' };
+          default: return { icon: 'help-circle-outline', color: '#94A3B8', label: 'Outro' };
       }
-  }
+  };
 
-  if (loading) return <ActivityIndicator size="large" style={styles.centered} />;
+  // HEADER COMPONENTE
+  const HeaderComponent = () => (
+    <View style={styles.headerContainer}>
+      <View style={styles.totalCard}>
+        <Text style={styles.totalLabel}>Faturamento Total</Text>
+        <Text style={styles.totalValue}>R$ {resumoFinanceiro.toFixed(2)}</Text>
+        <Text style={styles.totalSub}>
+            {vendasFiltradas.length} vendas registradas
+        </Text>
+      </View>
+
+      {/* FILTRO MAIS LIMPO */}
+      <View style={styles.filterRow}>
+        <MaterialCommunityIcons name="filter-variant" size={20} color={COLORS.textGray} />
+        <View style={styles.pickerBox}>
+            <Picker
+                selectedValue={filtroEstufaId}
+                onValueChange={setFiltroEstufaId}
+                style={styles.picker}
+                dropdownIconColor={COLORS.textDark}
+            >
+                <Picker.Item label="Todas as Estufas" value="todas" style={{fontSize: 14}} />
+                {estufas.map(e => <Picker.Item key={e.id} label={e.nome} value={e.id} style={{fontSize: 14}} />)}
+            </Picker>
+        </View>
+      </View>
+    </View>
+  );
 
   return (
     <View style={styles.container}>
-      <Card style={styles.summaryCard}>
-        <View style={styles.headerRow}>
-            <MaterialCommunityIcons name="cash-multiple" size={28} color="#fff" />
-            <Text style={styles.summaryTitle}>
-                {filtroEstufaId === 'todas' ? 'Total Geral' : 'Total Estufa'}
-            </Text>
-        </View>
-        <Text style={styles.summaryValue}>R$ {resumoFinanceiro.toFixed(2)}</Text>
-      </Card>
-
-      <View style={styles.filterContainer}>
-          <Text style={styles.filterLabel}>Filtrar:</Text>
-          <View style={styles.pickerWrapper}>
-            <Picker
-                selectedValue={filtroEstufaId}
-                onValueChange={(itemValue) => setFiltroEstufaId(itemValue)}
-                style={styles.picker}
-                dropdownIconColor="#333"
-            >
-                <Picker.Item label="Todas as Estufas" value="todas" style={{fontSize: 16}} />
-                {estufas.map(estufa => (
-                    <Picker.Item key={estufa.id} label={estufa.nome} value={estufa.id} style={{fontSize: 16}} />
-                ))}
-            </Picker>
-          </View>
-      </View>
-
+      
       <FlatList
         data={vendasFiltradas}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 80 }}
-        ListEmptyComponent={<Text style={styles.emptyText}>Nada encontrado nesta conta.</Text>}
+        contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={carregarDados} colors={[COLORS.primary]} />}
+        ListHeaderComponent={HeaderComponent}
+        ListEmptyComponent={!loading ? <Text style={styles.emptyText}>Nenhuma venda encontrada.</Text> : null}
         renderItem={({ item }) => {
             const nomeEstufa = mapaEstufas[item.estufaId] || 'Estufa ?';
-            const nomeCultura = mapaCulturas[item.plantioId] || 'Planta ?';
+            const nomeCultura = mapaCulturas[item.plantioId] || 'Produto ?';
+            let destinoTexto = item.destino || 'Cliente Avulso';
+            if (item.clienteId && mapaClientes[item.clienteId]) destinoTexto = mapaClientes[item.clienteId];
             
-            let destinoTexto = item.destino || '';
-            if (item.clienteId && mapaClientes[item.clienteId]) {
-                destinoTexto = mapaClientes[item.clienteId];
-            }
+            const payInfo = getPaymentIconInfo(item.metodoPagamento);
+            const totalItem = (item.quantidade * (item.precoUnitario || 0));
 
             return (
-                <View style={styles.saleItem}>
-                    <View style={styles.itemOriginHeader}>
-                        <View style={styles.rowCenter}>
-                            <MaterialCommunityIcons name="greenhouse" size={12} color="#777" />
-                            <Text style={styles.originText}> {nomeEstufa} • {nomeCultura}</Text>
+                <View style={styles.card}>
+                    {/* TOPO DO CARD: DATA E STATUS */}
+                    <View style={styles.cardTop}>
+                        <Text style={styles.dateText}>
+                            {item.dataColheita.toDate().toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})}
+                        </Text>
+                        <View style={[styles.badge, { backgroundColor: payInfo.color + '20' }]}>
+                            <MaterialCommunityIcons name={payInfo.icon as any} size={12} color={payInfo.color} />
+                            <Text style={[styles.badgeText, { color: payInfo.color }]}> {payInfo.label}</Text>
                         </View>
-                        <Text style={styles.dateText}>{item.dataColheita.toDate().toLocaleDateString('pt-BR')}</Text>
                     </View>
-                    <View style={styles.itemContent}>
-                        <View style={{ flex: 1 }}>
-                            <View style={styles.rowCenter}>
-                                <MaterialCommunityIcons name="account" size={14} color="#333" />
-                                <Text style={styles.clientText}> {destinoTexto || 'Avulso'}</Text>
-                            </View>
-                            <Text style={styles.productText}>
-                                {item.quantidade} {item.unidade}
+
+                    {/* MIOLO: PRODUTO E CLIENTE */}
+                    <View style={styles.cardMain}>
+                        <View style={styles.iconCircle}>
+                            <MaterialCommunityIcons name="basket" size={24} color={COLORS.primary} />
+                        </View>
+                        <View style={{flex: 1, paddingLeft: 12}}>
+                            <Text style={styles.productTitle}>{nomeCultura}</Text>
+                            <Text style={styles.clientName}>
+                                <MaterialCommunityIcons name="account" size={12} /> {destinoTexto}
                             </Text>
-                            <View style={[styles.rowCenter, {marginTop: 4}]}>
-                                <MaterialCommunityIcons name={getPaymentIcon(item.metodoPagamento) as any} size={12} color="#888" />
-                                <Text style={styles.paymentText}> {item.metodoPagamento ? item.metodoPagamento.toUpperCase() : 'N/A'}</Text>
-                            </View>
-                            {/* MOSTRAR QUEM REGISTROU - NOVO */}
-                            {item.registradoPor && (
-                                <Text style={styles.registeredByText}>Vendido por: {item.registradoPor}</Text>
-                            )}
+                            <Text style={styles.originText}>{nomeEstufa}</Text>
                         </View>
-                        <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={styles.priceText}>R$ {(item.quantidade * (item.precoUnitario || 0)).toFixed(2)}</Text>
-                            
-                            {isOwner && (
-                                <TouchableOpacity onPress={() => handleDelete(item)}>
-                                    <Text style={styles.deleteButtonText}>Excluir</Text>
-                                </TouchableOpacity>
-                            )}
+                        <View style={{alignItems: 'flex-end'}}>
+                            <Text style={styles.priceValue}>R$ {totalItem.toFixed(2)}</Text>
+                            <Text style={styles.quantityText}>{item.quantidade} {item.unidade}</Text>
                         </View>
+                    </View>
+
+                    {/* RODAPÉ: AÇÕES */}
+                    <View style={styles.cardActions}>
+                        <TouchableOpacity onPress={() => handleReceipt(item)} style={styles.actionBtn}>
+                            <MaterialCommunityIcons name="share-variant-outline" size={18} color={COLORS.blue} />
+                            <Text style={[styles.actionText, {color: COLORS.blue}]}>Recibo</Text>
+                        </TouchableOpacity>
+
+                        {isOwner && (
+                            <TouchableOpacity onPress={() => handleDelete(item)} style={styles.actionBtn}>
+                                <MaterialCommunityIcons name="trash-can-outline" size={18} color={COLORS.danger} />
+                                <Text style={[styles.actionText, {color: COLORS.danger}]}>Excluir</Text>
+                            </TouchableOpacity>
+                        )}
                     </View>
                 </View>
             );
         }}
       />
 
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => navigation.navigate('ColheitaForm')} 
-      >
+      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('ColheitaForm')}>
         <MaterialCommunityIcons name="plus" size={32} color="#fff" />
       </TouchableOpacity>
-
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FAFAFA', padding: 16 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  summaryCard: { backgroundColor: '#4CAF50', alignItems: 'center', paddingVertical: 15, marginBottom: 15, borderWidth: 0 },
-  headerRow: { flexDirection: 'row', alignItems: 'center' },
-  rowCenter: { flexDirection: 'row', alignItems: 'center' },
-  summaryTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 8 },
-  summaryValue: { color: '#fff', fontSize: 28, fontWeight: 'bold', marginTop: 5 },
-  filterContainer: { marginBottom: 10, flexDirection: 'row', alignItems: 'center' },
-  filterLabel: { fontSize: 14, fontWeight: 'bold', marginRight: 10 },
-  pickerWrapper: { flex: 1, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#ddd', height: 55, justifyContent: 'center' },
-  picker: { height: 55, width: '100%', color: '#333' },
-  saleItem: { backgroundColor: '#fff', borderRadius: 8, marginBottom: 10, borderLeftWidth: 4, borderLeftColor: '#4CAF50', elevation: 2 },
-  itemOriginHeader: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#f5f5f5', padding: 8, borderTopRightRadius: 8 },
-  originText: { fontSize: 11, fontWeight: 'bold', color: '#777' },
-  dateText: { fontSize: 11, color: '#888' },
-  itemContent: { padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  clientText: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-  productText: { fontSize: 14, color: '#555', marginTop: 2 },
-  paymentText: { fontSize: 10, color: '#888', fontWeight: 'bold' },
-  registeredByText: { fontSize: 10, color: '#AAA', fontStyle: 'italic', marginTop: 2 },
-  priceText: { fontSize: 18, fontWeight: 'bold', color: '#006400' },
-  deleteButtonText: { fontSize: 12, color: '#D32F2F', marginTop: 5, textDecorationLine: 'underline' },
-  emptyText: { textAlign: 'center', marginTop: 30, color: '#888', fontSize: 16 },
-  fab: { position: 'absolute', width: 60, height: 60, alignItems: 'center', justifyContent: 'center', right: 20, bottom: 20, backgroundColor: '#FF9800', borderRadius: 30, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4 },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  
+  // Header
+  headerContainer: {
+      marginBottom: 10,
+  },
+  totalCard: {
+      backgroundColor: COLORS.primary,
+      padding: 20,
+      borderBottomLeftRadius: 24,
+      borderBottomRightRadius: 24,
+      alignItems: 'center',
+      shadowColor: COLORS.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.2,
+      elevation: 5,
+      marginBottom: 15,
+  },
+  totalLabel: { color: '#D1FAE5', fontSize: 14, fontWeight: '600', textTransform: 'uppercase' },
+  totalValue: { color: '#FFFFFF', fontSize: 36, fontWeight: 'bold', marginVertical: 5 },
+  totalSub: { color: '#A7F3D0', fontSize: 13 },
+
+  // Filtro
+  filterRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      marginBottom: 10,
+  },
+  pickerBox: {
+      flex: 1,
+      backgroundColor: '#FFF',
+      borderRadius: 10,
+      marginLeft: 10,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      height: 45,
+      justifyContent: 'center',
+  },
+  picker: { height: 45, width: '100%', color: COLORS.textDark },
+
+  // Lista
+  listContent: { paddingBottom: 100 },
+  emptyText: { textAlign: 'center', marginTop: 50, color: COLORS.textGray, fontSize: 16 },
+
+  // CARD DE VENDA (Novo Design)
+  card: {
+    backgroundColor: COLORS.card,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  cardTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 12,
+  },
+  dateText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: COLORS.textGray,
+      textTransform: 'uppercase',
+  },
+  badge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 12,
+  },
+  badgeText: {
+      fontSize: 10,
+      fontWeight: '700',
+      marginLeft: 4,
+  },
+  
+  cardMain: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingBottom: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: '#F1F5F9',
+  },
+  iconCircle: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: '#ECFDF5',
+      alignItems: 'center',
+      justifyContent: 'center',
+  },
+  productTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: COLORS.textDark,
+  },
+  clientName: {
+      fontSize: 13,
+      color: COLORS.textGray,
+      marginTop: 2,
+  },
+  originText: {
+      fontSize: 11,
+      color: COLORS.textLight,
+      marginTop: 2,
+  },
+  priceValue: {
+      fontSize: 16,
+      fontWeight: '800',
+      color: COLORS.primary,
+  },
+  quantityText: {
+      fontSize: 12,
+      color: COLORS.textGray,
+      marginTop: 2,
+  },
+
+  cardActions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      paddingTop: 12,
+      gap: 20,
+  },
+  actionBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+  },
+  actionText: {
+      fontSize: 12,
+      fontWeight: '600',
+      marginLeft: 6,
+  },
+
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 8,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+  },
 });
 
 export default VendasListScreen;

@@ -56,7 +56,7 @@ export interface Colheita extends BaseDoc {
   destino: string | null;
   clienteId: string | null;
   metodoPagamento: string | null;
-  registradoPor: string | null; // <-- NOVO CAMPO: Nome de quem lançou
+  registradoPor: string | null;
   observacoes: string | null;
 }
 
@@ -105,4 +105,14 @@ export interface Aplicacao extends BaseDoc {
   volumeTanque: number | null; 
   numeroTanques: number | null; 
   itens: AplicacaoItem[]; 
+}
+
+// NOVO: Interface para Despesas Gerais
+export interface Despesa extends BaseDoc {
+  descricao: string; // Ex: Conta de Luz Maio
+  categoria: "energia" | "agua" | "mao_de_obra" | "manutencao" | "combustivel" | "imposto" | "outro";
+  valor: number;
+  dataDespesa: Timestamp;
+  observacoes: string | null;
+  registradoPor: string | null;
 }

@@ -12,53 +12,70 @@ import {
 import { db } from './firebaseConfig';
 import { Aplicacao, Insumo, AplicacaoItem } from '../types/domain';
 
+// 1. TIPO EXPORTADO PARA A TELA
+export interface AplicacaoItemData {
+  insumoId: string;
+  nomeInsumo: string;
+  unidade: string;
+  dosePorTanque: number;
+  quantidadeAplicada?: number;
+}
+
+// 2. TIPO DO FORMULÁRIO
 export type AplicacaoFormData = {
-  dataAplicacao: Timestamp;
+  plantioId: string;
+  estufaId: string;
+  dataAplicacao?: Timestamp;
   observacoes: string | null;
   volumeTanque: number | null;
   numeroTanques: number | null; 
-  itens: AplicacaoItem[];
+  itens: AplicacaoItemData[];
 };
 
-// 1. CRIAR APLICAÇÃO (MODIFICADO: Permite estoque negativo)
+// 3. CRIAR APLICAÇÃO (PERMITE ESTOQUE NEGATIVO)
 export const createAplicacao = async (
   data: AplicacaoFormData, 
-  userId: string, 
-  plantioId: string, 
-  estufaId: string
+  userId: string 
 ) => {
 
   if (data.itens.length === 0) {
     throw new Error("A aplicação precisa ter pelo menos um insumo.");
   }
 
-  // Consolida itens duplicados (ex: se adicionou o mesmo adubo 2x, soma eles)
-  const itensConsolidados = data.itens.reduce((acc, item) => {
+  // Consolida itens duplicados
+  const itensConsolidados: AplicacaoItem[] = data.itens.reduce((acc: AplicacaoItem[], item) => {
+    const qtd = item.quantidadeAplicada || 0;
     const existente = acc.find(i => i.insumoId === item.insumoId);
+    
     if (existente) {
-      existente.quantidadeAplicada += item.quantidadeAplicada;
+      existente.quantidadeAplicada += qtd;
     } else {
-      acc.push({ ...item });
+      acc.push({
+        insumoId: item.insumoId,
+        nomeInsumo: item.nomeInsumo,
+        unidade: item.unidade,
+        quantidadeAplicada: qtd,
+        dosePorTanque: item.dosePorTanque 
+      });
     }
     return acc;
-  }, [] as AplicacaoItem[]);
+  }, []);
 
   const novaAplicacaoRef = doc(collection(db, "aplicacoes"));
 
   try {
     await runTransaction(db, async (transaction) => {
       
-      // *** FASE 1: LEITURA RIGOROSA (READS) ***
+      // FASE 1: LEITURA DOS INSUMOS
       const leituras = [];
       for (const item of itensConsolidados) {
         const ref = doc(db, "insumos", item.insumoId);
         leituras.push(transaction.get(ref));
       }
 
-      // Espera todas as leituras terminarem
       const docsInsumos = await Promise.all(leituras);
 
-      // *** FASE 2: VERIFICAÇÃO E CÁLCULO (MEMORY) ***
+      // FASE 2: CÁLCULOS
       const updatesParaFazer = [];
 
       for (let i = 0; i < itensConsolidados.length; i++) {
@@ -66,28 +83,26 @@ export const createAplicacao = async (
         const insumoDoc = docsInsumos[i];
 
         if (!insumoDoc.exists()) {
-          throw new Error(`Insumo "${item.nomeInsumo}" não encontrado no estoque!`);
+          throw new Error(`Insumo "${item.nomeInsumo}" não encontrado! Cadastre-o primeiro.`);
         }
 
         const insumoData = insumoDoc.data() as Insumo;
 
-        // Verifica unidade
-        if (insumoData.unidadePadrao !== item.unidade) {
-          throw new Error(`Unidade incorreta para "${item.nomeInsumo}". Esperado: ${insumoData.unidadePadrao}.`);
-        }
+        // Proteção: Se estoqueAtual for null/undefined, assume 0
+        const estoqueAtual = insumoData.estoqueAtual || 0;
 
-        // AQUI: O novoEstoque pode ser negativo
-        const novoEstoque = insumoData.estoqueAtual - item.quantidadeAplicada;
+        // CÁLCULO QUE PERMITE NEGATIVO:
+        // Ex: 0 - 5 = -5. O Firestore aceita números negativos sem problemas.
+        const novoEstoque = estoqueAtual - item.quantidadeAplicada;
         
-        // Guarda o update para fazer na fase 3
         updatesParaFazer.push({
           ref: insumoDoc.ref,
           novoEstoque: novoEstoque
         });
       }
 
-      // *** FASE 3: ESCRITA (WRITES) ***
-      // 1. Atualiza os estoques dos insumos
+      // FASE 3: ESCRITA
+      // 1. Atualiza estoques (ficando negativo se necessário)
       for (const update of updatesParaFazer) {
         transaction.update(update.ref, { 
           estoqueAtual: update.novoEstoque,
@@ -95,13 +110,16 @@ export const createAplicacao = async (
         });
       }
 
-      // 2. Salva o registro da aplicação
+      // 2. Salva a Aplicação
       const novaAplicacao = {
-        ...data,
+        plantioId: data.plantioId,
+        estufaId: data.estufaId,
         userId: userId,
-        plantioId: plantioId,
-        estufaId: estufaId,
-        itens: itensConsolidados, 
+        dataAplicacao: data.dataAplicacao || Timestamp.now(),
+        observacoes: data.observacoes || null,
+        volumeTanque: data.volumeTanque || 0,
+        numeroTanques: data.numeroTanques || 1,
+        itens: itensConsolidados,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       };
@@ -109,15 +127,15 @@ export const createAplicacao = async (
       transaction.set(novaAplicacaoRef, novaAplicacao);
     });
 
-    console.log("Transação concluída com sucesso!");
+    console.log("Aplicação registrada. Estoques atualizados (mesmo que negativos).");
 
   } catch (error) {
-    console.error("Erro na transação:", error);
+    console.error("Erro na transação de aplicação:", error);
     throw error;
   }
 };
 
-// 2. LISTAR APLICAÇÕES
+// 4. LISTAR APLICAÇÕES
 export const listAplicacoesByPlantio = async (userId: string, plantioId: string): Promise<Aplicacao[]> => {
   const aplicacoes: Aplicacao[] = [];
   try {
@@ -132,7 +150,6 @@ export const listAplicacoesByPlantio = async (userId: string, plantioId: string)
       aplicacoes.push({ id: doc.id, ...doc.data() } as Aplicacao);
     });
     
-    // Ordena por data
     aplicacoes.sort((a, b) => b.dataAplicacao.seconds - a.dataAplicacao.seconds);
     return aplicacoes;
   } catch (error) {

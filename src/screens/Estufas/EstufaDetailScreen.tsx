@@ -1,7 +1,7 @@
 // src/screens/Estufas/EstufaDetailScreen.tsx
 import React, { useState, useEffect } from 'react';
 import { 
-  View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Alert 
+  View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Alert, RefreshControl 
 } from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { getEstufaById } from '../../services/estufaService';
@@ -10,8 +10,19 @@ import { Estufa, Plantio } from '../../types/domain';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 
+// --- TEMA ---
+const COLORS = {
+  background: '#F3F4F6',
+  card: '#FFFFFF',
+  primary: '#059669',
+  textDark: '#111827',
+  textGray: '#6B7280',
+  border: '#E5E7EB',
+  secondary: '#3B82F6',
+  danger: '#EF4444', // <--- CORREÇÃO: Adicionado danger
+};
+
 const EstufaDetailScreen = ({ route, navigation }: any) => {
-  // 1. PEGAR 'isOwner'
   const { user, selectedTenantId, isOwner } = useAuth(); 
   const { estufaId } = route.params;
   const isFocused = useIsFocused();
@@ -30,7 +41,6 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
       setEstufa(estufaData);
 
       const plantiosData = await listPlantiosByEstufa(targetId, estufaId);
-      
       plantiosData.sort((a, b) => {
           if (a.status === 'finalizado' && b.status !== 'finalizado') return 1;
           if (a.status !== 'finalizado' && b.status === 'finalizado') return -1;
@@ -40,7 +50,6 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
       setPlantios(plantiosData);
     } catch (error) {
       console.error(error);
-      Alert.alert("Erro", "Não foi possível carregar os detalhes.");
     } finally {
       setLoading(false);
     }
@@ -50,148 +59,160 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
     if (isFocused) loadData();
   }, [estufaId, isFocused, selectedTenantId]);
 
-  const handleEdit = () => {
-    navigation.navigate('EstufaForm', { estufaId: estufaId });
-  };
-
-  if (loading) return <ActivityIndicator size="large" style={styles.centered} />;
+  if (loading && !estufa) return <ActivityIndicator size="large" style={styles.centered} color={COLORS.primary} />;
   if (!estufa) return <Text style={styles.errorText}>Estufa não encontrada.</Text>;
 
   const plantioAtivo = plantios.find(p => p.status !== 'finalizado');
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView 
+        style={styles.container}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} colors={[COLORS.primary]} />}
+    >
       
-      <View style={styles.headerCard}>
-        <View style={styles.headerRow}>
-            <MaterialCommunityIcons name="greenhouse" size={32} color="#4CAF50" />
-            <View style={{marginLeft: 10, flex: 1}}>
-                <Text style={styles.title}>{estufa.nome}</Text>
-                <Text style={styles.subtitle}>{estufa.areaM2} m² • {estufa.status.toUpperCase()}</Text>
+      {/* HEADER TIPO CAPA */}
+      <View style={styles.header}>
+        <View style={styles.headerTop}>
+            <View>
+                <Text style={styles.estufaTitle}>{estufa.nome}</Text>
+                <View style={styles.statusPill}>
+                    <View style={[styles.dot, {backgroundColor: estufa.status === 'ativa' ? '#10B981' : '#EF4444'}]} />
+                    <Text style={styles.statusText}>{estufa.status.toUpperCase()}</Text>
+                </View>
             </View>
-            
-            {/* 2. TRAVA DE SEGURANÇA: Só Dono pode editar estrutura */}
             {isOwner && (
-                <TouchableOpacity onPress={handleEdit} style={styles.editButton}>
-                    <MaterialCommunityIcons name="pencil" size={20} color="#666" />
+                <TouchableOpacity onPress={() => navigation.navigate('EstufaForm', { estufaId: estufa.id })} style={styles.editBtn}>
+                    <MaterialCommunityIcons name="pencil" size={20} color="#FFF" />
                 </TouchableOpacity>
             )}
         </View>
-        
-        <View style={styles.infoGrid}>
-            <View style={styles.infoItem}>
-                <Text style={styles.label}>Comprimento</Text>
-                <Text style={styles.value}>{estufa.comprimentoM}m</Text>
+
+        <View style={styles.statsGrid}>
+            <View style={styles.statItem}>
+                <Text style={styles.statLabel}>Área Total</Text>
+                <Text style={styles.statValue}>{estufa.areaM2} m²</Text>
             </View>
-            <View style={styles.infoItem}>
-                <Text style={styles.label}>Largura</Text>
-                <Text style={styles.value}>{estufa.larguraM}m</Text>
+            <View style={[styles.statItem, styles.statBorder]}>
+                <Text style={styles.statLabel}>Dimensões</Text>
+                <Text style={styles.statValue}>{estufa.comprimentoM}x{estufa.larguraM}x{estufa.alturaM}</Text>
             </View>
-            <View style={styles.infoItem}>
-                <Text style={styles.label}>Altura</Text>
-                <Text style={styles.value}>{estufa.alturaM}m</Text>
+            <View style={styles.statItem}>
+                <Text style={styles.statLabel}>Ciclos</Text>
+                <Text style={styles.statValue}>{plantios.length}</Text>
             </View>
         </View>
       </View>
 
-      {/* Ações de trabalho liberadas para todos */}
+      {/* AÇÕES OPERACIONAIS */}
       {plantioAtivo && (
-          <View style={styles.quickActions}>
-              <TouchableOpacity 
-                style={[styles.actionBtn, {backgroundColor: '#4CAF50'}]}
-                onPress={() => navigation.navigate('ColheitaForm', { plantioId: plantioAtivo.id, estufaId: estufa.id })}
-              >
-                  <MaterialCommunityIcons name="basket" size={20} color="#fff" />
-                  <Text style={styles.actionText}>Colher</Text>
-              </TouchableOpacity>
+          <View style={styles.actionsContainer}>
+              <Text style={styles.sectionLabel}>Ações Rápidas (Ciclo Atual)</Text>
+              <View style={styles.actionRow}>
+                  <TouchableOpacity 
+                    style={[styles.actionCard, {backgroundColor: '#ECFDF5'}]}
+                    onPress={() => navigation.navigate('ColheitaForm', { plantioId: plantioAtivo.id, estufaId: estufa.id })}
+                  >
+                      <MaterialCommunityIcons name="basket" size={28} color="#059669" />
+                      <Text style={[styles.actionCardText, {color: '#059669'}]}>Registrar Colheita</Text>
+                  </TouchableOpacity>
 
-              <TouchableOpacity 
-                style={[styles.actionBtn, {backgroundColor: '#2196F3'}]}
-                onPress={() => navigation.navigate('AplicacaoForm', { plantioId: plantioAtivo.id, estufaId: estufa.id })}
-              >
-                  <MaterialCommunityIcons name="flask" size={20} color="#fff" />
-                  <Text style={styles.actionText}>Aplicar</Text>
-              </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.actionCard, {backgroundColor: '#EFF6FF'}]}
+                    onPress={() => navigation.navigate('AplicacaoForm', { plantioId: plantioAtivo.id, estufaId: estufa.id })}
+                  >
+                      <MaterialCommunityIcons name="flask" size={28} color="#3B82F6" />
+                      <Text style={[styles.actionCardText, {color: '#3B82F6'}]}>Registrar Aplicação</Text>
+                  </TouchableOpacity>
+              </View>
           </View>
       )}
 
-      <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Histórico de Plantios</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('PlantioForm', { estufaId: estufa.id })}>
-              <Text style={styles.linkText}>+ Novo Ciclo</Text>
-          </TouchableOpacity>
+      {/* LISTA DE CICLOS */}
+      <View style={styles.listContainer}>
+          <View style={styles.listHeader}>
+              <Text style={styles.sectionLabel}>Histórico de Ciclos</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('PlantioForm', { estufaId: estufa.id })}>
+                  <Text style={styles.linkText}>+ Novo</Text>
+              </TouchableOpacity>
+          </View>
+
+          {plantios.length === 0 ? (
+              <View style={styles.emptyState}>
+                  <Text style={styles.emptyText}>Nenhum plantio iniciado.</Text>
+              </View>
+          ) : (
+              plantios.map(p => (
+                  <TouchableOpacity 
+                    key={p.id} 
+                    style={styles.plantioItem}
+                    onPress={() => navigation.navigate('PlantioDetail', { plantioId: p.id })}
+                  >
+                      <View style={styles.plantioIcon}>
+                          <MaterialCommunityIcons name="sprout" size={24} color={p.status === 'finalizado' ? '#9CA3AF' : COLORS.primary} />
+                      </View>
+                      <View style={{flex: 1}}>
+                          <Text style={styles.plantioName}>{p.cultura}</Text>
+                          <Text style={styles.plantioDetail}>{p.quantidadePlantada} {p.unidadeQuantidade} • {p.dataPlantio.toDate().toLocaleDateString()}</Text>
+                      </View>
+                      <MaterialCommunityIcons name="chevron-right" size={20} color="#D1D5DB" />
+                  </TouchableOpacity>
+              ))
+          )}
       </View>
-
-      {plantios.length === 0 ? (
-          <View style={styles.emptyBox}>
-              <Text style={styles.emptyText}>Nenhum plantio registrado nesta estufa.</Text>
-              <TouchableOpacity style={styles.btnSmall} onPress={() => navigation.navigate('PlantioForm', { estufaId: estufa.id })}>
-                  <Text style={styles.btnSmallText}>Iniciar Primeiro Plantio</Text>
-              </TouchableOpacity>
-          </View>
-      ) : (
-          plantios.map(p => (
-              <TouchableOpacity 
-                key={p.id} 
-                style={[styles.plantioCard, p.status === 'finalizado' && styles.plantioInactive]}
-                onPress={() => navigation.navigate('PlantioDetail', { plantioId: p.id })}
-              >
-                  <View style={styles.plantioRow}>
-                      <View>
-                          <Text style={styles.plantioTitle}>{p.cultura}</Text>
-                          <Text style={styles.plantioDate}>
-                              Início: {p.dataPlantio.toDate().toLocaleDateString()}
-                          </Text>
-                      </View>
-                      <View style={[styles.statusBadge, p.status === 'finalizado' ? styles.badgeGray : styles.badgeGreen]}>
-                          <Text style={styles.statusText}>{p.status === 'finalizado' ? 'Finalizado' : 'Ativo'}</Text>
-                      </View>
-                  </View>
-                  <Text style={styles.plantioInfo}>
-                      {p.quantidadePlantada} {p.unidadeQuantidade} {p.variedade ? `• ${p.variedade}` : ''}
-                  </Text>
-              </TouchableOpacity>
-          ))
-      )}
       
-      <View style={{height: 30}} />
+      <View style={{height: 40}} />
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FAFAFA', padding: 16 },
+  container: { flex: 1, backgroundColor: COLORS.background },
   centered: { flex: 1, justifyContent: 'center' },
-  headerCard: { backgroundColor: '#fff', padding: 16, borderRadius: 12, marginBottom: 20, elevation: 2 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-  title: { fontSize: 22, fontWeight: 'bold', color: '#333' },
-  subtitle: { fontSize: 14, color: '#666' },
-  editButton: { padding: 8 },
-  infoGrid: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderColor: '#eee', paddingTop: 10 },
-  infoItem: { alignItems: 'center', flex: 1 },
-  label: { fontSize: 12, color: '#888' },
-  value: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-  quickActions: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  actionBtn: { flex: 1, flexDirection: 'row', padding: 12, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  actionText: { color: '#fff', fontWeight: 'bold', marginLeft: 8 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  linkText: { color: '#2196F3', fontWeight: 'bold' },
-  plantioCard: { backgroundColor: '#fff', padding: 15, borderRadius: 10, marginBottom: 10, borderLeftWidth: 4, borderLeftColor: '#4CAF50', elevation: 2 },
-  plantioInactive: { borderLeftColor: '#999', opacity: 0.8 },
-  plantioRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  plantioTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-  plantioDate: { fontSize: 12, color: '#888', marginTop: 2 },
-  plantioInfo: { marginTop: 8, color: '#555', fontSize: 14 },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
-  badgeGreen: { backgroundColor: '#E8F5E9' },
-  badgeGray: { backgroundColor: '#EEE' },
-  statusText: { fontSize: 10, fontWeight: 'bold', color: '#333' },
-  emptyBox: { alignItems: 'center', padding: 30, backgroundColor: '#f0f0f0', borderRadius: 10 },
-  emptyText: { color: '#888', marginBottom: 10 },
-  btnSmall: { padding: 8, backgroundColor: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#ccc' },
-  btnSmallText: { fontSize: 12, fontWeight: 'bold', color: '#555' },
-  errorText: { textAlign: 'center', marginTop: 50, color: '#D32F2F' }
+  
+  // Header Estilizado
+  header: {
+    backgroundColor: COLORS.primary,
+    padding: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    elevation: 5,
+  },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
+  estufaTitle: { fontSize: 24, fontWeight: '800', color: '#FFF' },
+  statusPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start', marginTop: 5 },
+  dot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
+  statusText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  editBtn: { backgroundColor: 'rgba(255,255,255,0.2)', padding: 8, borderRadius: 8 },
+
+  statsGrid: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, padding: 15 },
+  statItem: { flex: 1, alignItems: 'center' },
+  statBorder: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  statLabel: { color: '#D1FAE5', fontSize: 11, fontWeight: '600', textTransform: 'uppercase' },
+  statValue: { color: '#FFF', fontSize: 16, fontWeight: 'bold', marginTop: 2 },
+
+  // Ações
+  actionsContainer: { padding: 20, paddingBottom: 0 },
+  sectionLabel: { fontSize: 16, fontWeight: '700', color: COLORS.textDark, marginBottom: 12 },
+  actionRow: { flexDirection: 'row', gap: 15 },
+  actionCard: { flex: 1, borderRadius: 16, padding: 16, alignItems: 'center', justifyContent: 'center', minHeight: 100 },
+  actionCardText: { marginTop: 8, fontWeight: '700', fontSize: 13 },
+
+  // Lista
+  listContainer: { padding: 20 },
+  listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  linkText: { color: COLORS.secondary, fontWeight: '700' },
+  
+  plantioItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, padding: 16, borderRadius: 12, marginBottom: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, elevation: 1 },
+  plantioIcon: { width: 40, height: 40, borderRadius: 10, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  plantioName: { fontSize: 16, fontWeight: '700', color: COLORS.textDark },
+  plantioDetail: { fontSize: 12, color: COLORS.textGray, marginTop: 2 },
+
+  emptyState: { padding: 20, alignItems: 'center', backgroundColor: '#FFF', borderRadius: 12 },
+  emptyText: { color: COLORS.textGray },
+  errorText: { textAlign: 'center', marginTop: 50, color: COLORS.danger }
 });
 
 export default EstufaDetailScreen;

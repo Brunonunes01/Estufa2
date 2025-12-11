@@ -1,36 +1,33 @@
 // src/services/globalStatsService.ts
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from './firebaseConfig';
-import { Plantio, Colheita, Aplicacao, Insumo } from '../types/domain';
+import { Plantio, Colheita, Aplicacao, Insumo, Despesa } from '../types/domain';
 
 export interface GlobalStatsResult {
-    lucroTotal: number;
+    lucroTotal: number;     // Lucro Líquido Real
     totalReceita: number;
-    totalCusto: number;
+    totalCustoProd: number; // Custo Direto (Insumos + Mudas)
+    totalDespesas: number;  // Custo Fixo (Energia, Mão de Obra, etc)
     totalPlantios: number;
 }
 
 export const getGlobalStats = async (userId: string): Promise<GlobalStatsResult> => {
-    // IMPORTANTE: Agora usamos o userId passado como parâmetro na query
     try {
-        // 1. Buscar Plantios do usuário selecionado
-        const qPlantios = query(collection(db, 'plantios'), where("userId", "==", userId));
-        const plantiosSnap = await getDocs(qPlantios);
-        const plantios = plantiosSnap.docs.map(d => ({ id: d.id, ...d.data() } as Plantio));
+        // 1. Buscas paralelas
+        const [plantiosSnap, colheitasSnap, aplicacoesSnap, insumosSnap, despesasSnap] = await Promise.all([
+            getDocs(query(collection(db, 'plantios'), where("userId", "==", userId))),
+            getDocs(query(collection(db, 'colheitas'), where("userId", "==", userId))),
+            getDocs(query(collection(db, 'aplicacoes'), where("userId", "==", userId))),
+            getDocs(query(collection(db, 'insumos'), where("userId", "==", userId))),
+            getDocs(query(collection(db, 'despesas'), where("userId", "==", userId))) // NOVO
+        ]);
 
-        // 2. Buscar Colheitas (Receitas) do usuário selecionado
-        const qColheitas = query(collection(db, 'colheitas'), where("userId", "==", userId));
-        const colheitasSnap = await getDocs(qColheitas);
-        const colheitas = colheitasSnap.docs.map(d => ({ id: d.id, ...d.data() } as Colheita));
+        const plantios = plantiosSnap.docs.map(d => d.data() as Plantio);
+        const colheitas = colheitasSnap.docs.map(d => d.data() as Colheita);
+        const aplicacoes = aplicacoesSnap.docs.map(d => d.data() as Aplicacao);
+        const despesas = despesasSnap.docs.map(d => d.data() as Despesa);
 
-        // 3. Buscar Aplicações (Custos Variáveis) do usuário selecionado
-        const qAplicacoes = query(collection(db, 'aplicacoes'), where("userId", "==", userId));
-        const aplicacoesSnap = await getDocs(qAplicacoes);
-        const aplicacoes = aplicacoesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Aplicacao));
-
-        // 4. Buscar Insumos (Para saber custo unitário) do usuário selecionado
-        const qInsumos = query(collection(db, 'insumos'), where("userId", "==", userId));
-        const insumosSnap = await getDocs(qInsumos);
+        // Mapa de preços de insumos
         const insumosMap = new Map<string, number>();
         insumosSnap.forEach(doc => {
             const data = doc.data() as Insumo;
@@ -44,16 +41,14 @@ export const getGlobalStats = async (userId: string): Promise<GlobalStatsResult>
             return acc + (curr.quantidade * (curr.precoUnitario || 0));
         }, 0);
 
-        // B. Custos
+        // B. Custo de Produção (Direto)
         let custoInsumos = 0;
         let custoMudas = 0;
 
-        // Custo Inicial (Mudas/Sementes dos plantios)
         plantios.forEach(p => {
             custoMudas += (p.quantidadePlantada * (p.precoEstimadoUnidade || 0));
         });
 
-        // Custo de Aplicações
         aplicacoes.forEach(app => {
             if (app.itens) {
                 app.itens.forEach(item => {
@@ -63,18 +58,24 @@ export const getGlobalStats = async (userId: string): Promise<GlobalStatsResult>
             }
         });
 
-        const totalCusto = custoMudas + custoInsumos;
-        const lucroTotal = totalReceita - totalCusto;
+        const totalCustoProd = custoMudas + custoInsumos;
+
+        // C. Despesas Gerais (Fixo) - NOVO
+        const totalDespesas = despesas.reduce((acc, curr) => acc + (curr.valor || 0), 0);
+
+        // D. Lucro Líquido
+        const lucroTotal = totalReceita - totalCustoProd - totalDespesas;
 
         return {
             lucroTotal,
             totalReceita,
-            totalCusto,
+            totalCustoProd,
+            totalDespesas,
             totalPlantios: plantios.length
         };
 
     } catch (error) {
-        console.error("Erro ao calcular estatísticas globais:", error);
-        return { lucroTotal: 0, totalReceita: 0, totalCusto: 0, totalPlantios: 0 };
+        console.error("Erro ao calcular stats:", error);
+        return { lucroTotal: 0, totalReceita: 0, totalCustoProd: 0, totalDespesas: 0, totalPlantios: 0 };
     }
 };

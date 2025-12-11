@@ -8,8 +8,7 @@ import { TextStyle, ViewStyle } from 'react-native';
 // Telas de Auth
 import LoginScreen from '../screens/Auth/LoginScreen';
 import RegisterScreen from '../screens/Auth/RegisterScreen';
-// IMPORTANTE: Adicione esta importação
-import ShareAccountScreen from '../screens/Auth/ShareAccountScreen'; 
+import ShareAccountScreen from '../screens/Auth/ShareAccountScreen';
 
 // Telas do App
 import DashboardScreen from '../screens/Dashboard/DashboardScreen';
@@ -21,16 +20,20 @@ import PlantioDetailScreen from '../screens/Plantios/PlantioDetailScreen';
 import ColheitaFormScreen from '../screens/Colheitas/ColheitaFormScreen';
 import InsumosListScreen from '../screens/Insumos/InsumosListScreen';
 import InsumoFormScreen from '../screens/Insumos/InsumoFormScreen';
+import InsumoEntryScreen from '../screens/Insumos/InsumoEntryScreen'; 
 import FornecedoresListScreen from '../screens/Fornecedores/FornecedoresListScreen';
 import FornecedorFormScreen from '../screens/Fornecedores/FornecedorFormScreen';
 import AplicacaoFormScreen from '../screens/Aplicacoes/AplicacaoFormScreen';
 import AplicacoesHistoryScreen from '../screens/Aplicacoes/AplicacoesHistoryScreen'; 
-import InsumoEntryScreen from '../screens/Insumos/InsumoEntryScreen'; 
 import VendasListScreen from '../screens/Vendas/VendasListScreen'; 
 
-// Clientes
+// Telas de Clientes
 import ClientesListScreen from '../screens/Clientes/ClientesListScreen';
 import ClienteFormScreen from '../screens/Clientes/ClienteFormScreen';
+
+// NOVAS IMPORTAÇÕES (Despesas)
+import DespesasListScreen from '../screens/Despesas/DespesasListScreen';
+import DespesaFormScreen from '../screens/Despesas/DespesaFormScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -53,9 +56,12 @@ const AuthStack = () => (
 
 const AppStack = () => (
   <Stack.Navigator screenOptions={defaultScreenOptions as NativeStackNavigationOptions}>
-    <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Painel SGE' }} />
+    <Stack.Screen 
+      name="Dashboard" 
+      component={DashboardScreen} 
+      options={{ title: 'Painel SGE' }} 
+    />
     
-    {/* ROTA DE COMPARTILHAMENTO (ADICIONADA) */}
     <Stack.Screen 
       name="ShareAccount" 
       component={ShareAccountScreen} 
@@ -65,19 +71,23 @@ const AppStack = () => (
     <Stack.Screen name="EstufasList" component={EstufasListScreen} options={{ title: 'Minhas Estufas' }} />
     <Stack.Screen name="EstufaForm" component={EstufaFormScreen} />
     <Stack.Screen name="EstufaDetail" component={EstufaDetailScreen} />
+
     <Stack.Screen name="PlantioForm" component={PlantioFormScreen} options={{ title: 'Novo Plantio' }} />
     <Stack.Screen name="PlantioDetail" component={PlantioDetailScreen} />
-    <Stack.Screen name="ColheitaForm" component={ColheitaFormScreen} options={{ title: 'Registrar Colheita' }} />
-    <Stack.Screen name="InsumosList" component={InsumosListScreen} options={{ title: 'Meus Insumos' }} />
-    <Stack.Screen name="InsumoForm" component={InsumoFormScreen} />
-    <Stack.Screen name="FornecedoresList" component={FornecedoresListScreen} options={{ title: 'Meus Fornecedores' }} />
-    <Stack.Screen name="FornecedorForm" component={FornecedorFormScreen} />
+
+    <Stack.Screen name="ColheitaForm" component={ColheitaFormScreen} options={{ title: 'Registrar Colheita/Venda' }} />
     <Stack.Screen name="AplicacaoForm" component={AplicacaoFormScreen} options={{ title: 'Registrar Aplicação' }} />
     <Stack.Screen name="AplicacoesHistory" component={AplicacoesHistoryScreen} />
-    <Stack.Screen name="InsumoEntry" component={InsumoEntryScreen} options={{ title: 'Entrada de Estoque' }} />
-    <Stack.Screen name="VendasList" component={VendasListScreen} options={{ title: 'Gestão de Vendas' }} />
 
-    {/* ROTAS DE CLIENTES */}
+    <Stack.Screen name="VendasList" component={VendasListScreen} options={{ title: 'Gestão de Vendas' }} />
+    
+    <Stack.Screen name="InsumosList" component={InsumosListScreen} options={{ title: 'Meus Insumos' }} />
+    <Stack.Screen name="InsumoForm" component={InsumoFormScreen} />
+    <Stack.Screen name="InsumoEntry" component={InsumoEntryScreen} options={{ title: 'Entrada de Estoque' }} />
+
+    <Stack.Screen name="FornecedoresList" component={FornecedoresListScreen} options={{ title: 'Meus Fornecedores' }} />
+    <Stack.Screen name="FornecedorForm" component={FornecedorFormScreen} />
+
     <Stack.Screen 
         name="ClientesList" 
         component={ClientesListScreen} 
@@ -91,6 +101,24 @@ const AppStack = () => (
         component={ClienteFormScreen} 
         options={{ 
             headerStyle: { backgroundColor: '#2196F3' } 
+        }} 
+    />
+
+    {/* ROTAS DE DESPESAS (NOVAS) */}
+    <Stack.Screen 
+        name="DespesasList" 
+        component={DespesasListScreen} 
+        options={{ 
+            title: 'Contas & Despesas', 
+            headerStyle: { backgroundColor: '#EF4444' } // Vermelho para contas
+        }} 
+    />
+    <Stack.Screen 
+        name="DespesaForm" 
+        component={DespesaFormScreen} 
+        options={{ 
+            title: 'Nova Despesa',
+            headerStyle: { backgroundColor: '#EF4444' } 
         }} 
     />
     
