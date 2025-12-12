@@ -31,7 +31,7 @@ import VendasListScreen from '../screens/Vendas/VendasListScreen';
 import ClientesListScreen from '../screens/Clientes/ClientesListScreen';
 import ClienteFormScreen from '../screens/Clientes/ClienteFormScreen';
 
-// NOVAS IMPORTAÇÕES (Despesas)
+// Telas de Despesas
 import DespesasListScreen from '../screens/Despesas/DespesasListScreen';
 import DespesaFormScreen from '../screens/Despesas/DespesaFormScreen';
 
@@ -39,12 +39,13 @@ const Stack = createNativeStackNavigator();
 
 const defaultScreenOptions = {
     headerStyle: {
-        backgroundColor: '#4CAF50', 
+        backgroundColor: '#166534', // Verde Floresta Sóbrio
     } as ViewStyle, 
     headerTintColor: '#fff', 
     headerTitleStyle: {
         fontWeight: 'bold' as 'bold', 
     } as TextStyle,
+    headerBackTitleVisible: false,
 } as const;
 
 const AuthStack = () => (
@@ -56,10 +57,11 @@ const AuthStack = () => (
 
 const AppStack = () => (
   <Stack.Navigator screenOptions={defaultScreenOptions as NativeStackNavigationOptions}>
+    {/* Dashboard sem header padrão para design imersivo */}
     <Stack.Screen 
       name="Dashboard" 
       component={DashboardScreen} 
-      options={{ title: 'Painel SGE' }} 
+      options={{ headerShown: false }} 
     />
     
     <Stack.Screen 
@@ -70,22 +72,22 @@ const AppStack = () => (
 
     <Stack.Screen name="EstufasList" component={EstufasListScreen} options={{ title: 'Minhas Estufas' }} />
     <Stack.Screen name="EstufaForm" component={EstufaFormScreen} />
-    <Stack.Screen name="EstufaDetail" component={EstufaDetailScreen} />
+    <Stack.Screen name="EstufaDetail" component={EstufaDetailScreen} options={{ title: 'Detalhes da Estufa' }} />
 
     <Stack.Screen name="PlantioForm" component={PlantioFormScreen} options={{ title: 'Novo Plantio' }} />
-    <Stack.Screen name="PlantioDetail" component={PlantioDetailScreen} />
+    <Stack.Screen name="PlantioDetail" component={PlantioDetailScreen} options={{ title: 'Painel do Ciclo' }} />
 
-    <Stack.Screen name="ColheitaForm" component={ColheitaFormScreen} options={{ title: 'Registrar Colheita/Venda' }} />
-    <Stack.Screen name="AplicacaoForm" component={AplicacaoFormScreen} options={{ title: 'Registrar Aplicação' }} />
+    <Stack.Screen name="ColheitaForm" component={ColheitaFormScreen} options={{ title: 'Nova Venda' }} />
+    <Stack.Screen name="AplicacaoForm" component={AplicacaoFormScreen} options={{ title: 'Aplicação' }} />
     <Stack.Screen name="AplicacoesHistory" component={AplicacoesHistoryScreen} />
 
-    <Stack.Screen name="VendasList" component={VendasListScreen} options={{ title: 'Gestão de Vendas' }} />
+    <Stack.Screen name="VendasList" component={VendasListScreen} options={{ title: 'Histórico de Vendas' }} />
     
-    <Stack.Screen name="InsumosList" component={InsumosListScreen} options={{ title: 'Meus Insumos' }} />
+    <Stack.Screen name="InsumosList" component={InsumosListScreen} options={{ title: 'Estoque de Insumos' }} />
     <Stack.Screen name="InsumoForm" component={InsumoFormScreen} />
     <Stack.Screen name="InsumoEntry" component={InsumoEntryScreen} options={{ title: 'Entrada de Estoque' }} />
 
-    <Stack.Screen name="FornecedoresList" component={FornecedoresListScreen} options={{ title: 'Meus Fornecedores' }} />
+    <Stack.Screen name="FornecedoresList" component={FornecedoresListScreen} options={{ title: 'Fornecedores' }} />
     <Stack.Screen name="FornecedorForm" component={FornecedorFormScreen} />
 
     <Stack.Screen 
@@ -93,32 +95,31 @@ const AppStack = () => (
         component={ClientesListScreen} 
         options={{ 
             title: 'Meus Clientes', 
-            headerStyle: { backgroundColor: '#2196F3' } 
+            headerStyle: { backgroundColor: '#0369A1' } // Azul Profundo
         }} 
     />
     <Stack.Screen 
         name="ClienteForm" 
         component={ClienteFormScreen} 
         options={{ 
-            headerStyle: { backgroundColor: '#2196F3' } 
+            headerStyle: { backgroundColor: '#0369A1' } 
         }} 
     />
 
-    {/* ROTAS DE DESPESAS (NOVAS) */}
     <Stack.Screen 
         name="DespesasList" 
         component={DespesasListScreen} 
         options={{ 
-            title: 'Contas & Despesas', 
-            headerStyle: { backgroundColor: '#EF4444' } // Vermelho para contas
+            title: 'Gestão de Despesas', 
+            headerStyle: { backgroundColor: '#BE123C' } // Vermelho Vinho
         }} 
     />
     <Stack.Screen 
         name="DespesaForm" 
         component={DespesaFormScreen} 
         options={{ 
-            title: 'Nova Despesa',
-            headerStyle: { backgroundColor: '#EF4444' } 
+            title: 'Lançar Despesa',
+            headerStyle: { backgroundColor: '#BE123C' } 
         }} 
     />
     

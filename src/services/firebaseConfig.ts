@@ -2,7 +2,9 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 
-// Esta é a importação que o SEU LOG (v 12.6.0) pediu
+// CORREÇÃO: O Firebase v12 tem um bug nas definições de tipo para React Native.
+// A função existe, mas o TypeScript não a vê. Usamos @ts-ignore para corrigir o erro de build.
+// @ts-ignore
 import { initializeAuth, getReactNativePersistence } from 'firebase/auth'; 
 
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';

@@ -1,118 +1,30 @@
 // src/types/domain.ts
-import { Timestamp } from 'firebase/firestore';
 
-interface BaseDoc {
-  id: string; 
-  userId: string;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+export interface Tenant {
+  uid: string;
+  name: string;
+  ownerId: string;
+  // NOVOS CAMPOS PARA RASTREABILIDADE
+  sharedBy?: string; // Nome do proprietário que compartilhou
+  sharedAt?: string; // Data em que o compartilhamento foi aceito (ISO string)
+  createdAt?: any;
 }
 
-export interface User {
+export interface UserProfile {
   uid: string;
   name: string;
   email: string;
-  role: "admin" | "operator";
-  createdAt: Timestamp;
-  sharedAccess?: { uid: string; name: string }[]; 
+  currentTenantId: string;
+  // Lista de IDs de tenants aos quais o usuário tem acesso
+  sharedTenants?: string[]; 
 }
 
-export interface Estufa extends BaseDoc {
-  nome: string;
-  dataFabricacao: Timestamp | null;
-  comprimentoM: number;
-  larguraM: number;
-  alturaM: number;
-  areaM2: number; 
-  tipoCobertura: string | null;
-  responsavel: string | null;
-  status: "ativa" | "manutencao" | "desativada";
-  observacoes: string | null;
-}
-
-export interface Plantio extends BaseDoc {
-  estufaId: string;
-  safraId: string | null;
-  cultura: string;
-  variedade: string | null;
-  quantidadePlantada: number;
-  unidadeQuantidade: string;
-  precoEstimadoUnidade: number | null;
-  cicloDias: number | null;
-  dataPlantio: Timestamp;
-  previsaoColheita: Timestamp | null;
-  status: "em_desenvolvimento" | "em_colheita" | "finalizado";
-  observacoes: string | null;
-  fornecedorId: string | null;
-}
-
-export interface Colheita extends BaseDoc {
-  plantioId: string;
-  estufaId: string; 
-  dataColheita: Timestamp;
-  quantidade: number;
-  unidade: string; 
-  precoUnitario: number | null;
-  destino: string | null;
-  clienteId: string | null;
-  metodoPagamento: string | null;
-  registradoPor: string | null;
-  observacoes: string | null;
-}
-
-export interface Insumo extends BaseDoc {
-  nome: string;
-  tipo: "adubo" | "defensivo" | "semente" | "outro";
-  unidadePadrao: string; 
-  estoqueAtual: number; 
-  estoqueMinimo: number | null;
-  custoUnitario: number | null;
-  fornecedorId: string | null; 
-  observacoes: string | null; 
-  tamanhoEmbalagem: number | null; 
-}
-
-export interface Fornecedor extends BaseDoc {
-  nome: string;
-  contato: string | null;
-  telefone: string | null;
-  email: string | null;
-  endereco: string | null;
-  observacoes: string | null;
-}
-
-export interface Cliente extends BaseDoc {
-  nome: string;
-  telefone: string | null;
-  cidade: string | null;
-  tipo: "atacado" | "varejo" | "restaurante" | "outro";
-  observacoes: string | null;
-}
-
-export interface AplicacaoItem {
-  insumoId: string;
-  nomeInsumo: string; 
-  quantidadeAplicada: number; 
-  unidade: string;
-  dosePorTanque?: number | null; 
-}
-
-export interface Aplicacao extends BaseDoc {
-  plantioId: string;
-  estufaId: string;
-  dataAplicacao: Timestamp;
-  observacoes: string | null;
-  volumeTanque: number | null; 
-  numeroTanques: number | null; 
-  itens: AplicacaoItem[]; 
-}
-
-// NOVO: Interface para Despesas Gerais
-export interface Despesa extends BaseDoc {
-  descricao: string; // Ex: Conta de Luz Maio
-  categoria: "energia" | "agua" | "mao_de_obra" | "manutencao" | "combustivel" | "imposto" | "outro";
-  valor: number;
-  dataDespesa: Timestamp;
-  observacoes: string | null;
-  registradoPor: string | null;
+// Interface auxiliar para o código de compartilhamento (se houver)
+export interface ShareCode {
+    code: string;
+    tenantId: string;
+    tenantName: string;
+    ownerName: string; // Importante para sabermos quem gerou
+    createdAt: number;
+    expiresAt: number;
 }

@@ -1,7 +1,8 @@
 // src/screens/Dashboard/DashboardScreen.tsx
 import React, { useState, useEffect } from 'react';
 import { 
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, RefreshControl, Dimensions, 
+  SafeAreaView, Platform 
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker'; 
 import { auth } from '../../services/firebaseConfig';
@@ -10,27 +11,20 @@ import { useIsFocused } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons'; 
 import { getGlobalStats, GlobalStatsResult } from '../../services/globalStatsService';
 
+const { width } = Dimensions.get('window');
+
 // --- TEMA ---
-const COLORS = {
-  primary: '#059669',
-  background: '#F3F4F6',
-  card: '#FFFFFF',
-  textDark: '#1F2937',
-  danger: '#EF4444',
+const THEME = {
+  headerBg: '#14532d', // Verde musgo profundo
+  headerText: '#F0FDF4',
+  bg: '#F8FAFC',
+  cardBg: '#FFFFFF',
+  textMain: '#1F293B',
+  textSub: '#64748B',
 };
 
-const getIconName = (name: string) => {
-    switch (name) {
-        case 'estufa': return 'greenhouse'; 
-        case 'insumo': return 'flask-outline'; 
-        case 'fornecedor': return 'truck-delivery-outline'; 
-        case 'finance': return 'cash-multiple'; 
-        case 'cliente': return 'account-group';
-        case 'share': return 'share-variant'; 
-        case 'despesa': return 'cash-minus'; // NOVO
-        default: return 'arrow-right';
-    }
-}
+// Altura da StatusBar para Android (evita corte no topo)
+const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 0;
 
 const DashboardScreen = ({ navigation }: any) => {
   const { user, selectedTenantId, changeTenant, availableTenants } = useAuth();
@@ -39,176 +33,312 @@ const DashboardScreen = ({ navigation }: any) => {
   const [stats, setStats] = useState<GlobalStatsResult | null>(null); 
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const loadData = async () => {
-      const targetId = selectedTenantId || user?.uid;
-      if (!targetId) { 
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      try {
-        const globalStats = await getGlobalStats(targetId);
-        setStats(globalStats); 
-      } catch (e) { 
-          console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const loadData = async () => {
+    const targetId = selectedTenantId || user?.uid;
+    if (!targetId) { 
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const globalStats = await getGlobalStats(targetId);
+      setStats(globalStats); 
+    } catch (e) { 
+        console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     if (isFocused) loadData();
   }, [isFocused, selectedTenantId]);
 
-  const handleNavigate = (screen: string) => navigation.navigate(screen);
+  const navigateTo = (screen: string) => navigation.navigate(screen);
 
-  const ActionCard = ({ title, iconName, onPress, color = COLORS.primary }: any) => (
-      <TouchableOpacity style={styles.actionCard} onPress={onPress} activeOpacity={0.7}>
-          <View style={[styles.iconCircle, { backgroundColor: color + '15' }]}>
-            <MaterialCommunityIcons name={getIconName(iconName) as any} size={28} color={color} />
-          </View>
-          <Text style={styles.actionText}>{title}</Text>
-          <View style={styles.arrowContainer}>
-            <MaterialCommunityIcons name="chevron-right" size={20} color="#D1D5DB" />
-          </View>
-      </TouchableOpacity>
+  // Widget do Grid
+  const GridItem = ({ title, sub, icon, color, route }: any) => (
+    <TouchableOpacity 
+      style={styles.gridItem} 
+      onPress={() => navigateTo(route)}
+      activeOpacity={0.8}
+    >
+      <View style={[styles.iconBox, { backgroundColor: color + '15' }]}>
+        <MaterialCommunityIcons name={icon} size={28} color={color} style={styles.iconFix} />
+      </View>
+      <View style={styles.gridTexts}>
+        <Text style={styles.gridTitle}>{title}</Text>
+        <Text style={styles.gridSub}>{sub}</Text>
+      </View>
+    </TouchableOpacity>
   );
-  
+
   return (
-    <View style={styles.mainContainer}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+    <View style={styles.mainWrapper}>
+      <StatusBar barStyle="light-content" backgroundColor={THEME.headerBg} translucent />
       
-      {/* CABEÇALHO */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
+      <SafeAreaView style={[styles.container, { paddingTop: STATUSBAR_HEIGHT }]}>
+        
+        {/* --- CABEÇALHO --- */}
+        <View style={styles.header}>
+          <View style={styles.topBar}>
             <View>
-                <Text style={styles.greeting}>Olá, {user?.name?.split(' ')[0] || 'Produtor'}!</Text>
-                <Text style={styles.subGreeting}>Gestão Financeira & Produção</Text>
+              <Text style={styles.welcomeSmall}>Olá, {user?.name?.split(' ')[0]}</Text>
+              <Text style={styles.welcomeBig}>Visão Geral</Text>
             </View>
             <TouchableOpacity onPress={() => auth.signOut()} style={styles.logoutBtn}>
-                <MaterialCommunityIcons name="logout" size={20} color="#FFF" />
+              <MaterialCommunityIcons name="logout" size={22} color="#fff" />
             </TouchableOpacity>
-        </View>
+          </View>
 
-        {availableTenants.length > 1 && (
-            <View style={styles.tenantContainer}>
-                <MaterialCommunityIcons name="account-sync" size={20} color="#FFF" style={{marginRight: 8}}/>
-                <View style={styles.pickerWrapper}>
-                    <Picker
-                        selectedValue={selectedTenantId}
-                        onValueChange={(itemValue) => changeTenant(itemValue)}
-                        style={styles.picker}
-                        dropdownIconColor="#FFF"
-                        mode="dropdown"
-                    >
-                        {availableTenants.map(tenant => (
-                            <Picker.Item key={tenant.uid} label={tenant.name} value={tenant.uid} style={{color: '#333'}} />
-                        ))}
-                    </Picker>
-                </View>
+          {/* SELETOR DE CONTA (CORRIGIDO) */}
+          {availableTenants.length > 1 && (
+            <View style={styles.tenantWrapper}>
+               {/* Ícone para identificar visualmente */}
+               <MaterialCommunityIcons name="store-cog" size={20} color="#A7F3D0" style={styles.tenantIcon} />
+               
+               {/* Container do Picker com flex para não cortar */}
+               <View style={styles.pickerContainer}>
+                 <Picker
+                    selectedValue={selectedTenantId}
+                    onValueChange={changeTenant}
+                    style={styles.picker}
+                    dropdownIconColor="#FFF"
+                    mode="dropdown" // Importante para Android
+                >
+                    {availableTenants.map(t => (
+                        <Picker.Item 
+                            key={t.uid} 
+                            label={t.name} 
+                            value={t.uid} 
+                            style={{fontSize: 14, color: '#000'}} // Cor do texto no dropdown
+                        />
+                    ))}
+                </Picker>
+               </View>
             </View>
-        )}
-      </View>
+          )}
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        
-        {/* CARD FINANCEIRO (LUCRO REAL) */}
-        {stats && (
-            <View style={styles.financeCard}>
-                <View style={styles.financeHeader}>
-                    <MaterialCommunityIcons name="scale-balance" size={24} color="#FFF" />
-                    <Text style={styles.financeTitle}>Lucro Líquido Real</Text>
-                </View>
-                
-                <Text style={styles.financeMainValue}>
-                    R$ {stats.lucroTotal.toFixed(2)}
-                </Text>
+          {/* Card de Saldo Resumido */}
+          <View style={styles.balanceContainer}>
+              <Text style={styles.balanceLabel}>LUCRO LÍQUIDO</Text>
+              <Text style={styles.balanceValue}>
+                  R$ {stats ? stats.lucroTotal.toLocaleString('pt-BR', {minimumFractionDigits: 2}) : '...'}
+              </Text>
+              
+              <View style={styles.miniStatsRow}>
+                  <View style={styles.miniStatItem}>
+                      <MaterialCommunityIcons name="arrow-up" size={16} color="#4ADE80" />
+                      <Text style={styles.miniStatText}>Rec: R$ {stats?.totalReceita.toFixed(0) || '0'}</Text>
+                  </View>
+                  <View style={[styles.miniStatItem, {marginLeft: 15}]}>
+                      <MaterialCommunityIcons name="arrow-down" size={16} color="#FDA4AF" />
+                      <Text style={styles.miniStatText}>Desp: R$ {stats ? (stats.totalCustoProd + stats.totalDespesas).toFixed(0) : '0'}</Text>
+                  </View>
+              </View>
+          </View>
+        </View>
 
-                <View style={styles.financeDivider} />
+        {/* --- CONTEÚDO (CURVADO) --- */}
+        <View style={styles.body}>
+          <ScrollView 
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} colors={[THEME.headerBg]}/>}
+          >
+            
+            {/* Botões Grandes de Ação */}
+            <Text style={styles.sectionLabel}>Acesso Rápido</Text>
+            <View style={styles.quickActionsRow}>
+              <TouchableOpacity 
+                  style={[styles.quickBtn, {backgroundColor: '#DCFCE7'}]}
+                  onPress={() => navigateTo('ColheitaForm')}
+              >
+                  <MaterialCommunityIcons name="basket-plus" size={32} color="#166534" />
+                  <Text style={[styles.quickBtnText, {color: '#166534'}]}>Vender</Text>
+              </TouchableOpacity>
 
-                <View style={styles.financeRow}>
-                    <Text style={styles.financeLabel}>Receita Vendas:</Text>
-                    <Text style={[styles.financeValue, {color: '#A7F3D0'}]}>+ R$ {stats.totalReceita.toFixed(2)}</Text>
-                </View>
-                <View style={styles.financeRow}>
-                    <Text style={styles.financeLabel}>Custos Produção:</Text>
-                    <Text style={[styles.financeValue, {color: '#FECACA'}]}>- R$ {stats.totalCustoProd.toFixed(2)}</Text>
-                </View>
-                <View style={styles.financeRow}>
-                    <Text style={styles.financeLabel}>Despesas Gerais:</Text>
-                    <Text style={[styles.financeValue, {color: '#FCA5A5'}]}>- R$ {stats.totalDespesas.toFixed(2)}</Text>
-                </View>
+              <TouchableOpacity 
+                  style={[styles.quickBtn, {backgroundColor: '#FEE2E2'}]}
+                  onPress={() => navigateTo('DespesaForm')}
+              >
+                  <MaterialCommunityIcons name="cash-minus" size={32} color="#991B1B" />
+                  <Text style={[styles.quickBtnText, {color: '#991B1B'}]}>Pagar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                  style={[styles.quickBtn, {backgroundColor: '#E0F2FE'}]}
+                  onPress={() => navigateTo('InsumoEntry')}
+              >
+                  <MaterialCommunityIcons name="package-down" size={32} color="#075985" />
+                  <Text style={[styles.quickBtnText, {color: '#075985'}]}>Estoque</Text>
+              </TouchableOpacity>
             </View>
-        )}
 
-        <Text style={styles.sectionTitle}>Gestão Principal</Text>
-        <View style={styles.grid}>
-          <ActionCard title="Gestão de Vendas" iconName="finance" color="#10B981" onPress={() => handleNavigate('VendasList')} />
-          <ActionCard title="Minhas Estufas" iconName="estufa" color="#3B82F6" onPress={() => handleNavigate('EstufasList')} />
+            {/* Grid Principal */}
+            <Text style={styles.sectionLabel}>Gerenciamento</Text>
+            <View style={styles.gridWrapper}>
+              <GridItem title="Estufas" sub="Ciclos e Plantios" icon="greenhouse" color="#16A34A" route="EstufasList" />
+              <GridItem title="Relatórios" sub="Vendas Detalhadas" icon="chart-box-outline" color="#0284C7" route="VendasList" />
+              <GridItem title="Insumos" sub="Controle de Estoque" icon="flask-outline" color="#7C3AED" route="InsumosList" />
+              <GridItem title="Finanças" sub="Contas a Pagar" icon="wallet-outline" color="#BE123C" route="DespesasList" />
+              <GridItem title="Parceiros" sub="Clientes/Forn." icon="account-group" color="#EA580C" route="ClientesList" />
+              <GridItem title="Acesso" sub="Compartilhar" icon="share-variant" color="#4B5563" route="ShareAccount" />
+            </View>
+
+            <View style={{height: 40}} />
+          </ScrollView>
         </View>
-
-        <Text style={styles.sectionTitle}>Financeiro & Operacional</Text>
-        <View style={styles.grid}>
-          {/* NOVO BOTÃO DE DESPESAS */}
-          <ActionCard title="Contas a Pagar" iconName="despesa" color="#EF4444" onPress={() => handleNavigate('DespesasList')} />
-          
-          <ActionCard title="Meus Insumos" iconName="insumo" color="#8B5CF6" onPress={() => handleNavigate('InsumosList')} />
-          <ActionCard title="Meus Clientes" iconName="cliente" color="#F59E0B" onPress={() => handleNavigate('ClientesList')} />
-          <ActionCard title="Fornecedores" iconName="fornecedor" color="#EF4444" onPress={() => handleNavigate('FornecedoresList')} />
-          <ActionCard title="Compartilhar Acesso" iconName="share" color="#6B7280" onPress={() => handleNavigate('ShareAccount')} />
-        </View>
-
-        <View style={styles.footerSpacing} />
-      </ScrollView>
+      </SafeAreaView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  mainContainer: { flex: 1, backgroundColor: COLORS.background },
-  header: {
-    backgroundColor: COLORS.primary,
-    paddingTop: 50,
-    paddingBottom: 25,
-    paddingHorizontal: 24,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    shadowColor: "#059669", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 10,
+  mainWrapper: {
+    flex: 1, 
+    backgroundColor: THEME.headerBg 
   },
-  headerContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  greeting: { fontSize: 26, fontWeight: '800', color: '#FFF' },
-  subGreeting: { fontSize: 14, color: '#D1FAE5', marginTop: 2 },
-  logoutBtn: { backgroundColor: 'rgba(255,255,255,0.2)', padding: 10, borderRadius: 12 },
-  tenantContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingHorizontal: 12, marginTop: 10 },
-  pickerWrapper: { flex: 1 },
-  picker: { color: '#FFF', height: 50, width: '100%' },
+  container: { 
+    flex: 1,
+  },
   
-  scrollView: { flex: 1, marginTop: 15 },
-  scrollContent: { paddingHorizontal: 20, paddingBottom: 20 },
-
-  // Estilos do Card Financeiro (Escuro/Elegante)
-  financeCard: {
-      backgroundColor: '#1F2937', // Cinza escuro
-      borderRadius: 20,
-      padding: 20,
-      marginBottom: 10,
-      shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 5
+  // --- HEADER ---
+  header: {
+    paddingHorizontal: 24,
+    paddingBottom: 30,
+    marginTop: 10, 
   },
-  financeHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  financeTitle: { color: '#F3F4F6', fontSize: 16, fontWeight: '600', marginLeft: 10 },
-  financeMainValue: { color: '#FFF', fontSize: 32, fontWeight: 'bold', marginBottom: 15 },
-  financeDivider: { height: 1, backgroundColor: '#374151', marginBottom: 15 },
-  financeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  financeLabel: { color: '#9CA3AF', fontSize: 14 },
-  financeValue: { fontSize: 14, fontWeight: '600' },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  welcomeSmall: { color: '#86EFAC', fontSize: 13, fontWeight: '600', textTransform: 'uppercase' },
+  welcomeBig: { color: '#FFF', fontSize: 24, fontWeight: 'bold' },
+  logoutBtn: { backgroundColor: 'rgba(255,255,255,0.15)', padding: 10, borderRadius: 12 },
+  
+  // --- ESTILOS DO SELETOR (CORRIGIDOS) ---
+  tenantWrapper: {
+    flexDirection: 'row', // Alinha ícone e picker na horizontal
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderRadius: 12, // Borda mais arredondada
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    height: 50, // Altura maior para evitar corte
+    paddingHorizontal: 12,
+  },
+  tenantIcon: {
+    marginRight: 5,
+  },
+  pickerContainer: {
+    flex: 1, // Ocupa o restante do espaço
+    justifyContent: 'center',
+  },
+  picker: { 
+    color: '#FFF', 
+    // Altura não fixada no picker interno para evitar conflito no Android
+  },
 
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textDark, marginTop: 20, marginBottom: 15, marginLeft: 5 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  actionCard: { width: '48%', backgroundColor: COLORS.card, borderRadius: 20, padding: 16, marginBottom: 16, alignItems: 'flex-start', justifyContent: 'space-between', minHeight: 110, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 3 },
-  iconCircle: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  actionText: { fontSize: 15, fontWeight: '600', color: COLORS.textDark, marginTop: 'auto' },
-  arrowContainer: { position: 'absolute', top: 16, right: 16 },
-  footerSpacing: { height: 40 }
+  // --- BALANCE ---
+  balanceContainer: { marginTop: 5 },
+  balanceLabel: { color: '#A7F3D0', fontSize: 11, fontWeight: '700', letterSpacing: 1 },
+  balanceValue: { color: '#FFF', fontSize: 32, fontWeight: '800', marginTop: 4, marginBottom: 8 },
+  miniStatsRow: { flexDirection: 'row' },
+  miniStatItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.25)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  miniStatText: { color: '#E2E8F0', fontSize: 12, fontWeight: '600', marginLeft: 4 },
+
+  // --- BODY ---
+  body: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+  },
+  scrollContent: {
+    padding: 24,
+    paddingTop: 30,
+  },
+  sectionLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 16,
+    marginLeft: 4,
+  },
+
+  // --- QUICK ACTIONS ---
+  quickActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 30,
+  },
+  quickBtn: {
+    width: '31%',
+    aspectRatio: 1, 
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  quickBtnText: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  // --- GRID ---
+  gridWrapper: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  gridItem: {
+    width: '48%',
+    backgroundColor: '#FFF',
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    shadowColor: "#64748B",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  iconBox: {
+    width: 50,
+    height: 50,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  iconFix: {
+    textAlign: 'center',
+  },
+  gridTexts: {
+    flex: 1,
+  },
+  gridTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  gridSub: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
 });
 
 export default DashboardScreen;
