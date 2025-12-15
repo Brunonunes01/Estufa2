@@ -1,18 +1,19 @@
 // src/contexts/AuthContext.tsx
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import { auth, db } from '../services/firebaseConfig';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
+import { signInWithEmailAndPassword } from 'firebase/auth'; // Importação do Firebase
 import { User } from '../types/domain';
 
+// 1. DEFINIÇÃO DA TIPAGEM (A "Promessa" do que existe no contexto)
 interface AuthContextData {
   user: User | null;
   loading: boolean;
-  // O ID que deve ser usado para buscar dados (pode ser o meu ou de um parceiro)
-  selectedTenantId: string; 
-  // Função para trocar de conta
+  selectedTenantId: string;
   changeTenant: (uid: string) => void;
-  // Lista de contas que posso acessar
-  availableTenants: { uid: string; name: string }[]; 
+  availableTenants: { uid: string; name: string }[];
+  // Aqui declaramos que o signIn existe!
+  signIn: (email: string, password: string) => Promise<void>; 
 }
 
 export const AuthContext = createContext<AuthContextData>({} as AuthContextData);
@@ -21,10 +22,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // Estado para controlar qual conta estamos visualizando
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
-  
-  // Lista de contas disponíveis (Minha + Compartilhadas)
   const [availableTenants, setAvailableTenants] = useState<{ uid: string; name: string }[]>([]);
 
   useEffect(() => {
@@ -38,17 +36,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const userData = { uid: firebaseUser.uid, ...userDoc.data() } as User;
             setUser(userData);
             
-            // Define a conta padrão como a do próprio usuário
-            setSelectedTenantId(userData.uid);
+            setSelectedTenantId(prev => prev || userData.uid);
 
-            // Monta a lista de contas acessíveis
+            // Monta lista de contas
             const tenants = [{ uid: userData.uid, name: 'Minha Conta (Padrão)' }];
             
+            // Busca compartilhamentos antigos (Array)
             if (userData.sharedAccess && Array.isArray(userData.sharedAccess)) {
-                userData.sharedAccess.forEach(access => {
-                    tenants.push({ uid: access.uid, name: `Conta de ${access.name}` });
+                userData.sharedAccess.forEach((access: any) => {
+                    if (!tenants.find(t => t.uid === access.uid)) {
+                        tenants.push({ uid: access.uid, name: `Conta de ${access.name}` });
+                    }
                 });
             }
+
+            // Busca compartilhamentos novos (Subcoleção)
+            try {
+                const sharedSnapshot = await getDocs(collection(db, 'users', firebaseUser.uid, 'accessible_tenants'));
+                sharedSnapshot.forEach(doc => {
+                     const data = doc.data();
+                     if (!tenants.find(t => t.uid === data.tenantId)) {
+                         tenants.push({ uid: data.tenantId, name: data.name || 'Estufa Compartilhada' });
+                     }
+                });
+            } catch (err) {
+                console.log("Erro ao carregar compartilhamentos:", err);
+            }
+
             setAvailableTenants(tenants);
 
           } else {
@@ -73,13 +87,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setSelectedTenantId(uid);
   };
 
+  // 2. IMPLEMENTAÇÃO DA FUNÇÃO
+  const signIn = async (email: string, password: string) => {
+      // Chama o Firebase diretamente
+      await signInWithEmailAndPassword(auth, email, password);
+  };
+
   return (
     <AuthContext.Provider value={{ 
         user, 
         loading, 
         selectedTenantId: selectedTenantId || (user?.uid || ''), 
         changeTenant,
-        availableTenants 
+        availableTenants,
+        signIn // 3. EXPORTAÇÃO (Não esqueça de passar aqui!)
     }}>
       {!loading && children}
     </AuthContext.Provider>

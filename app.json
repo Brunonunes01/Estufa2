@@ -1,35 +1,33 @@
 {
   "expo": {
-    "name": "SGE_App",
-    "slug": "SGE_App",
+    "name": "Estufa Pro",
+    "slug": "estufa-pro",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#14532d"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bruno.estufapro"
     },
     "android": {
+      "package": "com.bruno.estufapro",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false,
-      "package": "com.brunonunes01.SGE_App"
+        "backgroundColor": "#14532d"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
       "eas": {
-        "projectId": "7387215a-caf5-47c7-867b-32e31fff022c"
+        "projectId": "a0b083c6-cf85-4636-9617-b55f8c4d8e5c"
       }
     }
   }
