@@ -23,7 +23,7 @@ const THEME = {
   textSub: '#64748B',
 };
 
-// Altura da StatusBar para Android (evita corte no topo)
+// Altura da StatusBar para Android
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 0;
 
 const DashboardScreen = ({ navigation }: any) => {
@@ -91,27 +91,24 @@ const DashboardScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           </View>
 
-          {/* SELETOR DE CONTA (CORRIGIDO) */}
+          {/* SELETOR DE CONTA */}
           {availableTenants.length > 1 && (
             <View style={styles.tenantWrapper}>
-               {/* Ícone para identificar visualmente */}
                <MaterialCommunityIcons name="store-cog" size={20} color="#A7F3D0" style={styles.tenantIcon} />
-               
-               {/* Container do Picker com flex para não cortar */}
                <View style={styles.pickerContainer}>
                  <Picker
                     selectedValue={selectedTenantId}
                     onValueChange={changeTenant}
                     style={styles.picker}
                     dropdownIconColor="#FFF"
-                    mode="dropdown" // Importante para Android
+                    mode="dropdown"
                 >
                     {availableTenants.map(t => (
                         <Picker.Item 
                             key={t.uid} 
                             label={t.name} 
                             value={t.uid} 
-                            style={{fontSize: 14, color: '#000'}} // Cor do texto no dropdown
+                            style={{fontSize: 14, color: '#000'}}
                         />
                     ))}
                 </Picker>
@@ -139,7 +136,7 @@ const DashboardScreen = ({ navigation }: any) => {
           </View>
         </View>
 
-        {/* --- CONTEÚDO (CURVADO) --- */}
+        {/* --- CONTEÚDO --- */}
         <View style={styles.body}>
           <ScrollView 
             contentContainerStyle={styles.scrollContent}
@@ -168,9 +165,9 @@ const DashboardScreen = ({ navigation }: any) => {
 
               <TouchableOpacity 
                   style={[styles.quickBtn, {backgroundColor: '#E0F2FE'}]}
-                  onPress={() => navigateTo('InsumoEntry')}
+                  onPress={() => navigateTo('InsumosList')} // Ajustado para lista de estoque
               >
-                  <MaterialCommunityIcons name="package-down" size={32} color="#075985" />
+                  <MaterialCommunityIcons name="package-variant-closed" size={32} color="#075985" />
                   <Text style={[styles.quickBtnText, {color: '#075985'}]}>Estoque</Text>
               </TouchableOpacity>
             </View>
@@ -180,8 +177,12 @@ const DashboardScreen = ({ navigation }: any) => {
             <View style={styles.gridWrapper}>
               <GridItem title="Estufas" sub="Ciclos e Plantios" icon="greenhouse" color="#16A34A" route="EstufasList" />
               <GridItem title="Relatórios" sub="Vendas Detalhadas" icon="chart-box-outline" color="#0284C7" route="VendasList" />
-              <GridItem title="Insumos" sub="Controle de Estoque" icon="flask-outline" color="#7C3AED" route="InsumosList" />
-              <GridItem title="Finanças" sub="Contas a Pagar" icon="wallet-outline" color="#BE123C" route="DespesasList" />
+              
+              {/* --- NOVO BOTÃO: CONTAS A RECEBER --- */}
+              <GridItem title="A Receber" sub="Controle de Fiados" icon="hand-coin" color="#D97706" route="ContasReceber" />
+              
+              <GridItem title="A Pagar" sub="Despesas Gerais" icon="wallet-outline" color="#BE123C" route="DespesasList" />
+              <GridItem title="Insumos" sub="Produtos e Venenos" icon="flask-outline" color="#7C3AED" route="InsumosList" />
               <GridItem title="Parceiros" sub="Clientes/Forn." icon="account-group" color="#EA580C" route="ClientesList" />
               <GridItem title="Acesso" sub="Compartilhar" icon="share-variant" color="#4B5563" route="ShareAccount" />
             </View>
@@ -219,28 +220,27 @@ const styles = StyleSheet.create({
   welcomeBig: { color: '#FFF', fontSize: 24, fontWeight: 'bold' },
   logoutBtn: { backgroundColor: 'rgba(255,255,255,0.15)', padding: 10, borderRadius: 12 },
   
-  // --- ESTILOS DO SELETOR (CORRIGIDOS) ---
+  // --- SELETOR ---
   tenantWrapper: {
-    flexDirection: 'row', // Alinha ícone e picker na horizontal
+    flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.2)',
-    borderRadius: 12, // Borda mais arredondada
+    borderRadius: 12,
     marginBottom: 15,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
-    height: 50, // Altura maior para evitar corte
+    height: 50,
     paddingHorizontal: 12,
   },
   tenantIcon: {
     marginRight: 5,
   },
   pickerContainer: {
-    flex: 1, // Ocupa o restante do espaço
+    flex: 1,
     justifyContent: 'center',
   },
   picker: { 
     color: '#FFF', 
-    // Altura não fixada no picker interno para evitar conflito no Android
   },
 
   // --- BALANCE ---

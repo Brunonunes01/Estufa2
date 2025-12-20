@@ -1,26 +1,24 @@
 // src/screens/Estufas/EstufasListScreen.tsx
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, StatusBar } from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { listEstufas } from '../../services/estufaService';
 import { Estufa } from '../../types/domain';
 import { useIsFocused } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-// --- TEMA ---
-const COLORS = {
-  background: '#F3F4F6',
-  card: '#FFFFFF',
-  primary: '#059669',
-  textDark: '#111827',
-  textGray: '#6B7280',
-};
-
 const EstufasListScreen = ({ navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
   const [estufas, setEstufas] = useState<Estufa[]>([]);
   const [loading, setLoading] = useState(true);
   const isFocused = useIsFocused();
+
+  useEffect(() => {
+    navigation.setOptions({ 
+        headerStyle: { backgroundColor: '#14532d' },
+        headerTintColor: '#fff'
+    });
+  }, []);
 
   const carregarEstufas = async () => {
     const idBusca = selectedTenantId || user?.uid;
@@ -41,19 +39,18 @@ const EstufasListScreen = ({ navigation }: any) => {
     if (isFocused) carregarEstufas();
   }, [isFocused, selectedTenantId]);
 
-  // Renderização do Item da Lista (Design System)
   const renderItem = ({ item }: { item: Estufa }) => {
     const isAtiva = item.status === 'ativa';
     
     return (
       <TouchableOpacity 
         style={styles.card}
-        activeOpacity={0.8}
+        activeOpacity={0.9}
         onPress={() => navigation.navigate('EstufaDetail', { estufaId: item.id })}
       >
         <View style={styles.cardHeader}>
             <View style={styles.iconContainer}>
-                <MaterialCommunityIcons name="greenhouse" size={24} color={isAtiva ? COLORS.primary : '#9CA3AF'} />
+                <MaterialCommunityIcons name="greenhouse" size={24} color={isAtiva ? '#166534' : '#9CA3AF'} />
             </View>
             <View style={styles.textContainer}>
                 <Text style={styles.cardTitle}>{item.nome}</Text>
@@ -68,7 +65,7 @@ const EstufasListScreen = ({ navigation }: any) => {
         
         <View style={styles.cardFooter}>
             <Text style={styles.footerText}>Ver detalhes e plantios</Text>
-            <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.primary} />
+            <MaterialCommunityIcons name="arrow-right" size={16} color="#166534" />
         </View>
       </TouchableOpacity>
     );
@@ -76,15 +73,16 @@ const EstufasListScreen = ({ navigation }: any) => {
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#14532d" />
       <FlatList
         data={estufas}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={carregarEstufas} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={carregarEstufas} tintColor="#fff" />}
         ListEmptyComponent={
             !loading ? (
                 <View style={styles.emptyContainer}>
-                    <MaterialCommunityIcons name="greenhouse" size={60} color="#E5E7EB" />
+                    <MaterialCommunityIcons name="greenhouse" size={60} color="rgba(255,255,255,0.3)" />
                     <Text style={styles.emptyTitle}>Nenhuma estufa</Text>
                     <Text style={styles.emptySub}>Cadastre sua primeira estufa para começar.</Text>
                 </View>
@@ -93,111 +91,57 @@ const EstufasListScreen = ({ navigation }: any) => {
         renderItem={renderItem}
       />
       
-      {/* Botão Flutuante (FAB) Estilizado */}
       <TouchableOpacity 
         style={styles.fab} 
         activeOpacity={0.8}
         onPress={() => navigation.navigate('EstufaForm')}
       >
-        <MaterialCommunityIcons name="plus" size={32} color="#fff" />
+        <MaterialCommunityIcons name="plus" size={32} color="#166534" />
       </TouchableOpacity>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+  container: { flex: 1, backgroundColor: '#14532d' }, // Fundo Verde
   listContent: { padding: 20, paddingBottom: 100 },
   
-  // Estilo do Cartão
   card: {
-    backgroundColor: COLORS.card,
+    backgroundColor: '#FFF',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
-    // Sombra Suave
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
+    elevation: 4,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: '#ECFDF5', // Verde bem claro
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
+    width: 48, height: 48, borderRadius: 12, backgroundColor: '#ECFDF5',
+    justifyContent: 'center', alignItems: 'center', marginRight: 12,
   },
   textContainer: { flex: 1 },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.textDark,
-  },
-  cardSubTitle: {
-    fontSize: 13,
-    color: COLORS.textGray,
-    marginTop: 2,
-  },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: '#111827' },
+  cardSubTitle: { fontSize: 13, color: '#6B7280', marginTop: 2 },
   
-  // Badges (Etiquetas)
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
+  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   badgeActive: { backgroundColor: '#D1FAE5' },
   badgeInactive: { backgroundColor: '#F3F4F6' },
   badgeText: { fontSize: 10, fontWeight: '700' },
   textActive: { color: '#059669' },
   textInactive: { color: '#6B7280' },
 
-  // Rodapé do Cartão
   cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-    paddingTop: 12,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 12,
   },
-  footerText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.primary,
-  },
+  footerText: { fontSize: 12, fontWeight: '600', color: '#166534' },
 
-  // Empty State
   emptyContainer: { alignItems: 'center', marginTop: 60 },
-  emptyTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textDark, marginTop: 10 },
-  emptySub: { fontSize: 14, color: COLORS.textGray, marginTop: 5 },
+  emptyTitle: { fontSize: 18, fontWeight: 'bold', color: '#FFF', marginTop: 10 },
+  emptySub: { fontSize: 14, color: '#A7F3D0', marginTop: 5 },
 
-  // FAB
   fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 30,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
+    position: 'absolute', right: 20, bottom: 30, width: 64, height: 64, borderRadius: 32,
+    backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center', elevation: 8,
   },
 });
 

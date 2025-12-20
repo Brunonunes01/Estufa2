@@ -7,7 +7,9 @@ import {
   getDocs, 
   deleteDoc, 
   doc, 
-  Timestamp
+  Timestamp, 
+  getDoc, 
+  updateDoc 
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Colheita } from '../types/domain';
@@ -20,30 +22,43 @@ export type ColheitaFormData = {
   destino: string | null;
   clienteId: string | null;
   metodoPagamento: string | null;
-  registradoPor: string | null; // <-- NOVO CAMPO NO FORM
+  registradoPor: string | null;
   observacoes: string | null;
+  dataVenda?: Date; // Opcional para data personalizada
 };
 
-// 1. CRIAR COLHEITA
+// 1. CRIAR COLHEITA (VENDA)
 export const createColheita = async (
   data: ColheitaFormData, 
-  userId: string, // ID do Dono da conta (onde será salvo)
+  userId: string, 
   plantioId: string, 
   estufaId: string 
 ) => {
+  // Se veio uma data personalizada, usa ela. Senão, usa AGORA.
+  const dataFinal = data.dataVenda ? Timestamp.fromDate(data.dataVenda) : Timestamp.now();
+  
+  // LÓGICA DE PAGAMENTO: Se for "prazo", status é pendente.
+  const isPrazo = data.metodoPagamento === 'prazo';
+
   const novaColheita = {
     ...data, 
     userId: userId,
     plantioId: plantioId,
     estufaId: estufaId,
-    dataColheita: Timestamp.now(),
+    dataColheita: dataFinal,
+    // Define status financeiro
+    statusPagamento: isPrazo ? 'pendente' : 'pago',
+    dataPagamento: isPrazo ? null : dataFinal, // Se pagou agora, data é agora
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   };
 
+  // Remove o campo auxiliar antes de salvar
+  delete (novaColheita as any).dataVenda;
+
   try {
     const docRef = await addDoc(collection(db, 'colheitas'), novaColheita);
-    console.log('Colheita criada com ID: ', docRef.id);
+    // Atualiza status do plantio para "em colheita"
     await updatePlantioStatus(plantioId, "em_colheita");
     return docRef.id;
   } catch (error) {
@@ -52,7 +67,44 @@ export const createColheita = async (
   }
 };
 
-// 2. LISTAR COLHEITAS DE UM PLANTIO
+// 2. DAR BAIXA (RECEBER CONTA)
+export const receberConta = async (colheitaId: string) => {
+    try {
+        const docRef = doc(db, 'colheitas', colheitaId);
+        await updateDoc(docRef, {
+            statusPagamento: 'pago',
+            dataPagamento: Timestamp.now(), // Data do recebimento é HOJE
+            updatedAt: Timestamp.now()
+        });
+    } catch (error) {
+        console.error("Erro ao receber conta:", error);
+        throw new Error("Erro ao atualizar pagamento.");
+    }
+};
+
+// 3. LISTAR CONTAS A RECEBER (APENAS PENDENTES)
+export const listContasAReceber = async (userId: string): Promise<Colheita[]> => {
+    const colheitas: Colheita[] = [];
+    try {
+      const q = query(
+        collection(db, 'colheitas'), 
+        where("userId", "==", userId),
+        where("statusPagamento", "==", "pendente")
+      );
+      const querySnapshot = await getDocs(q);
+      querySnapshot.forEach((doc) => {
+        colheitas.push({ id: doc.id, ...doc.data() } as Colheita);
+      });
+      // Ordena pelas mais antigas primeiro
+      colheitas.sort((a, b) => a.dataColheita.seconds - b.dataColheita.seconds);
+      return colheitas;
+    } catch (error) {
+      console.error("Erro ao listar contas a receber: ", error);
+      return [];
+    }
+};
+
+// 4. LISTAR COLHEITAS DE UM PLANTIO
 export const listColheitasByPlantio = async (userId: string, plantioId: string): Promise<Colheita[]> => {
   const colheitas: Colheita[] = [];
   try {
@@ -72,7 +124,7 @@ export const listColheitasByPlantio = async (userId: string, plantioId: string):
   }
 };
 
-// 3. LISTAR TODAS
+// 5. LISTAR TODAS (RELATÓRIO GERAL)
 export const listAllColheitas = async (userId: string): Promise<Colheita[]> => {
   const colheitas: Colheita[] = [];
   try {
@@ -84,7 +136,6 @@ export const listAllColheitas = async (userId: string): Promise<Colheita[]> => {
     querySnapshot.forEach((doc) => {
       colheitas.push({ id: doc.id, ...doc.data() } as Colheita);
     });
-    // Ordenação em memória (Do mais recente para o mais antigo)
     colheitas.sort((a, b) => b.dataColheita.seconds - a.dataColheita.seconds);
     return colheitas;
   } catch (error) {
@@ -93,7 +144,50 @@ export const listAllColheitas = async (userId: string): Promise<Colheita[]> => {
   }
 };
 
-// 4. DELETAR
+// 6. BUSCAR POR ID (EDIÇÃO)
+export const getColheitaById = async (id: string): Promise<Colheita | null> => {
+    try {
+        const docRef = doc(db, 'colheitas', id);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            return { id: docSnap.id, ...docSnap.data() } as Colheita;
+        }
+        return null;
+    } catch (error) {
+        console.error("Erro ao buscar colheita:", error);
+        return null;
+    }
+};
+
+// 7. ATUALIZAR COLHEITA
+export const updateColheita = async (id: string, data: ColheitaFormData) => {
+    try {
+        const docRef = doc(db, 'colheitas', id);
+        
+        const updateData: any = { ...data };
+        if (data.dataVenda) {
+            updateData.dataColheita = Timestamp.fromDate(data.dataVenda);
+            delete updateData.dataVenda;
+        }
+        
+        // Atualiza status se mudar o método de pagamento na edição
+        if (data.metodoPagamento === 'prazo') {
+            updateData.statusPagamento = 'pendente';
+        } else {
+            // Se mudou para dinheiro/pix, considera pago agora
+            updateData.statusPagamento = 'pago'; 
+        }
+
+        updateData.updatedAt = Timestamp.now();
+
+        await updateDoc(docRef, updateData);
+    } catch (error) {
+        console.error("Erro ao atualizar colheita:", error);
+        throw new Error("Falha ao atualizar venda.");
+    }
+};
+
+// 8. DELETAR
 export const deleteColheita = async (colheitaId: string) => {
     try {
         const docRef = doc(db, 'colheitas', colheitaId);

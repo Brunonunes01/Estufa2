@@ -9,7 +9,6 @@ export interface User {
   email: string;
   role: "admin" | "operator";
   createdAt: Timestamp;
-  // Lista simples para compatibilidade
   sharedAccess?: { uid: string; name: string }[]; 
 }
 
@@ -81,6 +80,10 @@ export interface Colheita extends BaseDoc {
   metodoPagamento: string | null;
   registradoPor: string | null;
   observacoes: string | null;
+  
+  // --- NOVOS CAMPOS PARA CONTROLE FINANCEIRO ---
+  statusPagamento?: "pago" | "pendente";
+  dataPagamento?: Timestamp | null;
 }
 
 export interface Insumo extends BaseDoc {

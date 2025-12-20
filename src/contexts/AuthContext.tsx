@@ -1,19 +1,18 @@
 // src/contexts/AuthContext.tsx
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import { auth, db } from '../services/firebaseConfig';
-import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
-import { signInWithEmailAndPassword } from 'firebase/auth'; // Importação do Firebase
+// MUDANÇA 1: Importar onSnapshot para atualizações em tempo real
+import { doc, getDoc, collection, onSnapshot } from 'firebase/firestore'; 
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { User } from '../types/domain';
 
-// 1. DEFINIÇÃO DA TIPAGEM (A "Promessa" do que existe no contexto)
 interface AuthContextData {
   user: User | null;
   loading: boolean;
   selectedTenantId: string;
   changeTenant: (uid: string) => void;
   availableTenants: { uid: string; name: string }[];
-  // Aqui declaramos que o signIn existe!
-  signIn: (email: string, password: string) => Promise<void>; 
+  signIn: (email: string, password: string) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextData>({} as AuthContextData);
@@ -21,12 +20,13 @@ export const AuthContext = createContext<AuthContextData>({} as AuthContextData)
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
   const [availableTenants, setAvailableTenants] = useState<{ uid: string; name: string }[]>([]);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+    let unsubscribeShares: () => void; // Para parar de escutar quando deslogar
+
+    const unsubscribeAuth = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser) {
         try {
           const userDocRef = doc(db, 'users', firebaseUser.uid);
@@ -36,34 +36,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const userData = { uid: firebaseUser.uid, ...userDoc.data() } as User;
             setUser(userData);
             
-            setSelectedTenantId(prev => prev || userData.uid);
+            // Se não tiver selecionado, seleciona a própria conta
+            if (!selectedTenantId) setSelectedTenantId(userData.uid);
 
-            // Monta lista de contas
-            const tenants = [{ uid: userData.uid, name: 'Minha Conta (Padrão)' }];
+            const myAccount = { uid: userData.uid, name: 'Minha Conta (Padrão)' };
             
-            // Busca compartilhamentos antigos (Array)
+            // Acessos antigos (Array fixo)
+            const legacyShares: { uid: string; name: string }[] = [];
             if (userData.sharedAccess && Array.isArray(userData.sharedAccess)) {
                 userData.sharedAccess.forEach((access: any) => {
-                    if (!tenants.find(t => t.uid === access.uid)) {
-                        tenants.push({ uid: access.uid, name: `Conta de ${access.name}` });
-                    }
+                    legacyShares.push({ uid: access.uid, name: `Conta de ${access.name}` });
                 });
             }
 
-            // Busca compartilhamentos novos (Subcoleção)
-            try {
-                const sharedSnapshot = await getDocs(collection(db, 'users', firebaseUser.uid, 'accessible_tenants'));
-                sharedSnapshot.forEach(doc => {
-                     const data = doc.data();
-                     if (!tenants.find(t => t.uid === data.tenantId)) {
-                         tenants.push({ uid: data.tenantId, name: data.name || 'Estufa Compartilhada' });
-                     }
-                });
-            } catch (err) {
-                console.log("Erro ao carregar compartilhamentos:", err);
-            }
+            // MUDANÇA 2: Monitoramento em TEMPO REAL (onSnapshot)
+            // Assim que aceitar o convite, o Firebase avisa e a lista atualiza sozinha
+            unsubscribeShares = onSnapshot(collection(db, 'users', firebaseUser.uid, 'accessible_tenants'), (snapshot) => {
+                const newShares = snapshot.docs.map(doc => ({
+                    uid: doc.data().tenantId,
+                    name: doc.data().name || 'Estufa Compartilhada'
+                }));
 
-            setAvailableTenants(tenants);
+                // Junta tudo e remove duplicatas
+                const allTenants = [myAccount, ...legacyShares, ...newShares];
+                const uniqueTenants = allTenants.filter((item, index, self) =>
+                    index === self.findIndex((t) => t.uid === item.uid)
+                );
+
+                setAvailableTenants(uniqueTenants);
+            });
 
           } else {
             setUser(null);
@@ -73,23 +74,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
            setUser(null);
         }
       } else {
+        // Logout
         setUser(null);
         setAvailableTenants([]);
         setSelectedTenantId('');
+        if (unsubscribeShares) unsubscribeShares();
       }
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+        unsubscribeAuth();
+        if (unsubscribeShares) unsubscribeShares();
+    };
   }, []);
 
   const changeTenant = (uid: string) => {
       setSelectedTenantId(uid);
   };
 
-  // 2. IMPLEMENTAÇÃO DA FUNÇÃO
   const signIn = async (email: string, password: string) => {
-      // Chama o Firebase diretamente
       await signInWithEmailAndPassword(auth, email, password);
   };
 
@@ -100,7 +104,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         selectedTenantId: selectedTenantId || (user?.uid || ''), 
         changeTenant,
         availableTenants,
-        signIn // 3. EXPORTAÇÃO (Não esqueça de passar aqui!)
+        signIn 
     }}>
       {!loading && children}
     </AuthContext.Provider>
