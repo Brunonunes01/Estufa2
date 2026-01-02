@@ -1,9 +1,9 @@
-// src/screens/Dashboard/DashboardScreen.tsx
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, RefreshControl, Dimensions, 
-  SafeAreaView, Platform 
+  Platform 
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker'; 
 import { auth } from '../../services/firebaseConfig';
 import { useAuth } from '../../hooks/useAuth';
@@ -11,20 +11,14 @@ import { useIsFocused } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons'; 
 import { getGlobalStats, GlobalStatsResult } from '../../services/globalStatsService';
 
-const { width } = Dimensions.get('window');
-
-// --- TEMA ---
 const THEME = {
-  headerBg: '#14532d', // Verde musgo profundo
+  headerBg: '#14532d', 
   headerText: '#F0FDF4',
   bg: '#F8FAFC',
   cardBg: '#FFFFFF',
   textMain: '#1F293B',
   textSub: '#64748B',
 };
-
-// Altura da StatusBar para Android
-const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 0;
 
 const DashboardScreen = ({ navigation }: any) => {
   const { user, selectedTenantId, changeTenant, availableTenants } = useAuth();
@@ -56,7 +50,31 @@ const DashboardScreen = ({ navigation }: any) => {
 
   const navigateTo = (screen: string) => navigation.navigate(screen);
 
-  // Widget do Grid
+  // --- NOVA LÓGICA DE FORMATAÇÃO DE NOME ---
+  const getFormattedLabel = (tenant: any) => {
+    // Verifica se o ID do tenant é igual ao ID do usuário logado
+    const isMe = tenant.uid === user?.uid;
+    
+    // Lista de nomes comuns que causam confusão
+    const nomesGenericos = ['Minha Estufa', 'Meu Grow', 'Estufa', 'Grow', 'Principal'];
+    const nomeAtual = tenant.name ? tenant.name.trim() : 'Estufa';
+
+    if (isMe) {
+      // Se for a SUA conta, indicamos que é a Principal
+      return `${nomeAtual} (Principal)`;
+    } else {
+      // Se NÃO for a sua conta (é compartilhada)
+      
+      // Se o nome for genérico, mudamos para "Estufa Compartilhada" para não confundir
+      if (nomesGenericos.includes(nomeAtual)) {
+        return 'Estufa Compartilhada'; 
+      }
+      
+      // Se tiver um nome específico (ex: "Laboratório 2"), mantemos o nome
+      return `Estufa: ${nomeAtual}`;
+    }
+  };
+
   const GridItem = ({ title, sub, icon, color, route }: any) => (
     <TouchableOpacity 
       style={styles.gridItem} 
@@ -77,7 +95,7 @@ const DashboardScreen = ({ navigation }: any) => {
     <View style={styles.mainWrapper}>
       <StatusBar barStyle="light-content" backgroundColor={THEME.headerBg} translucent />
       
-      <SafeAreaView style={[styles.container, { paddingTop: STATUSBAR_HEIGHT }]}>
+      <SafeAreaView style={styles.container}>
         
         {/* --- CABEÇALHO --- */}
         <View style={styles.header}>
@@ -106,7 +124,8 @@ const DashboardScreen = ({ navigation }: any) => {
                     {availableTenants.map(t => (
                         <Picker.Item 
                             key={t.uid} 
-                            label={t.name} 
+                            // AQUI APLICAMOS A CORREÇÃO
+                            label={getFormattedLabel(t)} 
                             value={t.uid} 
                             style={{fontSize: 14, color: '#000'}}
                         />
@@ -116,7 +135,7 @@ const DashboardScreen = ({ navigation }: any) => {
             </View>
           )}
 
-          {/* Card de Saldo Resumido */}
+          {/* Card de Saldo */}
           <View style={styles.balanceContainer}>
               <Text style={styles.balanceLabel}>LUCRO LÍQUIDO</Text>
               <Text style={styles.balanceValue}>
@@ -144,7 +163,7 @@ const DashboardScreen = ({ navigation }: any) => {
             refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} colors={[THEME.headerBg]}/>}
           >
             
-            {/* Botões Grandes de Ação */}
+            {/* Botões Grandes */}
             <Text style={styles.sectionLabel}>Acesso Rápido</Text>
             <View style={styles.quickActionsRow}>
               <TouchableOpacity 
@@ -165,7 +184,7 @@ const DashboardScreen = ({ navigation }: any) => {
 
               <TouchableOpacity 
                   style={[styles.quickBtn, {backgroundColor: '#E0F2FE'}]}
-                  onPress={() => navigateTo('InsumosList')} // Ajustado para lista de estoque
+                  onPress={() => navigateTo('InsumosList')} 
               >
                   <MaterialCommunityIcons name="package-variant-closed" size={32} color="#075985" />
                   <Text style={[styles.quickBtnText, {color: '#075985'}]}>Estoque</Text>
@@ -177,10 +196,7 @@ const DashboardScreen = ({ navigation }: any) => {
             <View style={styles.gridWrapper}>
               <GridItem title="Estufas" sub="Ciclos e Plantios" icon="greenhouse" color="#16A34A" route="EstufasList" />
               <GridItem title="Relatórios" sub="Vendas Detalhadas" icon="chart-box-outline" color="#0284C7" route="VendasList" />
-              
-              {/* --- NOVO BOTÃO: CONTAS A RECEBER --- */}
               <GridItem title="A Receber" sub="Controle de Fiados" icon="hand-coin" color="#D97706" route="ContasReceber" />
-              
               <GridItem title="A Pagar" sub="Despesas Gerais" icon="wallet-outline" color="#BE123C" route="DespesasList" />
               <GridItem title="Insumos" sub="Produtos e Venenos" icon="flask-outline" color="#7C3AED" route="InsumosList" />
               <GridItem title="Parceiros" sub="Clientes/Forn." icon="account-group" color="#EA580C" route="ClientesList" />
@@ -203,8 +219,6 @@ const styles = StyleSheet.create({
   container: { 
     flex: 1,
   },
-  
-  // --- HEADER ---
   header: {
     paddingHorizontal: 24,
     paddingBottom: 30,
@@ -220,7 +234,6 @@ const styles = StyleSheet.create({
   welcomeBig: { color: '#FFF', fontSize: 24, fontWeight: 'bold' },
   logoutBtn: { backgroundColor: 'rgba(255,255,255,0.15)', padding: 10, borderRadius: 12 },
   
-  // --- SELETOR ---
   tenantWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -232,18 +245,10 @@ const styles = StyleSheet.create({
     height: 50,
     paddingHorizontal: 12,
   },
-  tenantIcon: {
-    marginRight: 5,
-  },
-  pickerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  picker: { 
-    color: '#FFF', 
-  },
+  tenantIcon: { marginRight: 5 },
+  pickerContainer: { flex: 1, justifyContent: 'center' },
+  picker: { color: '#FFF' },
 
-  // --- BALANCE ---
   balanceContainer: { marginTop: 5 },
   balanceLabel: { color: '#A7F3D0', fontSize: 11, fontWeight: '700', letterSpacing: 1 },
   balanceValue: { color: '#FFF', fontSize: 32, fontWeight: '800', marginTop: 4, marginBottom: 8 },
@@ -251,7 +256,6 @@ const styles = StyleSheet.create({
   miniStatItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.25)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   miniStatText: { color: '#E2E8F0', fontSize: 12, fontWeight: '600', marginLeft: 4 },
 
-  // --- BODY ---
   body: {
     flex: 1,
     backgroundColor: '#F8FAFC',
@@ -269,8 +273,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     marginLeft: 4,
   },
-
-  // --- QUICK ACTIONS ---
   quickActionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -293,8 +295,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-
-  // --- GRID ---
   gridWrapper: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -323,22 +323,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
-  iconFix: {
-    textAlign: 'center',
-  },
-  gridTexts: {
-    flex: 1,
-  },
-  gridTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  gridSub: {
-    fontSize: 12,
-    color: '#94A3B8',
-    marginTop: 2,
-  },
+  iconFix: { textAlign: 'center' },
+  gridTexts: { flex: 1 },
+  gridTitle: { fontSize: 15, fontWeight: '700', color: '#1E293B' },
+  gridSub: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
 });
 
 export default DashboardScreen;

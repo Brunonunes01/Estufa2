@@ -9,12 +9,12 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  ScrollView
+  ScrollView,
+  Alert
 } from 'react-native';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../services/firebaseConfig';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-// Certifique-se que esse arquivo existe, senão remova a importação e troque <Card> por <View style={styles.loginCard}>
 import Card from '../../components/Card'; 
 
 const LoginScreen = ({ navigation }: any) => {
@@ -23,7 +23,7 @@ const LoginScreen = ({ navigation }: any) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false); 
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setError('');
     setLoading(true); 
 
@@ -33,22 +33,26 @@ const LoginScreen = ({ navigation }: any) => {
       return;
     }
     
-    signInWithEmailAndPassword(auth, email, password)
-      .then(() => {
-        setLoading(false);
-        // A navegação ocorre automaticamente pelo AuthContext
-      })
-      .catch((err) => {
-        setLoading(false);
-        console.error(err); // Bom para debug
-        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-email' || err.code === 'auth/invalid-credential') {
-          setError('Credenciais inválidas. Verifique o e-mail e a senha.');
-        } else if (err.code === 'auth/wrong-password') {
-          setError('Senha incorreta. Tente novamente.');
-        } else {
-          setError('Erro ao tentar logar. Tente mais tarde.');
-        }
-      });
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      // NÃO PRECISA NAVEGAR MANUALMENTE (navigation.navigate)
+      // O AuthContext detectará a mudança e o RootNavigator carregará o AppStack.
+    } catch (err: any) {
+      setLoading(false);
+      console.error(err);
+      
+      let msg = 'Erro ao tentar logar.';
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-email' || err.code === 'auth/invalid-credential') {
+        msg = 'Credenciais inválidas. Verifique e-mail e senha.';
+      } else if (err.code === 'auth/wrong-password') {
+        msg = 'Senha incorreta.';
+      } else if (err.code === 'auth/too-many-requests') {
+        msg = 'Muitas tentativas falhas. Tente novamente mais tarde.';
+      }
+      setError(msg);
+      Alert.alert('Erro de Login', msg);
+    }
+    // Nota: Se der sucesso, o componente será desmontado, então não precisamos setar loading(false) no sucesso.
   };
 
   return (
@@ -60,13 +64,14 @@ const LoginScreen = ({ navigation }: any) => {
             
             <Card style={styles.loginCard}>
                 <Text style={styles.header}>
-                    <MaterialCommunityIcons name="greenhouse" size={28} color="#4CAF50" /> SGE - Entrar
+                    <MaterialCommunityIcons name="greenhouse" size={32} color="#166534" /> 
+                    {'\n'}SGE - Entrar
                 </Text>
                 
                 <Text style={styles.label}>E-mail</Text>
                 <TextInput
-                    placeholder="exemplo@dominio.com"
-                    placeholderTextColor="#94A3B8" // <--- ADICIONADO PARA SEGURANÇA VISUAL
+                    placeholder="seu@email.com"
+                    placeholderTextColor="#94A3B8"
                     value={email}
                     onChangeText={setEmail}
                     autoCapitalize="none"
@@ -77,7 +82,7 @@ const LoginScreen = ({ navigation }: any) => {
                 <Text style={styles.label}>Senha</Text>
                 <TextInput
                     placeholder="Sua senha"
-                    placeholderTextColor="#94A3B8" // <--- ADICIONADO PARA SEGURANÇA VISUAL
+                    placeholderTextColor="#94A3B8"
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
@@ -99,9 +104,7 @@ const LoginScreen = ({ navigation }: any) => {
                     {loading ? (
                         <ActivityIndicator color="#fff" />
                     ) : (
-                        <Text style={styles.loginButtonText}>
-                            Entrar
-                        </Text>
+                        <Text style={styles.loginButtonText}>ENTRAR</Text>
                     )}
                 </TouchableOpacity>
 
@@ -124,7 +127,7 @@ const LoginScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
     fullContainer: {
         flex: 1,
-        backgroundColor: '#FAFAFA', 
+        backgroundColor: '#F1F5F9', 
     },
     centeredContent: {
         flexGrow: 1,
@@ -137,51 +140,51 @@ const styles = StyleSheet.create({
         maxWidth: 400,
         padding: 25,
         marginBottom: 20,
-        backgroundColor: '#fff', // Garante fundo branco no card
-        borderRadius: 12,
-        // Sombra leve para destacar
+        backgroundColor: '#fff',
+        borderRadius: 16,
+        elevation: 4,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 4,
-        elevation: 3,
     },
     header: {
-        fontSize: 28,
+        fontSize: 26,
         fontWeight: 'bold',
         textAlign: 'center',
         marginBottom: 30,
-        color: '#333',
+        color: '#1E293B',
     },
     label: {
         fontSize: 14,
-        marginBottom: 4,
-        fontWeight: 'bold',
-        color: '#555',
+        marginBottom: 6,
+        fontWeight: '600',
+        color: '#475569',
     },
     input: {
         borderWidth: 1,
-        borderColor: '#ccc',
+        borderColor: '#E2E8F0',
         padding: 14, 
         borderRadius: 8,
         marginBottom: 20,
-        backgroundColor: '#fff',
+        backgroundColor: '#F8FAFC',
         fontSize: 16,
-        color: '#333', // IMPORTANTE: Texto escuro
+        color: '#333',
     },
     loginButton: {
-        backgroundColor: '#4CAF50',
+        backgroundColor: '#166534', // Verde Floresta
         padding: 16,
         borderRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
         marginTop: 10,
-        minHeight: 55,
+        height: 56,
     },
     loginButtonText: {
         color: '#fff',
         fontWeight: 'bold',
-        fontSize: 18,
+        fontSize: 16,
+        letterSpacing: 0.5,
     },
     registerButton: {
         marginTop: 10,
@@ -189,26 +192,27 @@ const styles = StyleSheet.create({
     },
     registerButtonText: {
         fontSize: 14,
-        color: '#666',
+        color: '#64748B',
     },
     registerLink: {
-        color: '#007bff',
+        color: '#166534',
         fontWeight: 'bold',
     },
     errorBox: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#fdebeb',
-        borderColor: '#d9534f',
+        backgroundColor: '#FEF2F2',
+        borderColor: '#FCA5A5',
         borderWidth: 1,
-        padding: 10,
+        padding: 12,
         borderRadius: 8,
         marginBottom: 20,
     },
     errorText: {
-        color: '#d9534f',
+        color: '#B91C1C',
         marginLeft: 8,
         fontSize: 14,
+        flex: 1,
     }
 });
 

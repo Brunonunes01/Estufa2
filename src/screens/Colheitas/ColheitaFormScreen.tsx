@@ -1,8 +1,7 @@
-// src/screens/Colheitas/ColheitaFormScreen.tsx
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   View, Text, TextInput, ScrollView, Alert, StyleSheet,
-  TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform
+  TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Modal
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker'; 
 import DateTimePicker from '@react-native-community/datetimepicker'; 
@@ -13,6 +12,10 @@ import { listClientes } from '../../services/clienteService';
 import { useAuth } from '../../hooks/useAuth';
 import { MaterialCommunityIcons } from '@expo/vector-icons'; 
 import { Plantio, Cliente } from '../../types/domain';
+
+// IMPORTS FIREBASE PARA O CADASTRO RÁPIDO DE CLIENTE
+import { db } from '../../services/firebaseConfig';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 type UnidadeColheita = "kg" | "caixa" | "unidade" | "maço";
 type MetodoPagamento = "pix" | "dinheiro" | "boleto" | "prazo" | "cartao" | "outro";
@@ -31,10 +34,13 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const [estufasMap, setEstufasMap] = useState<Record<string, string>>({});
   const [loadingData, setLoadingData] = useState(false);
 
-  // Campos
+  // --- CAMPOS DO FORMULÁRIO ---
   const [selectedPlantioId, setSelectedPlantioId] = useState<string>(params.plantioId || '');
   const [quantidade, setQuantidade] = useState('');
-  const [unidade, setUnidade] = useState<UnidadeColheita>('kg'); 
+  
+  // MUDANÇA AQUI: Padrão alterado de 'kg' para 'caixa'
+  const [unidade, setUnidade] = useState<UnidadeColheita>('caixa'); 
+  
   const [preco, setPreco] = useState(''); 
   const [selectedClienteId, setSelectedClienteId] = useState<string | null>(null); 
   const [metodoPagamento, setMetodoPagamento] = useState<MetodoPagamento>('pix');
@@ -43,6 +49,11 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   // Data
   const [dataVenda, setDataVenda] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // --- ESTADOS DO MODAL DE NOVO CLIENTE ---
+  const [modalVisible, setModalVisible] = useState(false);
+  const [novoClienteNome, setNovoClienteNome] = useState('');
+  const [salvandoNovoCliente, setSalvandoNovoCliente] = useState(false);
 
   useEffect(() => {
     navigation.setOptions({ 
@@ -117,8 +128,45 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
     if (selectedDate) setDataVenda(selectedDate);
   };
 
+  // --- FUNÇÃO DE CADASTRO RÁPIDO DE CLIENTE ---
+  const handleQuickRegisterClient = async () => {
+    if (!novoClienteNome.trim()) {
+        Alert.alert("Atenção", "Digite o nome do cliente");
+        return;
+    }
+    setSalvandoNovoCliente(true);
+    try {
+        const targetId = selectedTenantId || user?.uid;
+        if (!targetId) throw new Error("Usuário não identificado");
+
+        // Salva direto no Firestore
+        const docRef = await addDoc(collection(db, "clientes"), {
+            nome: novoClienteNome.trim(),
+            uid: targetId,
+            createdAt: serverTimestamp(),
+            tipo: 'Consumidor',
+            telefone: ''
+        });
+
+        // Atualiza a lista local e seleciona o novo
+        const novoClienteObj = { id: docRef.id, nome: novoClienteNome.trim() } as Cliente;
+        const novaLista = [...clientesList, novoClienteObj].sort((a,b) => a.nome.localeCompare(b.nome));
+        
+        setClientesList(novaLista);
+        setSelectedClienteId(docRef.id);
+        
+        setModalVisible(false);
+        setNovoClienteNome('');
+
+    } catch (error) {
+        Alert.alert("Erro", "Não foi possível cadastrar");
+        console.error(error);
+    } finally {
+        setSalvandoNovoCliente(false);
+    }
+  };
+
   const handleSave = async () => {
-      // FIX 1: Garantir que targetId existe (é string)
       const targetId = selectedTenantId || user?.uid;
       
       if (!targetId) {
@@ -131,7 +179,6 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
       setLoading(true);
       try {
           const plantioObj = plantiosDisponiveis.find(p => p.id === selectedPlantioId);
-          // FIX 2: Tipar fallback
           const finalEstufaId = plantioObj?.estufaId || params.estufaId;
           
           if (!selectedPlantioId && !isEditMode) {
@@ -153,7 +200,6 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
           };
 
           if (isEditMode) {
-              // FIX 3: Garantir que editingId é string
               if (editingId) {
                   await updateColheita(editingId as string, data);
                   Alert.alert("Sucesso", "Venda atualizada!");
@@ -164,7 +210,6 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                   setLoading(false); 
                   return;
               }
-              // FIX 4: Passar targetId e finalEstufaId garantidos como string
               await createColheita(data, targetId, selectedPlantioId, finalEstufaId as string);
               Alert.alert("Sucesso", "Venda registrada!");
           }
@@ -203,13 +248,23 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                 />
             )}
 
+            {/* SELEÇÃO DE CLIENTE + BOTÃO + */}
             <Text style={[styles.label, {marginTop: 15}]}>Cliente</Text>
-            <View style={styles.inputWrapper}>
-                <Picker selectedValue={selectedClienteId} onValueChange={setSelectedClienteId} style={{color: '#1E293B'}}>
-                    <Picker.Item label="Venda Avulsa / Balcão" value={null} />
-                    {clientesList.map(c => <Picker.Item key={c.id} label={c.nome} value={c.id} />)}
-                </Picker>
+            <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                <View style={[styles.inputWrapper, {flex: 1, marginBottom: 0}]}>
+                    <Picker selectedValue={selectedClienteId} onValueChange={setSelectedClienteId} style={{color: '#1E293B'}}>
+                        <Picker.Item label="Venda Avulsa / Balcão" value={null} />
+                        {clientesList.map(c => <Picker.Item key={c.id} label={c.nome} value={c.id} />)}
+                    </Picker>
+                </View>
+                <TouchableOpacity 
+                    style={styles.addClientBtn} 
+                    onPress={() => setModalVisible(true)}
+                >
+                    <MaterialCommunityIcons name="plus" size={28} color="#FFF" />
+                </TouchableOpacity>
             </View>
+            <View style={{height: 15}}/>
 
             {(isSelectionMode || isEditMode) && (
                 <>
@@ -254,8 +309,8 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                     <Text style={styles.label}>Unidade</Text>
                     <View style={styles.inputWrapper}>
                         <Picker selectedValue={unidade} onValueChange={setUnidade} style={{color: '#1E293B'}}>
+                            <Picker.Item label="CX" value="caixa" /> 
                             <Picker.Item label="KG" value="kg" />
-                            <Picker.Item label="CX" value="caixa" />
                             <Picker.Item label="UN" value="unidade" />
                             <Picker.Item label="MC" value="maço" />
                         </Picker>
@@ -298,6 +353,48 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
         </TouchableOpacity>
 
       </ScrollView>
+
+      {/* --- MODAL PARA CADASTRAR CLIENTE --- */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Novo Cliente</Text>
+            <Text style={styles.modalSub}>Cadastro rápido</Text>
+
+            <TextInput 
+              style={styles.modalInput}
+              placeholder="Nome do Cliente"
+              value={novoClienteNome}
+              onChangeText={setNovoClienteNome}
+              autoFocus={true}
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.modalBtnCancel}>
+                <Text style={{color: '#64748B'}}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                onPress={handleQuickRegisterClient} 
+                style={styles.modalBtnSave}
+                disabled={salvandoNovoCliente}
+              >
+                {salvandoNovoCliente ? (
+                    <ActivityIndicator size="small" color="#FFF"/>
+                ) : (
+                    <Text style={{color: '#FFF', fontWeight: 'bold'}}>Salvar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </KeyboardAvoidingView>
   );
 };
@@ -317,7 +414,50 @@ const styles = StyleSheet.create({
   totalLabel: { fontSize: 12, color: '#059669', fontWeight: '700' },
   totalValue: { fontSize: 24, color: '#059669', fontWeight: '800', marginTop: 4 },
   saveBtn: { backgroundColor: '#166534', height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 30, elevation: 4 },
-  saveText: { color: '#FFF', fontWeight: '700', fontSize: 16 }
+  saveText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
+  
+  // ESTILOS BOTÃO + MODAL
+  addClientBtn: {
+      width: 50,
+      height: 50,
+      backgroundColor: '#166534',
+      borderRadius: 12,
+      marginLeft: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      elevation: 2
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    padding: 24
+  },
+  modalContent: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 24,
+    elevation: 10
+  },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#1F293B' },
+  modalSub: { fontSize: 14, color: '#64748B', marginBottom: 20 },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 20,
+    backgroundColor: '#F1F5F9'
+  },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 15 },
+  modalBtnCancel: { padding: 10, justifyContent: 'center' },
+  modalBtnSave: { 
+    backgroundColor: '#166534', 
+    paddingHorizontal: 20, 
+    paddingVertical: 12, 
+    borderRadius: 8 
+  }
 });
 
 export default ColheitaFormScreen;

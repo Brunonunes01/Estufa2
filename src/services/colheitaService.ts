@@ -58,8 +58,12 @@ export const createColheita = async (
 
   try {
     const docRef = await addDoc(collection(db, 'colheitas'), novaColheita);
-    // Atualiza status do plantio para "em colheita"
-    await updatePlantioStatus(plantioId, "em_colheita");
+    
+    // Atualiza status do plantio para "em colheita" se for a primeira venda
+    if (plantioId) {
+        await updatePlantioStatus(plantioId, "em_colheita");
+    }
+    
     return docRef.id;
   } catch (error) {
     console.error("Erro ao criar colheita: ", error);
@@ -67,36 +71,60 @@ export const createColheita = async (
   }
 };
 
-// 2. DAR BAIXA (RECEBER CONTA)
-export const receberConta = async (colheitaId: string) => {
+// 2. DAR BAIXA (RECEBER CONTA) - ATUALIZADO
+export const receberConta = async (colheitaId: string, metodoRecebimento?: string) => {
     try {
         const docRef = doc(db, 'colheitas', colheitaId);
-        await updateDoc(docRef, {
+        
+        const updateData: any = {
             statusPagamento: 'pago',
             dataPagamento: Timestamp.now(), // Data do recebimento é HOJE
             updatedAt: Timestamp.now()
-        });
+        };
+
+        // Se o usuário informou como recebeu (Pix, Dinheiro...), atualizamos o registro
+        // Isso é importante pois a venda original era "prazo", mas o recebimento real é outro.
+        if (metodoRecebimento) {
+            updateData.metodoPagamento = metodoRecebimento;
+        }
+
+        await updateDoc(docRef, updateData);
     } catch (error) {
         console.error("Erro ao receber conta:", error);
         throw new Error("Erro ao atualizar pagamento.");
     }
 };
 
-// 3. LISTAR CONTAS A RECEBER (APENAS PENDENTES)
+// 3. LISTAR CONTAS A RECEBER
 export const listContasAReceber = async (userId: string): Promise<Colheita[]> => {
     const colheitas: Colheita[] = [];
     try {
+      // Buscamos tudo que for "prazo"
       const q = query(
         collection(db, 'colheitas'), 
         where("userId", "==", userId),
-        where("statusPagamento", "==", "pendente")
+        where("metodoPagamento", "==", "prazo")
       );
+      
       const querySnapshot = await getDocs(q);
+      
       querySnapshot.forEach((doc) => {
-        colheitas.push({ id: doc.id, ...doc.data() } as Colheita);
+        const rawData = doc.data(); 
+        const venda = { id: doc.id, ...rawData } as Colheita;
+
+        // Filtro em memória: Oculta apenas se estiver explicitamente 'pago'.
+        if (venda.statusPagamento !== 'pago') {
+            colheitas.push(venda);
+        }
       });
+
       // Ordena pelas mais antigas primeiro
-      colheitas.sort((a, b) => a.dataColheita.seconds - b.dataColheita.seconds);
+      colheitas.sort((a, b) => {
+          const secA = a.dataColheita?.seconds || 0;
+          const secB = b.dataColheita?.seconds || 0;
+          return secA - secB;
+      });
+
       return colheitas;
     } catch (error) {
       console.error("Erro ao listar contas a receber: ", error);
@@ -136,7 +164,14 @@ export const listAllColheitas = async (userId: string): Promise<Colheita[]> => {
     querySnapshot.forEach((doc) => {
       colheitas.push({ id: doc.id, ...doc.data() } as Colheita);
     });
-    colheitas.sort((a, b) => b.dataColheita.seconds - a.dataColheita.seconds);
+    
+    // Ordenação do mais recente para o mais antigo
+    colheitas.sort((a, b) => {
+        const secA = a.dataColheita?.seconds || 0;
+        const secB = b.dataColheita?.seconds || 0;
+        return secB - secA;
+    });
+
     return colheitas;
   } catch (error) {
     console.error("Erro ao listar todas as colheitas: ", error);
@@ -175,7 +210,8 @@ export const updateColheita = async (id: string, data: ColheitaFormData) => {
             updateData.statusPagamento = 'pendente';
         } else {
             // Se mudou para dinheiro/pix, considera pago agora
-            updateData.statusPagamento = 'pago'; 
+            updateData.statusPagamento = 'pago';
+            updateData.dataPagamento = Timestamp.now();
         }
 
         updateData.updatedAt = Timestamp.now();

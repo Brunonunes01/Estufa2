@@ -1,222 +1,391 @@
-// src/screens/Colheitas/VendasListScreen.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo } from 'react';
 import { 
-  View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, StatusBar, Alert
+  View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator, 
+  Modal, TextInput, ScrollView, Alert, Share 
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Picker } from '@react-native-picker/picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
-import { listAllColheitas, deleteColheita } from '../../services/colheitaService';
-import { Colheita } from '../../types/domain';
-import { useIsFocused } from '@react-navigation/native';
+import { listAllColheitas } from '../../services/colheitaService';
+import { listClientes } from '../../services/clienteService';
+import { Colheita, Cliente } from '../../types/domain';
 
 const VendasListScreen = ({ navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
-  const [vendas, setVendas] = useState<Colheita[]>([]);
+  
+  // --- ESTADOS DE DADOS ---
+  const [allVendas, setAllVendas] = useState<Colheita[]>([]);
+  const [clientesList, setClientesList] = useState<Cliente[]>([]); 
+  const [clientesMap, setClientesMap] = useState<Record<string, string>>({}); 
   const [loading, setLoading] = useState(true);
-  const [totalFaturamento, setTotalFaturamento] = useState(0);
-  const isFocused = useIsFocused();
 
-  // Função auxiliar para formatar Timestamp ou Date
-  const formatDate = (timestamp: any) => {
-    if (!timestamp) return '-';
-    // Se for Timestamp do Firestore
-    if (timestamp.toDate) {
-        return timestamp.toDate().toLocaleDateString('pt-BR');
-    }
-    // Se for objeto Seconds/Nanoseconds
-    if (timestamp.seconds) {
-        return new Date(timestamp.seconds * 1000).toLocaleDateString('pt-BR');
-    }
-    // Se já for Date string ou object
-    return new Date(timestamp).toLocaleDateString('pt-BR');
-  };
+  // --- ESTADOS DO FILTRO ---
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [filterCliente, setFilterCliente] = useState('todos'); 
+  const [filterObs, setFilterObs] = useState(''); 
+  const [filterStatus, setFilterStatus] = useState('todos'); 
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+  
+  // --- ESTADO DO RELATÓRIO ---
+  const [showReportModal, setShowReportModal] = useState(false);
 
-  const carregarDados = async () => {
+  // Controles de Data
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+
+  // --- BOTÕES NO HEADER ---
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={{flexDirection: 'row', gap: 15, marginRight: 10}}>
+            {/* Botão de Relatório */}
+            <TouchableOpacity onPress={() => setShowReportModal(true)}>
+                <MaterialCommunityIcons name="file-chart-outline" size={26} color="#FFF" />
+            </TouchableOpacity>
+            {/* Botão de Filtro */}
+            <TouchableOpacity onPress={() => setShowFilterModal(true)}>
+                <MaterialCommunityIcons name="filter-variant" size={26} color="#FFF" />
+            </TouchableOpacity>
+        </View>
+      ),
+    });
+  }, [navigation]);
+
+  // --- CARREGAMENTO INICIAL ---
+  const loadData = async () => {
     const targetId = selectedTenantId || user?.uid;
     if (!targetId) return;
-    
+
     setLoading(true);
     try {
-      const lista = await listAllColheitas(targetId);
-      setVendas(lista);
+      const [vendasData, clientesData] = await Promise.all([
+        listAllColheitas(targetId),
+        listClientes(targetId)
+      ]);
 
-      // Calcula o total somando (quantidade * preço)
-      const total = lista.reduce((acc, curr) => {
-        return acc + (curr.quantidade * (curr.precoUnitario || 0));
-      }, 0);
-      setTotalFaturamento(total);
+      setClientesList(clientesData);
 
+      const map: Record<string, string> = {};
+      clientesData.forEach(c => map[c.id] = c.nome);
+      setClientesMap(map);
+
+      setAllVendas(vendasData);
     } catch (error) {
       console.error(error);
+      Alert.alert('Erro', 'Não foi possível carregar as vendas.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = (id: string) => {
-    Alert.alert(
-        "Excluir Venda",
-        "Tem certeza? O valor será removido do caixa.",
-        [
-            { text: "Cancelar", style: "cancel" },
-            { 
-                text: "Excluir", 
-                style: "destructive", 
-                onPress: async () => {
-                    await deleteColheita(id);
-                    carregarDados(); // Atualiza a lista
-                }
-            }
-        ]
-    );
+  useEffect(() => {
+    loadData();
+  }, [selectedTenantId]);
+
+  // --- LÓGICA DE FILTRAGEM ---
+  const filteredVendas = useMemo(() => {
+    return allVendas.filter(venda => {
+      // 1. Cliente
+      let matchCliente = true;
+      if (filterCliente === 'todos') matchCliente = true;
+      else if (filterCliente === 'avulso') matchCliente = !venda.clienteId;
+      else matchCliente = venda.clienteId === filterCliente;
+
+      // 2. Texto Obs
+      const matchObs = !filterObs || (venda.observacoes && venda.observacoes.toLowerCase().includes(filterObs.toLowerCase()));
+
+      // 3. Status
+      const matchStatus = 
+        filterStatus === 'todos' || 
+        (venda.statusPagamento === filterStatus) ||
+        (filterStatus === 'pendente' && !venda.statusPagamento); 
+
+      // 4. Data
+      let matchDate = true;
+      if (venda.dataColheita) {
+        const dataVenda = venda.dataColheita.toDate ? venda.dataColheita.toDate() : new Date(venda.dataColheita.seconds * 1000);
+        const dVenda = new Date(dataVenda.setHours(0,0,0,0));
+        
+        if (startDate) {
+           const dStart = new Date(startDate);
+           dStart.setHours(0,0,0,0);
+           if (dVenda < dStart) matchDate = false;
+        }
+        if (endDate) {
+           const dEnd = new Date(endDate);
+           dEnd.setHours(0,0,0,0);
+           if (dVenda > dEnd) matchDate = false;
+        }
+      }
+
+      return matchCliente && matchObs && matchStatus && matchDate;
+    });
+  }, [allVendas, filterCliente, filterObs, filterStatus, startDate, endDate]);
+
+  // --- ESTATÍSTICAS DO RELATÓRIO ---
+  const stats = useMemo(() => {
+      const data = {
+          totalValor: 0,
+          totalItens: 0,
+          porMetodo: {} as Record<string, number>
+      };
+
+      filteredVendas.forEach(v => {
+          const val = v.quantidade * (v.precoUnitario || 0);
+          data.totalValor += val;
+          data.totalItens++;
+
+          const metodo = v.metodoPagamento || 'Não definido';
+          // Capitalizar primeira letra
+          const metodoKey = metodo.charAt(0).toUpperCase() + metodo.slice(1);
+          
+          data.porMetodo[metodoKey] = (data.porMetodo[metodoKey] || 0) + val;
+      });
+
+      return data;
+  }, [filteredVendas]);
+
+  // --- FUNÇÃO DE COMPARTILHAR ---
+  const handleShareReport = async () => {
+      let msg = `📊 *Relatório de Vendas SGE*\n`;
+      msg += `-----------------------------\n`;
+      msg += `💰 *Total Geral:* R$ ${stats.totalValor.toFixed(2)}\n`;
+      msg += `📦 *Vendas:* ${stats.totalItens} registros\n`;
+      msg += `-----------------------------\n`;
+      msg += `*Por Forma de Pagamento:*\n`;
+      
+      Object.keys(stats.porMetodo).forEach(metodo => {
+          msg += `• ${metodo}: R$ ${stats.porMetodo[metodo].toFixed(2)}\n`;
+      });
+      
+      msg += `-----------------------------\n`;
+      msg += `Gerado em: ${new Date().toLocaleString('pt-BR')}`;
+
+      try {
+          await Share.share({ message: msg });
+      } catch (error) {
+          console.error(error);
+      }
   };
 
-  // Recarrega sempre que a tela ganha foco
-  useEffect(() => {
-    if (isFocused) carregarDados();
-  }, [isFocused, selectedTenantId]);
+  // --- HELPERS ---
+  const formatDate = (timestamp: any) => {
+    if (!timestamp) return '-';
+    const d = timestamp.toDate ? timestamp.toDate() : new Date(timestamp.seconds * 1000);
+    return d.toLocaleDateString('pt-BR');
+  };
+
+  const clearFilters = () => {
+    setFilterCliente('todos');
+    setFilterObs('');
+    setFilterStatus('todos');
+    setStartDate(null);
+    setEndDate(null);
+    setShowFilterModal(false);
+  };
 
   const renderItem = ({ item }: { item: Colheita }) => {
-    const totalVenda = item.quantidade * (item.precoUnitario || 0);
+    const total = item.quantidade * (item.precoUnitario || 0);
+    const clienteNome = item.clienteId ? clientesMap[item.clienteId] : 'Cliente Avulso';
+    const isPendente = item.statusPagamento === 'pendente' || (!item.statusPagamento && item.metodoPagamento === 'prazo');
 
     return (
-      <View style={styles.card}>
+      <TouchableOpacity 
+        style={styles.card}
+        onPress={() => navigation.navigate('ColheitaForm', { colheitaId: item.id, isEdit: true })}
+      >
         <View style={styles.cardHeader}>
-            {/* DATA DA VENDA */}
-            <View style={styles.dateBadge}>
-                <MaterialCommunityIcons name="calendar" size={14} color="#166534" />
+            <View style={{flex: 1}}>
+                <Text style={styles.clienteName}>{clienteNome}</Text>
                 <Text style={styles.dateText}>{formatDate(item.dataColheita)}</Text>
             </View>
-            
-            {/* AÇÕES (EDITAR E EXCLUIR) */}
-            <View style={{flexDirection: 'row', gap: 15}}>
-                <TouchableOpacity onPress={() => navigation.navigate('ColheitaForm', { colheitaId: item.id })}>
-                    <MaterialCommunityIcons name="pencil-outline" size={22} color="#F59E0B" />
-                </TouchableOpacity>
-
-                <TouchableOpacity onPress={() => handleDelete(item.id)}>
-                    <MaterialCommunityIcons name="trash-can-outline" size={22} color="#EF4444" />
-                </TouchableOpacity>
+            <View style={[styles.badge, isPendente ? styles.badgePending : styles.badgePaid]}>
+                <Text style={[styles.badgeText, isPendente ? styles.textPending : styles.textPaid]}>
+                  {isPendente ? 'PENDENTE' : 'PAGO'}
+                </Text>
             </View>
         </View>
-
+        <View style={styles.divider} />
         <View style={styles.row}>
-            <View style={{flex: 1}}>
-                <Text style={styles.label}>Qtd.</Text>
-                <Text style={styles.value}>
-                    {item.quantidade} {item.unidade}
-                </Text>
-            </View>
-            
-            <View style={{flex: 1}}>
-                <Text style={styles.label}>Valor Unit.</Text>
-                <Text style={styles.value}>
-                    R$ {item.precoUnitario?.toFixed(2)}
-                </Text>
-            </View>
-
-            <View style={{flex: 1, alignItems: 'flex-end'}}>
-                <Text style={styles.label}>Total</Text>
-                <Text style={styles.totalValue}>
-                    R$ {totalVenda.toFixed(2)}
-                </Text>
-            </View>
+            <Text style={styles.details}>
+                {item.quantidade} {item.unidade} x R$ {item.precoUnitario?.toFixed(2)}
+            </Text>
+            <Text style={styles.totalValue}>R$ {total.toFixed(2)}</Text>
         </View>
-
-        {item.clienteId && (
-             <View style={styles.footerInfo}>
-                <MaterialCommunityIcons name="account-check" size={14} color="#64748B" />
-                <Text style={styles.infoText}>Cliente Vinculado</Text>
-             </View>
-        )}
-      </View>
+      </TouchableOpacity>
     );
   };
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#14532d" />
       
-      {/* Resumo Financeiro no Topo */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Relatório de Vendas</Text>
-        <Text style={styles.headerSub}>
-            Acumulado: <Text style={{fontWeight: 'bold'}}>R$ {totalFaturamento.toFixed(2)}</Text>
-        </Text>
+      {/* Resumo Rápido */}
+      <View style={styles.summaryBar}>
+         <Text style={styles.summaryText}>
+           {stats.totalItens} vendas
+         </Text>
+         <Text style={styles.summaryTotal}>
+           R$ {stats.totalValor.toFixed(2)}
+         </Text>
       </View>
 
-      <FlatList
-        data={vendas}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={carregarDados} tintColor="#fff" />}
-        ListEmptyComponent={
-            !loading ? (
-                <View style={styles.emptyContainer}>
-                    <MaterialCommunityIcons name="cart-off" size={60} color="rgba(255,255,255,0.3)" />
-                    <Text style={styles.emptyTitle}>Nenhuma venda registrada</Text>
+      {loading ? (
+        <ActivityIndicator size="large" color="#166534" style={{marginTop: 50}} />
+      ) : (
+        <FlatList
+          data={filteredVendas}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          renderItem={renderItem}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+                <MaterialCommunityIcons name="basket-off-outline" size={48} color="#94A3B8" />
+                <Text style={styles.emptyText}>Nenhuma venda encontrada.</Text>
+            </View>
+          }
+        />
+      )}
+
+      {/* --- MODAL DE FILTROS --- */}
+      <Modal visible={showFilterModal} animationType="slide" transparent={true} onRequestClose={() => setShowFilterModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Filtrar Vendas</Text>
+            <ScrollView>
+                <Text style={styles.label}>Cliente</Text>
+                <View style={styles.pickerWrapper}>
+                    <Picker selectedValue={filterCliente} onValueChange={setFilterCliente} style={{color: '#1E293B'}}>
+                        <Picker.Item label="Todos os Clientes" value="todos" />
+                        <Picker.Item label="Vendas Avulsas" value="avulso" />
+                        {clientesList.map(c => (<Picker.Item key={c.id} label={c.nome} value={c.id} />))}
+                    </Picker>
                 </View>
-            ) : null
-        }
-        renderItem={renderItem}
-      />
-      
-      {/* Botão Flutuante (+) */}
-      <TouchableOpacity 
-        style={styles.fab} 
-        activeOpacity={0.8}
-        onPress={() => navigation.navigate('ColheitaForm')}
-      >
-        <MaterialCommunityIcons name="plus" size={32} color="#166534" />
-      </TouchableOpacity>
+                <Text style={styles.label}>Observação</Text>
+                <TextInput style={styles.input} placeholder="Ex: entrega..." value={filterObs} onChangeText={setFilterObs} />
+                <Text style={styles.label}>Status</Text>
+                <View style={styles.pickerWrapper}>
+                    <Picker selectedValue={filterStatus} onValueChange={setFilterStatus} style={{color: '#1E293B'}}>
+                        <Picker.Item label="Todos" value="todos" />
+                        <Picker.Item label="Pagos" value="pago" />
+                        <Picker.Item label="Pendentes / A Prazo" value="pendente" />
+                    </Picker>
+                </View>
+                <Text style={styles.label}>Período</Text>
+                <View style={styles.dateRow}>
+                    <TouchableOpacity style={styles.dateBtn} onPress={() => setShowStartPicker(true)}>
+                        <Text style={styles.dateBtnText}>{startDate ? startDate.toLocaleDateString() : 'Início'}</Text>
+                        <MaterialCommunityIcons name="calendar" size={16} color="#166534" />
+                    </TouchableOpacity>
+                    <Text style={{marginHorizontal: 8}}>-</Text>
+                    <TouchableOpacity style={styles.dateBtn} onPress={() => setShowEndPicker(true)}>
+                        <Text style={styles.dateBtnText}>{endDate ? endDate.toLocaleDateString() : 'Fim'}</Text>
+                        <MaterialCommunityIcons name="calendar" size={16} color="#166534" />
+                    </TouchableOpacity>
+                </View>
+                {showStartPicker && <DateTimePicker value={startDate || new Date()} mode="date" display="default" onChange={(e, d) => { setShowStartPicker(false); if(d) setStartDate(d); }} />}
+                {showEndPicker && <DateTimePicker value={endDate || new Date()} mode="date" display="default" onChange={(e, d) => { setShowEndPicker(false); if(d) setEndDate(d); }} />}
+            </ScrollView>
+            <View style={styles.modalActions}>
+                <TouchableOpacity style={styles.clearBtn} onPress={clearFilters}><Text style={styles.clearBtnText}>Limpar</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.applyBtn} onPress={() => setShowFilterModal(false)}><Text style={styles.applyBtnText}>Aplicar</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* --- MODAL DE RELATÓRIO (NOVO) --- */}
+      <Modal visible={showReportModal} animationType="fade" transparent={true} onRequestClose={() => setShowReportModal(false)}>
+        <View style={styles.modalOverlay}>
+            <View style={styles.reportCard}>
+                <View style={styles.reportHeader}>
+                    <Text style={styles.reportTitle}>Relatório Gerencial</Text>
+                    <TouchableOpacity onPress={() => setShowReportModal(false)}>
+                        <MaterialCommunityIcons name="close" size={24} color="#64748B" />
+                    </TouchableOpacity>
+                </View>
+
+                <View style={styles.reportBody}>
+                    <View style={styles.bigStat}>
+                        <Text style={styles.bigStatLabel}>Faturamento Total</Text>
+                        <Text style={styles.bigStatValue}>R$ {stats.totalValor.toFixed(2)}</Text>
+                    </View>
+
+                    <Text style={styles.subTitle}>Por Método de Pagamento:</Text>
+                    {Object.keys(stats.porMetodo).map((metodo) => (
+                        <View key={metodo} style={styles.statRow}>
+                            <Text style={styles.statLabel}>{metodo}</Text>
+                            <Text style={styles.statValue}>R$ {stats.porMetodo[metodo].toFixed(2)}</Text>
+                        </View>
+                    ))}
+                </View>
+
+                <TouchableOpacity style={styles.shareBtn} onPress={handleShareReport}>
+                    <MaterialCommunityIcons name="whatsapp" size={22} color="#FFF" />
+                    <Text style={styles.shareBtnText}>Compartilhar Resumo</Text>
+                </TouchableOpacity>
+            </View>
+        </View>
+      </Modal>
+
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#14532d' },
+  container: { flex: 1, backgroundColor: '#F1F5F9' },
+  summaryBar: { backgroundColor: '#166534', padding: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', elevation: 4 },
+  summaryText: { color: '#BBF7D0', fontSize: 14, fontWeight: '600' },
+  summaryTotal: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+  listContent: { padding: 16 },
+  card: { backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 12, elevation: 2 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  clienteName: { fontSize: 16, fontWeight: 'bold', color: '#1E293B' },
+  dateText: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, borderWidth: 1 },
+  badgePaid: { backgroundColor: '#DCFCE7', borderColor: '#86EFAC' },
+  badgePending: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  badgeText: { fontSize: 10, fontWeight: 'bold' },
+  textPaid: { color: '#166534' },
+  textPending: { color: '#991B1B' },
+  divider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 10 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  details: { fontSize: 14, color: '#475569' },
+  totalValue: { fontSize: 16, fontWeight: 'bold', color: '#1E293B' },
+  emptyContainer: { alignItems: 'center', marginTop: 50 },
+  emptyText: { marginTop: 10, color: '#64748B' },
   
-  header: { padding: 20, paddingBottom: 10, backgroundColor: '#14532d' },
-  headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#FFF' },
-  headerSub: { fontSize: 16, color: '#A7F3D0', marginTop: 5 },
+  // MODAL FILTRO
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 20 },
+  modalContent: { backgroundColor: '#FFF', borderRadius: 16, padding: 20, maxHeight: '85%' },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 20, color: '#1E293B', textAlign: 'center' },
+  label: { fontSize: 14, fontWeight: '600', color: '#334155', marginTop: 15, marginBottom: 5 },
+  input: { borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: '#F8FAFC' },
+  pickerWrapper: { borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, backgroundColor: '#F8FAFC' },
+  dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  dateBtn: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 12, backgroundColor: '#F8FAFC' },
+  dateBtnText: { color: '#334155' },
+  modalActions: { flexDirection: 'row', marginTop: 30, gap: 10 },
+  clearBtn: { flex: 1, padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#94A3B8', alignItems: 'center' },
+  clearBtnText: { color: '#64748B', fontWeight: 'bold' },
+  applyBtn: { flex: 1, padding: 15, borderRadius: 8, backgroundColor: '#166534', alignItems: 'center' },
+  applyBtnText: { color: '#FFF', fontWeight: 'bold' },
 
-  listContent: { padding: 20, paddingBottom: 100 },
-  
-  card: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    elevation: 4,
-  },
-  cardHeader: { 
-      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15,
-      borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: 10
-  },
-  dateBadge: { 
-      flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0FDF4', 
-      paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 
-  },
-  dateText: { marginLeft: 6, color: '#166534', fontWeight: 'bold', fontSize: 14 },
-
-  row: { flexDirection: 'row', justifyContent: 'space-between' },
-  label: { fontSize: 12, color: '#64748B', marginBottom: 2 },
-  value: { fontSize: 16, color: '#1E293B', fontWeight: '600' },
-  totalValue: { fontSize: 16, color: '#166534', fontWeight: 'bold' },
-
-  footerInfo: { 
-      flexDirection: 'row', alignItems: 'center', marginTop: 12, paddingTop: 10, 
-      borderTopWidth: 1, borderTopColor: '#F1F5F9' 
-  },
-  infoText: { fontSize: 12, color: '#64748B', marginLeft: 5 },
-
-  emptyContainer: { alignItems: 'center', marginTop: 60 },
-  emptyTitle: { fontSize: 18, fontWeight: 'bold', color: '#FFF', marginTop: 10 },
-
-  fab: {
-    position: 'absolute', right: 20, bottom: 30, width: 64, height: 64, borderRadius: 32,
-    backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center', elevation: 8,
-  },
+  // MODAL RELATÓRIO
+  reportCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 25 },
+  reportHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  reportTitle: { fontSize: 22, fontWeight: 'bold', color: '#166534' },
+  reportBody: { marginBottom: 20 },
+  bigStat: { alignItems: 'center', marginBottom: 20, backgroundColor: '#F0FDF4', padding: 15, borderRadius: 12 },
+  bigStatLabel: { fontSize: 14, color: '#166534', textTransform: 'uppercase', fontWeight: '600' },
+  bigStatValue: { fontSize: 32, fontWeight: '800', color: '#166534', marginTop: 5 },
+  subTitle: { fontSize: 16, fontWeight: '700', color: '#334155', marginBottom: 10 },
+  statRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: 4 },
+  statLabel: { fontSize: 15, color: '#64748B' },
+  statValue: { fontSize: 15, fontWeight: '700', color: '#1E293B' },
+  shareBtn: { backgroundColor: '#25D366', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 12, gap: 10 },
+  shareBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 }
 });
 
 export default VendasListScreen;
