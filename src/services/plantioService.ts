@@ -60,6 +60,13 @@ export const createPlantio = async (data: PlantioFormData, userId: string) => {
 
 // 2. LISTAR PLANTIOS DE UMA ESTUFA
 export const listPlantiosByEstufa = async (userId: string, estufaId: string): Promise<Plantio[]> => {
+  // TRAVA DE SEGURANÇA: Se não tiver estufaId, retorna lista vazia imediatamente.
+  // Isso evita o erro "Unsupported field value: undefined" no Firebase.
+  if (!estufaId) {
+    console.warn("Aviso: listPlantiosByEstufa chamado sem estufaId.");
+    return [];
+  }
+
   const plantios: Plantio[] = [];
   try {
     const q = query(
@@ -118,7 +125,7 @@ export const updatePlantioStatus = async (
   }
 };
 
-// 5. LISTAR TODOS OS PLANTIOS (NOVO - Para relatórios gerenciais)
+// 5. LISTAR TODOS OS PLANTIOS
 export const listAllPlantios = async (userId: string): Promise<Plantio[]> => {
   const plantios: Plantio[] = [];
   try {
