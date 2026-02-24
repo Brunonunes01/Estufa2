@@ -1,14 +1,6 @@
 // src/services/estufaService.ts
 import { 
-  collection, 
-  addDoc, 
-  query, 
-  where, 
-  getDocs, 
-  Timestamp, 
-  doc, 
-  getDoc,
-  updateDoc 
+  collection, addDoc, query, where, getDocs, Timestamp, doc, getDoc, updateDoc 
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Estufa } from '../types/domain';
@@ -23,6 +15,8 @@ export type EstufaFormData = {
   responsavel: string | null;
   status: "ativa" | "manutencao" | "desativada";
   observacoes: string | null;
+  latitude?: string;
+  longitude?: string;
 };
 
 export const createEstufa = async (data: EstufaFormData, userId: string) => {
@@ -38,14 +32,11 @@ export const createEstufa = async (data: EstufaFormData, userId: string) => {
 };
 
 export const listEstufas = async (userId: string): Promise<Estufa[]> => {
-  if (!userId) return []; // Trava de segurança
+  if (!userId) return []; 
   
   const estufas: Estufa[] = [];
   try {
-    const q = query(
-      collection(db, 'estufas'), 
-      where("userId", "==", userId) 
-    );
+    const q = query(collection(db, 'estufas'), where("userId", "==", userId));
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach((doc) => {
       estufas.push({ id: doc.id, ...doc.data() } as Estufa);
@@ -58,8 +49,6 @@ export const listEstufas = async (userId: string): Promise<Estufa[]> => {
 };
 
 export const getEstufaById = async (estufaId: string): Promise<Estufa | null> => {
-  // TRAVA DE SEGURANÇA: Se o ID vier vazio (undefined), retorna null imediatamente 
-  // antes de tentar acessar o Firebase, evitando o erro "indexOf".
   if (!estufaId) {
       console.warn("Aviso: getEstufaById chamado sem um estufaId válido.");
       return null;

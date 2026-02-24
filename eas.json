@@ -1,6 +1,6 @@
 {
   "cli": {
-    "version": ">= 16.28.0",
+    "version": ">= 18.0.4",
     "appVersionSource": "remote"
   },
   "build": {
@@ -12,10 +12,7 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true,
-      "android": {
-        "buildType": "apk" // NOVO: Força a geração de um APK para instalação direta (testes)
-      }
+      "autoIncrement": true
     }
   },
   "submit": {

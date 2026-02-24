@@ -11,17 +11,8 @@ import { createAplicacao, AplicacaoFormData, AplicacaoItemData } from '../../ser
 import { Plantio, Insumo } from '../../types/domain';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-const COLORS = {
-  background: '#F3F4F6',
-  surface: '#FFFFFF',
-  primary: '#3B82F6', // Azul para Aplicações (Química/Água)
-  secondary: '#60A5FA',
-  border: '#E5E7EB',
-  inputBg: '#F9FAFB',
-  textDark: '#111827',
-  textGray: '#6B7280',
-  danger: '#EF4444'
-};
+// Importamos o nosso Design System Global
+import { COLORS } from '../../constants/theme';
 
 const AplicacaoFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
@@ -42,6 +33,12 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
   const [tempDose, setTempDose] = useState('');
 
   useEffect(() => {
+    // Aplica a cor do módulo (Opcional: deixei azul porque combinava com insumos/água)
+    navigation.setOptions({ 
+        headerStyle: { backgroundColor: COLORS.info }, // Cor Info (Azul) do nosso tema
+        headerTintColor: COLORS.textLight
+    });
+
     const load = async () => {
       const targetId = selectedTenantId || user?.uid;
       if (!targetId) return;
@@ -57,18 +54,19 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
 
         if (!plantioId && ativos.length > 0) setPlantioId(ativos[0].id);
         if (listaInsumos.length > 0) setTempInsumoId(listaInsumos[0].id);
-      } catch (e) { Alert.alert("Erro", "Falha ao carregar."); } 
+      } catch (e) { Alert.alert("Erro", "Falha ao carregar os dados."); } 
       finally { setLoadingData(false); }
     };
     load();
   }, [user, selectedTenantId]);
 
   const handleAddItem = () => {
-      if (!tempInsumoId || !tempDose) return;
+      if (!tempInsumoId || !tempDose) return Alert.alert("Atenção", "Selecione o produto e informe a dose.");
       const insumo = insumos.find(i => i.id === tempInsumoId);
       if (!insumo) return;
+      
       const dose = parseFloat(tempDose.replace(',', '.'));
-      if (isNaN(dose) || dose <= 0) return;
+      if (isNaN(dose) || dose <= 0) return Alert.alert("Atenção", "A dose deve ser maior que zero.");
 
       setItens([...itens, {
           insumoId: tempInsumoId,
@@ -76,7 +74,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
           dosePorTanque: dose,
           unidade: insumo.unidadePadrao
       }]);
-      setTempDose('');
+      setTempDose(''); // Limpa o campo após adicionar
   };
 
   const handleRemoveItem = (index: number) => {
@@ -87,15 +85,17 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
 
   const handleSave = async () => {
       const targetId = selectedTenantId || user?.uid;
-      if (!targetId || !plantioId || itens.length === 0) return Alert.alert("Erro", "Adicione itens.");
+      if (!targetId) return Alert.alert("Erro", "Sessão inválida.");
+      if (!plantioId) return Alert.alert("Atenção", "Selecione a qual plantio esta aplicação se destina.");
+      if (itens.length === 0) return Alert.alert("Atenção", "Adicione pelo menos um produto (insumo) à mistura.");
       
       setLoading(true);
       try {
           const p = plantios.find(pl => pl.id === plantioId);
           if (!p) return;
           
-          const vol = parseFloat(volumeTanque) || 0;
-          const tanques = parseFloat(numTanques) || 1;
+          const vol = parseFloat(volumeTanque.replace(',', '.')) || 0;
+          const tanques = parseFloat(numTanques.replace(',', '.')) || 1;
           const itensFinais = itens.map(i => ({ ...i, quantidadeAplicada: i.dosePorTanque * tanques }));
 
           await createAplicacao({
@@ -106,25 +106,27 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
               observacoes,
               itens: itensFinais
           }, targetId);
-          Alert.alert("Sucesso", "Aplicação registrada!");
+          Alert.alert("Sucesso", "Aplicação registada com sucesso!");
           navigation.goBack();
-      } catch { Alert.alert("Erro", "Falha ao salvar."); }
+      } catch { Alert.alert("Erro", "Falha ao salvar a aplicação."); }
       finally { setLoading(false); }
   };
 
-  if (loadingData) return <ActivityIndicator size="large" style={{flex:1}} color={COLORS.primary} />;
+  if (loadingData) return <ActivityIndicator size="large" style={{flex:1, backgroundColor: COLORS.background}} color={COLORS.info} />;
 
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
         <View style={styles.card}>
             <Text style={styles.sectionHeader}>Local e Equipamento</Text>
             
             <View style={styles.inputGroup}>
                 <Text style={styles.label}>Plantio Alvo</Text>
-                <View style={styles.pickerWrapper}>
-                    <Picker selectedValue={plantioId} onValueChange={setPlantioId}>
+                <View style={styles.inputWrapper}>
+                    {/* Forçamos a cor do Picker para preto */}
+                    <Picker selectedValue={plantioId} onValueChange={setPlantioId} style={{color: '#000000', fontWeight: 'bold'}}>
+                        {plantios.length === 0 && <Picker.Item label="Nenhum plantio ativo" value="" />}
                         {plantios.map(p => <Picker.Item key={p.id} label={`${p.cultura} (${p.variedade || 'Comum'})`} value={p.id} />)}
                     </Picker>
                 </View>
@@ -132,12 +134,16 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
 
             <View style={styles.row}>
                 <View style={[styles.inputGroup, {flex: 1, marginRight: 15}]}>
-                    <Text style={styles.label}>Nº Tanques</Text>
-                    <TextInput style={styles.input} value={numTanques} onChangeText={setNumTanques} keyboardType="numeric" />
+                    <Text style={styles.label}>Nº Tanques (Bomba)</Text>
+                    <View style={styles.inputWrapper}>
+                        <TextInput style={styles.input} value={numTanques} onChangeText={setNumTanques} keyboardType="numeric" placeholder="Ex: 1" placeholderTextColor={COLORS.textPlaceholder} selectionColor={COLORS.info} />
+                    </View>
                 </View>
                 <View style={[styles.inputGroup, {flex: 1}]}>
-                    <Text style={styles.label}>Volume (L)</Text>
-                    <TextInput style={styles.input} value={volumeTanque} onChangeText={setVolumeTanque} keyboardType="numeric" placeholder="Opcional" />
+                    <Text style={styles.label}>Volume (Litros)</Text>
+                    <View style={styles.inputWrapper}>
+                        <TextInput style={styles.input} value={volumeTanque} onChangeText={setVolumeTanque} keyboardType="numeric" placeholder="Opcional" placeholderTextColor={COLORS.textPlaceholder} selectionColor={COLORS.info} />
+                    </View>
                 </View>
             </View>
         </View>
@@ -146,9 +152,10 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
             <Text style={styles.sectionHeader}>Receita / Mistura</Text>
             
             <View style={styles.addBox}>
-                <Text style={styles.label}>Produto</Text>
-                <View style={styles.pickerWrapper}>
-                    <Picker selectedValue={tempInsumoId} onValueChange={setTempInsumoId}>
+                <Text style={styles.label}>Adicionar Produto</Text>
+                <View style={styles.inputWrapper}>
+                    <Picker selectedValue={tempInsumoId} onValueChange={setTempInsumoId} style={{color: '#000000', fontWeight: 'bold'}}>
+                        {insumos.length === 0 && <Picker.Item label="Nenhum insumo no stock" value="" />}
                         {insumos.map(i => <Picker.Item key={i.id} label={`${i.nome} (Est: ${i.estoqueAtual})`} value={i.id} />)}
                     </Picker>
                 </View>
@@ -156,10 +163,12 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
                 <View style={[styles.row, {marginTop: 15, alignItems: 'flex-end'}]}>
                     <View style={{flex: 1}}>
                         <Text style={styles.label}>Dose por Tanque</Text>
-                        <TextInput style={styles.input} value={tempDose} onChangeText={setTempDose} keyboardType="numeric" placeholder="Ex: 0.5" />
+                        <View style={[styles.inputWrapper, {marginBottom: 0}]}>
+                            <TextInput style={styles.input} value={tempDose} onChangeText={setTempDose} keyboardType="numeric" placeholder="Ex: 0.5" placeholderTextColor={COLORS.textPlaceholder} selectionColor={COLORS.info} />
+                        </View>
                     </View>
                     <TouchableOpacity style={styles.addBtn} onPress={handleAddItem}>
-                        <MaterialCommunityIcons name="plus" size={24} color="#FFF" />
+                        <MaterialCommunityIcons name="plus" size={32} color="#FFF" />
                     </TouchableOpacity>
                 </View>
             </View>
@@ -169,17 +178,23 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
             {itens.map((item, index) => (
                 <View key={index} style={styles.itemRow}>
                     <View style={styles.itemIcon}>
-                        <MaterialCommunityIcons name="flask" size={20} color={COLORS.primary} />
+                        <MaterialCommunityIcons name="flask" size={20} color={COLORS.info} />
                     </View>
-                    <View style={{flex: 1, paddingHorizontal: 10}}>
+                    <View style={{flex: 1, paddingHorizontal: 12}}>
                         <Text style={styles.itemName}>{item.nomeInsumo}</Text>
                         <Text style={styles.itemDose}>{item.dosePorTanque} {item.unidade} / tanque</Text>
                     </View>
                     <TouchableOpacity onPress={() => handleRemoveItem(index)} style={{padding: 5}}>
-                        <MaterialCommunityIcons name="close-circle" size={24} color={COLORS.danger} />
+                        <MaterialCommunityIcons name="close-circle" size={28} color={COLORS.danger} />
                     </TouchableOpacity>
                 </View>
             ))}
+            
+            {itens.length === 0 && (
+                <Text style={{textAlign: 'center', color: COLORS.textSecondary, marginTop: 15, fontStyle: 'italic'}}>
+                    Nenhum produto adicionado à mistura ainda.
+                </Text>
+            )}
         </View>
 
         <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={loading}>
@@ -194,26 +209,30 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
   scrollContent: { padding: 20 },
-  card: { backgroundColor: COLORS.surface, padding: 20, borderRadius: 16, marginBottom: 20, shadowColor: "#000", shadowOpacity: 0.05, elevation: 2 },
-  sectionHeader: { fontSize: 16, fontWeight: '700', color: COLORS.primary, marginBottom: 15, textTransform: 'uppercase' },
+  card: { backgroundColor: COLORS.surface, padding: 20, borderRadius: 24, marginBottom: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 2, borderWidth: 1, borderColor: COLORS.border },
+  sectionHeader: { fontSize: 16, fontWeight: '800', color: COLORS.info, marginBottom: 15, textTransform: 'uppercase' },
+  
   inputGroup: { marginBottom: 15 },
-  label: { fontSize: 14, fontWeight: '600', color: COLORS.textDark, marginBottom: 8 },
-  input: { backgroundColor: COLORS.inputBg, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, padding: 12, fontSize: 16 },
-  pickerWrapper: { backgroundColor: COLORS.inputBg, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, overflow: 'hidden' },
+  label: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 },
+  
+  // PADRÃO DE INPUTS BLINDADOS ALTO CONTRASTE
+  inputWrapper: { backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.borderDark, height: 56, justifyContent: 'center' },
+  input: { paddingHorizontal: 15, fontSize: 18, color: '#000000', height: '100%', fontWeight: 'bold' },
+  
   row: { flexDirection: 'row' },
   
-  addBox: { backgroundColor: '#EFF6FF', padding: 15, borderRadius: 12 },
-  addBtn: { backgroundColor: COLORS.primary, width: 50, height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginLeft: 15 },
+  addBox: { backgroundColor: '#EFF6FF', padding: 15, borderRadius: 16, borderWidth: 1, borderColor: '#BFDBFE' },
+  addBtn: { backgroundColor: COLORS.info, width: 56, height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginLeft: 15, elevation: 2 },
   
-  divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 15 },
+  divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 20 },
   
-  itemRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', padding: 12, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border },
-  itemIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#DBEAFE', alignItems: 'center', justifyContent: 'center' },
-  itemName: { fontWeight: '700', color: COLORS.textDark },
-  itemDose: { fontSize: 12, color: COLORS.textGray },
+  itemRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 12, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: COLORS.borderDark, elevation: 1 },
+  itemIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#DBEAFE', alignItems: 'center', justifyContent: 'center' },
+  itemName: { fontWeight: '800', color: '#000000', fontSize: 15 },
+  itemDose: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
 
-  saveBtn: { backgroundColor: COLORS.primary, height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 30 },
-  saveText: { color: '#FFF', fontWeight: '700', fontSize: 16 }
+  saveBtn: { backgroundColor: COLORS.info, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 40, elevation: 4 },
+  saveText: { color: '#FFF', fontWeight: '800', fontSize: 18, letterSpacing: 0.5 }
 });
 
 export default AplicacaoFormScreen;

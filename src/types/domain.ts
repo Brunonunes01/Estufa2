@@ -1,8 +1,6 @@
 // src/types/domain.ts
 import { Timestamp } from 'firebase/firestore';
 
-// --- TIPOS DO SISTEMA (AUTH & SHARE) ---
-
 export interface User {
   uid: string;
   name: string;
@@ -30,8 +28,6 @@ export interface ShareCode {
     expiresAt: number;
 }
 
-// --- TIPOS DE NEGÓCIO (AGRO) ---
-
 interface BaseDoc {
   id: string; 
   userId: string;
@@ -50,6 +46,9 @@ export interface Estufa extends BaseDoc {
   responsavel: string | null;
   status: "ativa" | "manutencao" | "desativada";
   observacoes: string | null;
+  // --- NOVOS CAMPOS DE GPS ---
+  latitude?: string;
+  longitude?: string;
 }
 
 export interface Plantio extends BaseDoc {
@@ -80,8 +79,6 @@ export interface Colheita extends BaseDoc {
   metodoPagamento: string | null;
   registradoPor: string | null;
   observacoes: string | null;
-  
-  // --- NOVOS CAMPOS PARA CONTROLE FINANCEIRO ---
   statusPagamento?: "pago" | "pendente";
   dataPagamento?: Timestamp | null;
 }
