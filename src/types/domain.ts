@@ -79,8 +79,12 @@ export interface Colheita extends BaseDoc {
   metodoPagamento: string | null;
   registradoPor: string | null;
   observacoes: string | null;
-  statusPagamento?: "pago" | "pendente";
+  statusPagamento?: "pago" | "pendente" | "atrasado"; // Adicionado "atrasado"
   dataPagamento?: Timestamp | null;
+  // --- NOVOS CAMPOS DE PESO E VENCIMENTO ---
+  pesoBruto?: number;   // Peso total (Produto + Caixa)
+  pesoLiquido?: number; // Peso só do produto
+  dataVencimento?: Timestamp | null; // Novo campo para controle de recebimento a prazo
 }
 
 export interface Insumo extends BaseDoc {
@@ -92,9 +96,10 @@ export interface Insumo extends BaseDoc {
   custoUnitario: number | null;
   fornecedorId: string | null; 
   observacoes: string | null; 
-  tamanhoEmbalagem: number | null; 
+  tamanhoEmbalagem: number | null; // Restaurado
 }
 
+// Restaurado: Fornecedor
 export interface Fornecedor extends BaseDoc {
   nome: string;
   contato: string | null;
@@ -112,6 +117,7 @@ export interface Cliente extends BaseDoc {
   observacoes: string | null;
 }
 
+// Restaurado: AplicacaoItem
 export interface AplicacaoItem {
   insumoId: string;
   nomeInsumo: string; 
@@ -120,6 +126,7 @@ export interface AplicacaoItem {
   dosePorTanque?: number | null; 
 }
 
+// Restaurado: Aplicacao
 export interface Aplicacao extends BaseDoc {
   plantioId: string;
   estufaId: string;
@@ -137,4 +144,7 @@ export interface Despesa extends BaseDoc {
   dataDespesa: Timestamp;
   observacoes: string | null;
   registradoPor: string | null;
+  // --- NOVOS CAMPOS DE CONTROLE FINANCEIRO ---
+  dataVencimento?: Timestamp | null; 
+  status: "pago" | "pendente";
 }

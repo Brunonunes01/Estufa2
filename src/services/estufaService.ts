@@ -1,79 +1,75 @@
-// src/services/estufaService.ts
 import { 
-  collection, addDoc, query, where, getDocs, Timestamp, doc, getDoc, updateDoc 
+  collection, 
+  addDoc, 
+  query, 
+  where, 
+  getDocs, 
+  doc, 
+  getDoc, 
+  updateDoc, 
+  deleteDoc, 
+  Timestamp 
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Estufa } from '../types/domain';
 
-export type EstufaFormData = {
-  nome: string;
-  dataFabricacao: Timestamp | null;
-  comprimentoM: number;
-  larguraM: number;
-  alturaM: number;
-  tipoCobertura: string | null;
-  responsavel: string | null;
-  status: "ativa" | "manutencao" | "desativada";
-  observacoes: string | null;
-  latitude?: string;
-  longitude?: string;
-};
-
-export const createEstufa = async (data: EstufaFormData, userId: string) => {
-  const novaEstufa = { 
-    ...data, 
-    userId, 
-    areaM2: (data.comprimentoM * data.larguraM), 
-    createdAt: Timestamp.now(), 
-    updatedAt: Timestamp.now() 
-  };
-  const docRef = await addDoc(collection(db, 'estufas'), novaEstufa);
-  return docRef.id;
+export const createEstufa = async (data: Partial<Estufa>, userId: string) => {
+  try {
+    const novaEstufa = {
+      ...data,
+      userId,
+      status: data.status || 'ativa',
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    };
+    const docRef = await addDoc(collection(db, 'estufas'), novaEstufa);
+    return docRef.id;
+  } catch (error) {
+    console.error("Erro ao criar estufa:", error);
+    throw new Error("Erro ao salvar estufa.");
+  }
 };
 
 export const listEstufas = async (userId: string): Promise<Estufa[]> => {
-  if (!userId) return []; 
-  
-  const estufas: Estufa[] = [];
   try {
     const q = query(collection(db, 'estufas'), where("userId", "==", userId));
     const querySnapshot = await getDocs(q);
+    const estufas: Estufa[] = [];
     querySnapshot.forEach((doc) => {
       estufas.push({ id: doc.id, ...doc.data() } as Estufa);
     });
     return estufas;
   } catch (error) {
-    console.error("Erro ao listar estufas: ", error);
-    throw new Error('Não foi possível buscar as estufas.');
+    console.error("Erro ao listar estufas:", error);
+    return [];
   }
 };
 
-export const getEstufaById = async (estufaId: string): Promise<Estufa | null> => {
-  if (!estufaId) {
-      console.warn("Aviso: getEstufaById chamado sem um estufaId válido.");
-      return null;
-  }
-
+export const getEstufaById = async (id: string): Promise<Estufa | null> => {
   try {
-    const docRef = doc(db, 'estufas', estufaId);
+    const docRef = doc(db, 'estufas', id);
     const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-        return { id: docSnap.id, ...docSnap.data() } as Estufa;
-    }
-    return null;
+    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as Estufa : null;
   } catch (error) {
-    console.error("Erro ao buscar estufa: ", error);
-    throw new Error('Não foi possível buscar a estufa.');
+    return null;
   }
 };
 
-export const updateEstufa = async (estufaId: string, data: EstufaFormData) => {
-  if (!estufaId) throw new Error('ID da estufa é obrigatório para atualização.');
-  
-  const ref = doc(db, 'estufas', estufaId);
-  await updateDoc(ref, { 
-      ...data, 
-      areaM2: (data.comprimentoM * data.larguraM), 
-      updatedAt: Timestamp.now() 
-  });
+export const updateEstufa = async (id: string, data: Partial<Estufa>) => {
+  try {
+    const docRef = doc(db, 'estufas', id);
+    await updateDoc(docRef, { ...data, updatedAt: Timestamp.now() });
+  } catch (error) {
+    throw new Error("Erro ao atualizar estufa.");
+  }
+};
+
+export const deleteEstufa = async (id: string) => {
+  try {
+    const docRef = doc(db, 'estufas', id);
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.error("Erro ao eliminar estufa:", error);
+    throw new Error("Não foi possível excluir a estufa.");
+  }
 };

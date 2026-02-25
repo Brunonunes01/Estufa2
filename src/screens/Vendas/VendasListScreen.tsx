@@ -9,7 +9,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { listAllColheitas } from '../../services/colheitaService';
 import { listClientes } from '../../services/clienteService';
-import { Colheita, Cliente } from '../../types/domain';
+import { listEstufas } from '../../services/estufaService';
+import { shareVendaReceipt } from '../../services/receiptService';
+import { Colheita, Cliente, Estufa } from '../../types/domain';
 
 const VendasListScreen = ({ navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
@@ -18,6 +20,7 @@ const VendasListScreen = ({ navigation }: any) => {
   const [allVendas, setAllVendas] = useState<Colheita[]>([]);
   const [clientesList, setClientesList] = useState<Cliente[]>([]); 
   const [clientesMap, setClientesMap] = useState<Record<string, string>>({}); 
+  const [estufasMap, setEstufasMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   // --- ESTADOS DO FILTRO ---
@@ -40,11 +43,9 @@ const VendasListScreen = ({ navigation }: any) => {
     navigation.setOptions({
       headerRight: () => (
         <View style={{flexDirection: 'row', gap: 15, marginRight: 10}}>
-            {/* Botão de Relatório */}
             <TouchableOpacity onPress={() => setShowReportModal(true)}>
                 <MaterialCommunityIcons name="file-chart-outline" size={26} color="#FFF" />
             </TouchableOpacity>
-            {/* Botão de Filtro */}
             <TouchableOpacity onPress={() => setShowFilterModal(true)}>
                 <MaterialCommunityIcons name="filter-variant" size={26} color="#FFF" />
             </TouchableOpacity>
@@ -60,16 +61,23 @@ const VendasListScreen = ({ navigation }: any) => {
 
     setLoading(true);
     try {
-      const [vendasData, clientesData] = await Promise.all([
+      const [vendasData, clientesData, estufasData] = await Promise.all([
         listAllColheitas(targetId),
-        listClientes(targetId)
+        listClientes(targetId),
+        listEstufas(targetId)
       ]);
 
       setClientesList(clientesData);
 
-      const map: Record<string, string> = {};
-      clientesData.forEach(c => map[c.id] = c.nome);
-      setClientesMap(map);
+      // Mapeamento de Clientes
+      const cMap: Record<string, string> = {};
+      clientesData.forEach(c => cMap[c.id] = c.nome);
+      setClientesMap(cMap);
+
+      // Mapeamento de Estufas
+      const eMap: Record<string, string> = {};
+      estufasData.forEach(e => eMap[e.id] = e.nome);
+      setEstufasMap(eMap);
 
       setAllVendas(vendasData);
     } catch (error) {
@@ -87,22 +95,18 @@ const VendasListScreen = ({ navigation }: any) => {
   // --- LÓGICA DE FILTRAGEM ---
   const filteredVendas = useMemo(() => {
     return allVendas.filter(venda => {
-      // 1. Cliente
       let matchCliente = true;
       if (filterCliente === 'todos') matchCliente = true;
       else if (filterCliente === 'avulso') matchCliente = !venda.clienteId;
       else matchCliente = venda.clienteId === filterCliente;
 
-      // 2. Texto Obs
       const matchObs = !filterObs || (venda.observacoes && venda.observacoes.toLowerCase().includes(filterObs.toLowerCase()));
 
-      // 3. Status
       const matchStatus = 
         filterStatus === 'todos' || 
         (venda.statusPagamento === filterStatus) ||
         (filterStatus === 'pendente' && !venda.statusPagamento); 
 
-      // 4. Data
       let matchDate = true;
       if (venda.dataColheita) {
         const dataVenda = venda.dataColheita.toDate ? venda.dataColheita.toDate() : new Date(venda.dataColheita.seconds * 1000);
@@ -138,29 +142,36 @@ const VendasListScreen = ({ navigation }: any) => {
           data.totalItens++;
 
           const metodo = v.metodoPagamento || 'Não definido';
-          // Capitalizar primeira letra
           const metodoKey = metodo.charAt(0).toUpperCase() + metodo.slice(1);
-          
           data.porMetodo[metodoKey] = (data.porMetodo[metodoKey] || 0) + val;
       });
 
       return data;
   }, [filteredVendas]);
 
-  // --- FUNÇÃO DE COMPARTILHAR ---
+  // --- COMPARTILHAR RELATÓRIO DE TEXTO (CORRIGIDO) ---
   const handleShareReport = async () => {
       let msg = `📊 *Relatório de Vendas SGE*\n`;
       msg += `-----------------------------\n`;
       msg += `💰 *Total Geral:* R$ ${stats.totalValor.toFixed(2)}\n`;
       msg += `📦 *Vendas:* ${stats.totalItens} registros\n`;
-      msg += `-----------------------------\n`;
-      msg += `*Por Forma de Pagamento:*\n`;
+      msg += `-----------------------------\n\n`;
       
+      msg += `*Detalhamento:* \n`;
+      filteredVendas.slice(0, 15).forEach(v => {
+          const cNome = v.clienteId ? clientesMap[v.clienteId] : 'Cliente Avulso';
+          const total = v.quantidade * (v.precoUnitario || 0);
+          msg += `• ${cNome}: R$ ${total.toFixed(2)}\n`;
+      });
+
+      if(filteredVendas.length > 15) msg += `... e mais ${filteredVendas.length - 15} vendas.\n`;
+
+      msg += `\n*Por Forma de Pagamento:*\n`;
       Object.keys(stats.porMetodo).forEach(metodo => {
           msg += `• ${metodo}: R$ ${stats.porMetodo[metodo].toFixed(2)}\n`;
       });
       
-      msg += `-----------------------------\n`;
+      msg += `\n-----------------------------\n`;
       msg += `Gerado em: ${new Date().toLocaleString('pt-BR')}`;
 
       try {
@@ -168,6 +179,21 @@ const VendasListScreen = ({ navigation }: any) => {
       } catch (error) {
           console.error(error);
       }
+  };
+
+  // --- GERAR PDF DA VENDA INDIVIDUAL ---
+  const handlePrintReceipt = async (venda: Colheita) => {
+    try {
+        await shareVendaReceipt({
+            venda,
+            nomeProdutor: user?.name || 'Produtor',
+            nomeCliente: venda.clienteId ? (clientesMap[venda.clienteId] || 'Não Encontrado') : 'Cliente Avulso',
+            nomeProduto: 'Produtos da Colheita', // Pode ser expandido se houver campo de Cultura na Colheita
+            nomeEstufa: estufasMap[venda.estufaId] || 'Estufa Geral'
+        });
+    } catch (error: any) {
+        Alert.alert('Erro', error.message);
+    }
   };
 
   // --- HELPERS ---
@@ -188,43 +214,52 @@ const VendasListScreen = ({ navigation }: any) => {
 
   const renderItem = ({ item }: { item: Colheita }) => {
     const total = item.quantidade * (item.precoUnitario || 0);
-    const clienteNome = item.clienteId ? clientesMap[item.clienteId] : 'Cliente Avulso';
+    const clienteNome = item.clienteId ? (clientesMap[item.clienteId] || 'Cliente...') : 'Cliente Avulso';
     const isPendente = item.statusPagamento === 'pendente' || (!item.statusPagamento && item.metodoPagamento === 'prazo');
 
     return (
-      <TouchableOpacity 
-        style={styles.card}
-        onPress={() => navigation.navigate('ColheitaForm', { colheitaId: item.id, isEdit: true })}
-      >
-        <View style={styles.cardHeader}>
-            <View style={{flex: 1}}>
-                <Text style={styles.clienteName}>{clienteNome}</Text>
-                <Text style={styles.dateText}>{formatDate(item.dataColheita)}</Text>
-            </View>
-            <View style={[styles.badge, isPendente ? styles.badgePending : styles.badgePaid]}>
-                <Text style={[styles.badgeText, isPendente ? styles.textPending : styles.textPaid]}>
-                  {isPendente ? 'PENDENTE' : 'PAGO'}
-                </Text>
-            </View>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.row}>
-            <Text style={styles.details}>
-                {item.quantidade} {item.unidade} x R$ {item.precoUnitario?.toFixed(2)}
-            </Text>
-            <Text style={styles.totalValue}>R$ {total.toFixed(2)}</Text>
-        </View>
-      </TouchableOpacity>
+      <View style={styles.card}>
+        <TouchableOpacity 
+          style={{flex: 1}}
+          onPress={() => navigation.navigate('ColheitaForm', { colheitaId: item.id, isEdit: true })}
+        >
+          <View style={styles.cardHeader}>
+              <View style={{flex: 1}}>
+                  <Text style={styles.clienteName}>{clienteNome}</Text>
+                  <Text style={styles.dateText}>{formatDate(item.dataColheita)}</Text>
+              </View>
+              <View style={[styles.badge, isPendente ? styles.badgePending : styles.badgePaid]}>
+                  <Text style={[styles.badgeText, isPendente ? styles.textPending : styles.textPaid]}>
+                    {isPendente ? 'PENDENTE' : 'PAGO'}
+                  </Text>
+              </View>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.row}>
+              <Text style={styles.details}>
+                  {item.quantidade} {item.unidade} x R$ {item.precoUnitario?.toFixed(2)}
+              </Text>
+              <Text style={styles.totalValue}>R$ {total.toFixed(2)}</Text>
+          </View>
+        </TouchableOpacity>
+        
+        {/* Botão para Gerar PDF Individual */}
+        <TouchableOpacity 
+            style={styles.pdfIconBtn} 
+            onPress={() => handlePrintReceipt(item)}
+        >
+            <MaterialCommunityIcons name="file-pdf-box" size={24} color="#166534" />
+        </TouchableOpacity>
+      </View>
     );
   };
 
   return (
     <View style={styles.container}>
       
-      {/* Resumo Rápido */}
       <View style={styles.summaryBar}>
          <Text style={styles.summaryText}>
-           {stats.totalItens} vendas
+           {stats.totalItens} registros filtrados
          </Text>
          <Text style={styles.summaryTotal}>
            R$ {stats.totalValor.toFixed(2)}
@@ -295,7 +330,7 @@ const VendasListScreen = ({ navigation }: any) => {
         </View>
       </Modal>
 
-      {/* --- MODAL DE RELATÓRIO (NOVO) --- */}
+      {/* --- MODAL DE RELATÓRIO --- */}
       <Modal visible={showReportModal} animationType="fade" transparent={true} onRequestClose={() => setShowReportModal(false)}>
         <View style={styles.modalOverlay}>
             <View style={styles.reportCard}>
@@ -308,7 +343,7 @@ const VendasListScreen = ({ navigation }: any) => {
 
                 <View style={styles.reportBody}>
                     <View style={styles.bigStat}>
-                        <Text style={styles.bigStatLabel}>Faturamento Total</Text>
+                        <Text style={styles.bigStatLabel}>Faturamento Filtrado</Text>
                         <Text style={styles.bigStatValue}>R$ {stats.totalValor.toFixed(2)}</Text>
                     </View>
 
@@ -339,7 +374,7 @@ const styles = StyleSheet.create({
   summaryText: { color: '#BBF7D0', fontSize: 14, fontWeight: '600' },
   summaryTotal: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
   listContent: { padding: 16 },
-  card: { backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 12, elevation: 2 },
+  card: { backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 12, elevation: 2, flexDirection: 'row', alignItems: 'center' },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   clienteName: { fontSize: 16, fontWeight: 'bold', color: '#1E293B' },
   dateText: { fontSize: 12, color: '#64748B', marginTop: 2 },
@@ -355,6 +390,7 @@ const styles = StyleSheet.create({
   totalValue: { fontSize: 16, fontWeight: 'bold', color: '#1E293B' },
   emptyContainer: { alignItems: 'center', marginTop: 50 },
   emptyText: { marginTop: 10, color: '#64748B' },
+  pdfIconBtn: { marginLeft: 15, padding: 5, borderLeftWidth: 1, borderLeftColor: '#F1F5F9' },
   
   // MODAL FILTRO
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 20 },
