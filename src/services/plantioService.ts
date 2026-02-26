@@ -8,49 +8,26 @@ import {
   Timestamp,
   doc,
   getDoc,
-  updateDoc
+  updateDoc,
+  deleteDoc // <-- IMPORTAÇÃO ADICIONADA
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Plantio } from '../types/domain';
 
-// Dados que vêm do formulário
-export type PlantioFormData = {
-  estufaId: string;
-  cultura: string;
-  variedade: string | null;
-  quantidadePlantada: number;
-  unidadeQuantidade: string;
-  dataPlantio: Timestamp;
-  cicloDias: number | null;
-  status: "em_desenvolvimento" | "em_colheita" | "finalizado";
-  precoEstimadoUnidade: number | null;
-  fornecedorId: string | null;
-};
-
 // 1. CRIAR PLANTIO
-export const createPlantio = async (data: PlantioFormData, userId: string) => {
-  
-  let previsaoColheita: Timestamp | null = null;
-  if (data.cicloDias && data.cicloDias > 0) {
-    const dataPlantioJS = data.dataPlantio.toDate();
-    const dataClonada = new Date(dataPlantioJS.getTime());
-    const dataPrevisaoJS = new Date(dataClonada.setDate(dataClonada.getDate() + data.cicloDias));
-    previsaoColheita = Timestamp.fromDate(dataPrevisaoJS);
-  }
-
+// Mudamos para Partial<Plantio> para aceitar dinamicamente todos os novos campos de rastreabilidade
+export const createPlantio = async (data: Partial<Plantio>, userId: string) => {
   const novoPlantio = {
     ...data,
     userId: userId,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
-    previsaoColheita: previsaoColheita,
-    safraId: null,
-    observacoes: null,
+    safraId: data.safraId || null,
   };
 
   try {
     const docRef = await addDoc(collection(db, 'plantios'), novoPlantio);
-    console.log('Plantio criado com ID: ', docRef.id);
+    console.log('Plantio/Lote criado com ID: ', docRef.id);
     return docRef.id;
   } catch (error) {
     console.error("Erro ao criar plantio: ", error);
@@ -60,8 +37,6 @@ export const createPlantio = async (data: PlantioFormData, userId: string) => {
 
 // 2. LISTAR PLANTIOS DE UMA ESTUFA
 export const listPlantiosByEstufa = async (userId: string, estufaId: string): Promise<Plantio[]> => {
-  // TRAVA DE SEGURANÇA: Se não tiver estufaId, retorna lista vazia imediatamente.
-  // Isso evita o erro "Unsupported field value: undefined" no Firebase.
   if (!estufaId) {
     console.warn("Aviso: listPlantiosByEstufa chamado sem estufaId.");
     return [];
@@ -81,7 +56,6 @@ export const listPlantiosByEstufa = async (userId: string, estufaId: string): Pr
     });
     
     return plantios;
-
   } catch (error) {
     console.error("Erro ao listar plantios: ", error);
     throw new Error('Não foi possível buscar os plantios.');
@@ -106,7 +80,7 @@ export const getPlantioById = async (plantioId: string): Promise<Plantio | null>
   }
 };
 
-// 4. FINALIZAR PLANTIO
+// 4. ATUALIZAR STATUS DO PLANTIO (Função específica)
 export const updatePlantioStatus = async (
   plantioId: string, 
   status: "em_desenvolvimento" | "em_colheita" | "finalizado"
@@ -125,7 +99,31 @@ export const updatePlantioStatus = async (
   }
 };
 
-// 5. LISTAR TODOS OS PLANTIOS
+// 5. ATUALIZAR PLANTIO COMPLETO (Função NOVA para a edição do formulário)
+export const updatePlantio = async (id: string, data: Partial<Plantio>) => {
+  try {
+    const docRef = doc(db, 'plantios', id);
+    await updateDoc(docRef, { ...data, updatedAt: Timestamp.now() });
+    console.log('Plantio atualizado:', id);
+  } catch (error) {
+    console.error("Erro ao atualizar plantio: ", error);
+    throw new Error("Erro ao atualizar plantio.");
+  }
+};
+
+// 6. DELETAR PLANTIO (Função NOVA para o formulário)
+export const deletePlantio = async (id: string) => {
+  try {
+    const docRef = doc(db, 'plantios', id);
+    await deleteDoc(docRef);
+    console.log('Plantio deletado:', id);
+  } catch (error) {
+    console.error("Erro ao eliminar plantio: ", error);
+    throw new Error("Não foi possível excluir o plantio.");
+  }
+};
+
+// 7. LISTAR TODOS OS PLANTIOS
 export const listAllPlantios = async (userId: string): Promise<Plantio[]> => {
   const plantios: Plantio[] = [];
   try {

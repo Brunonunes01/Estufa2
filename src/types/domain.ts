@@ -48,11 +48,21 @@ export interface Estufa extends BaseDoc {
   observacoes: string | null;
   latitude?: string;
   longitude?: string;
+  cidade?: string;
+  propriedade?: string;
+  tipoCultivo?: string; 
+  sistemaCultivo?: string; 
+  dataInicioOperacao?: Timestamp | null;
 }
 
 export interface Plantio extends BaseDoc {
   estufaId: string;
   safraId: string | null;
+  
+  // --- NOVOS CAMPOS PARA RASTREABILIDADE (LOTE) ---
+  codigoLote?: string; 
+  origemSemente?: string; 
+  
   cultura: string;
   variedade: string | null;
   quantidadePlantada: number;
@@ -120,7 +130,6 @@ export interface AplicacaoItem {
   quantidadeAplicada: number; 
   unidade: string;
   dosePorTanque?: number | null; 
-  // --- NOVO: CONGELA O PREÇO NA HORA DA APLICAÇÃO ---
   custoUnitarioNaAplicacao?: number; 
 }
 

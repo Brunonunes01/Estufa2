@@ -1,114 +1,283 @@
-// src/screens/Plantios/PlantioFormScreen.tsx
-import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
-import { useAuth } from '../../hooks/useAuth';
-import { createPlantio } from '../../services/plantioService';
-import { Timestamp } from 'firebase/firestore';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
+import { 
+  View, Text, TextInput, ScrollView, StyleSheet, 
+  TouchableOpacity, Alert, ActivityIndicator 
+} from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { useAuth } from '../../hooks/useAuth';
+import { createPlantio, updatePlantio, getPlantioById, deletePlantio } from '../../services/plantioService';
 import { COLORS } from '../../constants/theme';
+import { Timestamp } from 'firebase/firestore'; 
 
 const PlantioFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
-  const { estufaId } = route.params || {};
+  
+  const estufaId = route.params?.estufaId; 
+  const editingId = route.params?.plantioId;
+  const isEditMode = !!editingId;
 
-  const [loading, setLoading] = useState(false);
-  const [cultura, setCultura] = useState('Tomate Italiano');
+  const [codigoLote, setCodigoLote] = useState('');
+  const [cultura, setCultura] = useState('');
   const [variedade, setVariedade] = useState('');
+  const [origemSemente, setOrigemSemente] = useState('');
+  
   const [quantidadePlantada, setQuantidadePlantada] = useState('');
-  const [unidadeQuantidade, setUnidadeQuantidade] = useState('Mudas');
-  const [cicloDias, setCicloDias] = useState('90');
-  const [dataPlantio, setDataPlantio] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [unidadeQuantidade, setUnidadeQuantidade] = useState('mudas');
+  const [cicloDias, setCicloDias] = useState('');
+  const [observacoes, setObservacoes] = useState('');
+  
+  const [loading, setLoading] = useState(false);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: isEditMode ? 'Editar Lote (Plantio)' : 'Novo Lote',
+      headerRight: () => isEditMode ? (
+        <TouchableOpacity onPress={handleDelete} style={{marginRight: 15}}>
+          <MaterialCommunityIcons name="trash-can-outline" size={24} color="#FFF" />
+        </TouchableOpacity>
+      ) : null,
+    });
+  }, [navigation, isEditMode]);
+
+  useEffect(() => {
+    if (isEditMode && editingId) {
+      loadPlantio(editingId as string);
+    } else {
+      gerarCodigoLote();
+    }
+  }, [editingId]);
+
+  const gerarCodigoLote = () => {
+    const dataAtual = new Date();
+    const ano = dataAtual.getFullYear();
+    const mes = String(dataAtual.getMonth() + 1).padStart(2, '0');
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000); 
+    setCodigoLote(`LT-${ano}${mes}-${randomSuffix}`);
+  };
+
+  // Correção 1: Recebe o ID como string estrita
+  const loadPlantio = async (id: string) => {
+    const data = await getPlantioById(id);
+    if (data) {
+      setCodigoLote(data.codigoLote || '');
+      setCultura(data.cultura || '');
+      setVariedade(data.variedade || '');
+      setOrigemSemente(data.origemSemente || '');
+      setQuantidadePlantada(data.quantidadePlantada?.toString() || '');
+      setUnidadeQuantidade(data.unidadeQuantidade || 'mudas');
+      setCicloDias(data.cicloDias?.toString() || '');
+      setObservacoes(data.observacoes || '');
+    }
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      "Eliminar Lote",
+      "Tem a certeza? Isso apagará este registro de plantio.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Eliminar", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              // Correção 1: as string
+              await deletePlantio(editingId as string);
+              navigation.goBack();
+            } catch (e) {
+              Alert.alert("Erro", "Falha ao eliminar.");
+            }
+          } 
+        }
+      ]
+    );
+  };
 
   const handleSave = async () => {
-    const targetId = selectedTenantId || user?.uid;
-    if (!targetId || !estufaId) return Alert.alert('Erro', 'Sessão ou estufa inválida.');
-    if (!cultura || !quantidadePlantada) return Alert.alert('Atenção', 'Preencha a cultura e a quantidade.');
-
+    // Correção 1: as string para garantir que não será undefined na criação
+    const targetId = (selectedTenantId || user?.uid) as string;
+    
+    if (!estufaId && !isEditMode) {
+      return Alert.alert("Erro", "Nenhuma estufa vinculada a este lote.");
+    }
+    if (!cultura || !quantidadePlantada) {
+      return Alert.alert("Erro", "Preencha a Cultura e a Quantidade Plantada.");
+    }
+    
     setLoading(true);
+
+    const qtdNum = parseFloat(quantidadePlantada.replace(',', '.')) || 0;
+    const cicloNum = parseInt(cicloDias) || 0;
+    
+    let previsaoData = null;
+    const dataPlantioTimestamp = Timestamp.now();
+    
+    if (cicloNum > 0 && !isEditMode) {
+      const dataPrevista = new Date();
+      dataPrevista.setDate(dataPrevista.getDate() + cicloNum);
+      previsaoData = Timestamp.fromDate(dataPrevista);
+    }
+
+    const plantioData = {
+      estufaId,
+      codigoLote,
+      cultura,
+      variedade,
+      origemSemente,
+      quantidadePlantada: qtdNum,
+      unidadeQuantidade,
+      cicloDias: cicloNum > 0 ? cicloNum : null,
+      observacoes,
+      ...(!isEditMode && { 
+        dataPlantio: dataPlantioTimestamp, 
+        status: 'em_desenvolvimento',
+        previsaoColheita: previsaoData
+      })
+    };
+
     try {
-      await createPlantio({
-        estufaId, cultura, variedade: variedade || null, quantidadePlantada: Number(quantidadePlantada), unidadeQuantidade,
-        cicloDias: cicloDias ? Number(cicloDias) : null, dataPlantio: Timestamp.fromDate(dataPlantio),
-        status: 'em_desenvolvimento', precoEstimadoUnidade: null, fornecedorId: null
-      }, targetId);
-      Alert.alert('Sucesso', 'Novo ciclo iniciado!');
-      navigation.navigate('EstufaDetail', { estufaId });
-    } catch { Alert.alert('Erro', 'Não foi possível salvar.'); } finally { setLoading(false); }
+      if (isEditMode && editingId) {
+        // Correção 1: as string
+        await updatePlantio(editingId as string, plantioData as any);
+      } else {
+        await createPlantio(plantioData as any, targetId);
+      }
+      navigation.goBack();
+    } catch (e) {
+      Alert.alert("Erro", "Falha ao salvar o lote.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-      <ScrollView contentContainerStyle={{ padding: 20 }}>
-        <View style={styles.card}>
-          <View style={styles.header}>
-            <MaterialCommunityIcons name="sprout" size={32} color={COLORS.primary} />
-            <Text style={styles.title}>Iniciar Novo Ciclo</Text>
-          </View>
-
-          <Text style={styles.label}>Cultura *</Text>
-          <View style={styles.inputWrapper}>
-              <TextInput style={styles.input} value={cultura} onChangeText={setCultura} placeholder="Ex: Tomate, Alface..." placeholderTextColor={COLORS.textPlaceholder} />
-          </View>
-
-          <Text style={styles.label}>Variedade (Opcional)</Text>
-          <View style={styles.inputWrapper}>
-              <TextInput style={styles.input} value={variedade} onChangeText={setVariedade} placeholder="Ex: Carmem, San Marzano..." placeholderTextColor={COLORS.textPlaceholder} />
-          </View>
-
-          <View style={styles.row}>
-            <View style={{ flex: 1, marginRight: 10 }}>
-              <Text style={styles.label}>Quantidade *</Text>
-              <View style={styles.inputWrapper}>
-                  <TextInput style={styles.input} value={quantidadePlantada} onChangeText={setQuantidadePlantada} keyboardType="numeric" placeholder="Ex: 500" placeholderTextColor={COLORS.textPlaceholder} />
-              </View>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Unidade</Text>
-              <View style={styles.inputWrapper}>
-                  <TextInput style={styles.input} value={unidadeQuantidade} onChangeText={setUnidadeQuantidade} placeholder="Ex: Mudas" placeholderTextColor={COLORS.textPlaceholder} />
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.row}>
-            <View style={{ flex: 1, marginRight: 10 }}>
-              <Text style={styles.label}>Data do Plantio *</Text>
-              <TouchableOpacity style={styles.dateBtn} onPress={() => setShowDatePicker(true)}>
-                <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 16 }}>{dataPlantio.toLocaleDateString('pt-BR')}</Text>
-              </TouchableOpacity>
-              {showDatePicker && <DateTimePicker value={dataPlantio} mode="date" display="default" onChange={(e, d) => { setShowDatePicker(false); if(d) setDataPlantio(d); }} />}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Ciclo (Dias)</Text>
-              <View style={styles.inputWrapper}>
-                  <TextInput style={styles.input} value={cicloDias} onChangeText={setCicloDias} keyboardType="numeric" placeholder="Ex: 90" placeholderTextColor={COLORS.textPlaceholder} />
-              </View>
-            </View>
-          </View>
-
-          <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={loading}>
-            {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>Confirmar Plantio</Text>}
-          </TouchableOpacity>
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.padding}>
+        
+        <View style={styles.loteContainer}>
+          <Text style={styles.loteLabel}>CÓDIGO DO LOTE (GERADO AUTOMATICAMENTE)</Text>
+          <TextInput 
+            style={styles.loteInput} 
+            value={codigoLote} 
+            editable={false} 
+            selectTextOnFocus={false}
+          />
         </View>
+
+        <Text style={styles.sectionTitle}>Identificação da Cultura</Text>
+
+        <View style={styles.row}>
+          <View style={{flex: 1, marginRight: 5}}>
+            <Text style={styles.label}>Cultura *</Text>
+            <TextInput 
+              style={styles.input} 
+              value={cultura} 
+              onChangeText={setCultura} 
+              placeholder="Ex: Tomate" 
+              placeholderTextColor="#94A3B8" 
+            />
+          </View>
+          <View style={{flex: 1, marginLeft: 5}}>
+            <Text style={styles.label}>Variedade</Text>
+            <TextInput 
+              style={styles.input} 
+              value={variedade} 
+              onChangeText={setVariedade} 
+              placeholder="Ex: Italiano" 
+              placeholderTextColor="#94A3B8" 
+            />
+          </View>
+        </View>
+
+        <Text style={styles.label}>Origem da Semente / Muda</Text>
+        <TextInput 
+          style={styles.input} 
+          value={origemSemente} 
+          onChangeText={setOrigemSemente} 
+          placeholder="Ex: Viveiro X, Lote Fornecedor Y" 
+          placeholderTextColor="#94A3B8" 
+        />
+
+        <Text style={styles.sectionTitle}>Dados de Plantio</Text>
+
+        <View style={styles.row}>
+          <View style={{flex: 1, marginRight: 5}}>
+            <Text style={styles.label}>Quantidade *</Text>
+            <TextInput 
+              style={styles.input} 
+              value={quantidadePlantada} 
+              onChangeText={setQuantidadePlantada} 
+              placeholder="Ex: 500" 
+              placeholderTextColor="#94A3B8" 
+              keyboardType="numeric" 
+            />
+          </View>
+          <View style={{flex: 1, marginLeft: 5}}>
+            <Text style={styles.label}>Unidade</Text>
+            <TextInput 
+              style={styles.input} 
+              value={unidadeQuantidade} 
+              onChangeText={setUnidadeQuantidade} 
+              placeholder="Ex: mudas, kg" 
+              placeholderTextColor="#94A3B8" 
+            />
+          </View>
+        </View>
+
+        <Text style={styles.label}>Ciclo Estimado (Dias até a colheita)</Text>
+        <TextInput 
+          style={styles.input} 
+          value={cicloDias} 
+          onChangeText={setCicloDias} 
+          placeholder="Ex: 90" 
+          placeholderTextColor="#94A3B8" 
+          keyboardType="numeric" 
+        />
+        <Text style={styles.hint}>O sistema calculará a previsão de colheita baseado nisso.</Text>
+
+        <Text style={styles.sectionTitle}>Outros</Text>
+
+        <Text style={styles.label}>Observações do Lote</Text>
+        <TextInput 
+          style={[styles.input, { height: 80, textAlignVertical: 'top' }]} 
+          value={observacoes} 
+          onChangeText={setObservacoes} 
+          placeholder="Condições climáticas no dia, tipo de adubação de base..." 
+          placeholderTextColor="#94A3B8" 
+          multiline
+        />
+
+        <TouchableOpacity style={styles.btn} onPress={handleSave} disabled={loading}>
+          {loading ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.btnText}>Guardar Lote de Plantio</Text>
+          )}
+        </TouchableOpacity>
+        
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  card: { backgroundColor: COLORS.surface, borderRadius: 20, padding: 20, elevation: 2, borderWidth: 1, borderColor: COLORS.border },
-  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingBottom: 15 },
-  title: { fontSize: 20, fontWeight: 'bold', color: COLORS.primary, marginLeft: 10 },
-  label: { fontSize: 14, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 },
-  inputWrapper: { backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.borderDark, marginBottom: 15, height: 56, justifyContent: 'center' },
-  input: { paddingHorizontal: 15, fontSize: 16, color: '#000000', height: '100%', fontWeight: 'bold' },
-  dateBtn: { backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.borderDark, marginBottom: 15, height: 56, justifyContent: 'center', paddingHorizontal: 15 },
-  row: { flexDirection: 'row' },
-  saveBtn: { backgroundColor: COLORS.primary, padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10, elevation: 2 },
-  saveBtnText: { color: '#FFF', fontSize: 18, fontWeight: '800' }
+  padding: { padding: 20 },
+  
+  loteContainer: { backgroundColor: '#E0F2FE', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, marginBottom: 20 },
+  loteLabel: { fontSize: 11, fontWeight: 'bold', color: COLORS.primary, marginBottom: 5, textAlign: 'center' },
+  
+  // Correção 2: Substituído COLORS.text por COLORS.textPrimary
+  loteInput: { fontSize: 18, fontWeight: 'bold', color: COLORS.textPrimary, textAlign: 'center', letterSpacing: 1 },
+
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.primary, marginTop: 10, marginBottom: 15 },
+  label: { fontWeight: 'bold', marginBottom: 5, color: COLORS.textSecondary, fontSize: 13 },
+  input: { backgroundColor: '#FFF', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, color: '#000' },
+  row: { flexDirection: 'row', justifyContent: 'space-between' },
+  hint: { fontSize: 12, color: '#94A3B8', marginTop: -10, marginBottom: 15, fontStyle: 'italic' },
+  
+  btn: { backgroundColor: COLORS.primary, padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 10, marginBottom: 30 },
+  btnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 }
 });
 
 export default PlantioFormScreen;
