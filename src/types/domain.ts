@@ -46,7 +46,6 @@ export interface Estufa extends BaseDoc {
   responsavel: string | null;
   status: "ativa" | "manutencao" | "desativada";
   observacoes: string | null;
-  // --- NOVOS CAMPOS DE GPS ---
   latitude?: string;
   longitude?: string;
 }
@@ -79,12 +78,11 @@ export interface Colheita extends BaseDoc {
   metodoPagamento: string | null;
   registradoPor: string | null;
   observacoes: string | null;
-  statusPagamento?: "pago" | "pendente" | "atrasado"; // Adicionado "atrasado"
+  statusPagamento?: "pago" | "pendente" | "atrasado"; 
   dataPagamento?: Timestamp | null;
-  // --- NOVOS CAMPOS DE PESO E VENCIMENTO ---
-  pesoBruto?: number;   // Peso total (Produto + Caixa)
-  pesoLiquido?: number; // Peso só do produto
-  dataVencimento?: Timestamp | null; // Novo campo para controle de recebimento a prazo
+  pesoBruto?: number;   
+  pesoLiquido?: number; 
+  dataVencimento?: Timestamp | null; 
 }
 
 export interface Insumo extends BaseDoc {
@@ -96,10 +94,9 @@ export interface Insumo extends BaseDoc {
   custoUnitario: number | null;
   fornecedorId: string | null; 
   observacoes: string | null; 
-  tamanhoEmbalagem: number | null; // Restaurado
+  tamanhoEmbalagem: number | null; 
 }
 
-// Restaurado: Fornecedor
 export interface Fornecedor extends BaseDoc {
   nome: string;
   contato: string | null;
@@ -117,16 +114,16 @@ export interface Cliente extends BaseDoc {
   observacoes: string | null;
 }
 
-// Restaurado: AplicacaoItem
 export interface AplicacaoItem {
   insumoId: string;
   nomeInsumo: string; 
   quantidadeAplicada: number; 
   unidade: string;
   dosePorTanque?: number | null; 
+  // --- NOVO: CONGELA O PREÇO NA HORA DA APLICAÇÃO ---
+  custoUnitarioNaAplicacao?: number; 
 }
 
-// Restaurado: Aplicacao
 export interface Aplicacao extends BaseDoc {
   plantioId: string;
   estufaId: string;
@@ -144,7 +141,6 @@ export interface Despesa extends BaseDoc {
   dataDespesa: Timestamp;
   observacoes: string | null;
   registradoPor: string | null;
-  // --- NOVOS CAMPOS DE CONTROLE FINANCEIRO ---
   dataVencimento?: Timestamp | null; 
-  status: "pago" | "pendente";
+  status: "pago" | "pendente"; 
 }

@@ -1,9 +1,9 @@
 // src/navigation/RootNavigator.tsx
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationOptions } from '@react-navigation/native-stack';
 import { useAuth } from '../hooks/useAuth';
-import { View, ActivityIndicator, Text, StatusBar } from 'react-native';
+import { View, ActivityIndicator, Text, StatusBar, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
 
@@ -11,7 +11,7 @@ import LoginScreen from '../screens/Auth/LoginScreen';
 import RegisterScreen from '../screens/Auth/RegisterScreen';
 import ShareAccountScreen from '../screens/Auth/ShareAccountScreen';
 import DashboardScreen from '../screens/Dashboard/DashboardScreen';
-import PerfilScreen from '../screens/Perfil/PerfilScreen'; // <-- NOVO
+import PerfilScreen from '../screens/Perfil/PerfilScreen';
 
 import EstufasListScreen from '../screens/Estufas/EstufasListScreen';
 import EstufaFormScreen from '../screens/Estufas/EstufaFormScreen';
@@ -35,6 +35,19 @@ import DespesaFormScreen from '../screens/Despesas/DespesaFormScreen';
 
 const Stack = createNativeStackNavigator();
 
+// --- NOVO: Componente do Botão Home Global ---
+const HomeButton = () => {
+  const navigation = useNavigation<any>();
+  return (
+    <TouchableOpacity 
+      onPress={() => navigation.navigate('Dashboard')} 
+      style={{ marginRight: 15, padding: 5 }}
+    >
+      <MaterialCommunityIcons name="home-outline" size={26} color="#FFF" />
+    </TouchableOpacity>
+  );
+};
+
 const defaultScreenOptions: NativeStackNavigationOptions = {
     headerStyle: { backgroundColor: COLORS.primary },
     headerTintColor: COLORS.textLight,
@@ -43,6 +56,8 @@ const defaultScreenOptions: NativeStackNavigationOptions = {
     headerShadowVisible: false, 
     headerBackTitle: '', 
     animation: 'slide_from_right', 
+    // Adicionamos o botão Home como padrão no lado direito de todas as telas
+    headerRight: () => <HomeButton />, 
 };
 
 const AuthStack = () => (
@@ -54,6 +69,7 @@ const AuthStack = () => (
 
 const AppStack = () => (
   <Stack.Navigator screenOptions={defaultScreenOptions}>
+    {/* O Dashboard não precisa do botão Home, pois já é a Home (headerShown: false) */}
     <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false, animation: 'fade' }} />
     <Stack.Screen name="ShareAccount" component={ShareAccountScreen} options={{ title: 'Partilhar Acesso' }} />
     <Stack.Screen name="Perfil" component={PerfilScreen} options={{ title: 'Minha Propriedade' }} />

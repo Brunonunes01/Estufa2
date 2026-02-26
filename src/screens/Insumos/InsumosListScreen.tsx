@@ -10,7 +10,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 const COLORS = {
   background: '#F3F4F6',
   card: '#FFFFFF',
-  primary: '#8B5CF6', // Roxo para Insumos (diferenciar)
+  primary: '#8B5CF6', 
   secondary: '#A78BFA',
   textDark: '#111827',
   textGray: '#6B7280',
@@ -46,7 +46,8 @@ const InsumosListScreen = ({ navigation }: any) => {
 
   // Render Item
   const renderItem = ({ item }: { item: Insumo }) => {
-      const isLowStock = item.estoqueMinimo && item.estoqueAtual <= item.estoqueMinimo;
+      // CORREÇÃO: Verificação segura para evitar que "0" vase para o JSX
+      const isLowStock = item.estoqueMinimo !== null && item.estoqueMinimo !== undefined && item.estoqueAtual <= item.estoqueMinimo;
       
       return (
         <TouchableOpacity 
@@ -66,12 +67,14 @@ const InsumosListScreen = ({ navigation }: any) => {
                     <Text style={styles.cardTitle}>{item.nome}</Text>
                     <Text style={styles.cardType}>{item.tipo.toUpperCase()}</Text>
                 </View>
-                {isLowStock && (
+                
+                {/* CORREÇÃO: Usando ternário para garantir que renderize a View ou anule com segurança */}
+                {isLowStock ? (
                     <View style={styles.alertBadge}>
                         <MaterialCommunityIcons name="alert-circle" size={16} color="#FFF" />
                         <Text style={styles.alertText}>BAIXO</Text>
                     </View>
-                )}
+                ) : null}
             </View>
 
             <View style={styles.divider} />
@@ -85,7 +88,7 @@ const InsumosListScreen = ({ navigation }: any) => {
                 </View>
                 <View style={{alignItems: 'flex-end'}}>
                     <Text style={styles.footerLabel}>Mínimo</Text>
-                    <Text style={styles.footerValue}>{item.estoqueMinimo || 0} {item.unidadePadrao}</Text>
+                    <Text style={styles.footerValue}>{item.estoqueMinimo !== null ? item.estoqueMinimo : 0} {item.unidadePadrao}</Text>
                 </View>
             </View>
         </TouchableOpacity>

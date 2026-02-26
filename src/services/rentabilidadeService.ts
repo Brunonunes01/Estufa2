@@ -42,48 +42,48 @@ export const calculateRentabilidadeByPlantio = async (
     }, 0);
 
 
-    // 3. Cálculo do Custo de Insumos
+    // 3. Cálculo do Custo de Insumos (AGORA INTELIGENTE)
     let custoInsumos = 0;
-    const insumoIds = new Set<string>();
     
-    // --- CORREÇÃO DE SEGURANÇA AQUI ---
-    // 3a. Coleta IDs com verificação se 'app.itens' existe
+    // Fallback: Se for uma aplicação muito antiga, ela não terá o "custoUnitarioNaAplicacao"
+    // Então vamos buscar o insumo no banco só para essas exceções
+    const insumoIdsFaltantes = new Set<string>();
+    
     if (Array.isArray(aplicacoes)) {
         aplicacoes.forEach(app => {
-            // Se app.itens for undefined, usa array vazio [] para não travar
             const itensSeguros = app.itens || []; 
             itensSeguros.forEach(item => {
-                if (item.insumoId) insumoIds.add(item.insumoId);
+                if (item.custoUnitarioNaAplicacao === undefined && item.insumoId) {
+                    insumoIdsFaltantes.add(item.insumoId);
+                }
             });
         });
     }
 
-    // 3b. Busca o custo unitário atualizado dos insumos
     const insumosMap = new Map<string, Insumo>();
-    
-    if (insumoIds.size > 0) {
-        const promisesInsumos = Array.from(insumoIds).map(id => getInsumoById(id));
+    if (insumoIdsFaltantes.size > 0) {
+        const promisesInsumos = Array.from(insumoIdsFaltantes).map(id => getInsumoById(id));
         const fetchedInsumos = await Promise.all(promisesInsumos);
-        
         fetchedInsumos.forEach(insumo => {
-            if (insumo) {
-                insumosMap.set(insumo.id, insumo);
-            }
+            if (insumo) insumosMap.set(insumo.id, insumo);
         });
     }
 
-    // 3c. Soma o custo final
+    // Soma o custo final de todas as aplicações
     if (Array.isArray(aplicacoes)) {
         aplicacoes.forEach(app => {
-            const itensSeguros = app.itens || []; // Segurança novamente
+            const itensSeguros = app.itens || []; 
             
             itensSeguros.forEach(item => {
-                const insumoData = insumosMap.get(item.insumoId);
+                let custo = item.custoUnitarioNaAplicacao;
                 
-                if (insumoData && insumoData.custoUnitario !== null) {
-                    // Custo = Quantidade Aplicada * Custo Unitário (do cadastro)
-                    custoInsumos += (item.quantidadeAplicada * insumoData.custoUnitario);
+                // Se a aplicação for velha e não tiver custo salvo, usa o da prateleira (fallback)
+                if (custo === undefined) {
+                    const insumoData = insumosMap.get(item.insumoId);
+                    custo = insumoData?.custoUnitario || 0;
                 }
+
+                custoInsumos += (item.quantidadeAplicada * custo);
             });
         });
     }

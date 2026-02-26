@@ -1,5 +1,5 @@
 // src/screens/Aplicacoes/AplicacaoFormScreen.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   View, Text, TextInput, ScrollView, Alert, StyleSheet, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform 
 } from 'react-native';
@@ -33,9 +33,8 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
   const [tempDose, setTempDose] = useState('');
 
   useEffect(() => {
-    // Aplica a cor do módulo (Opcional: deixei azul porque combinava com insumos/água)
     navigation.setOptions({ 
-        headerStyle: { backgroundColor: COLORS.info }, // Cor Info (Azul) do nosso tema
+        headerStyle: { backgroundColor: COLORS.info }, 
         headerTintColor: COLORS.textLight
     });
 
@@ -60,19 +59,25 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
     load();
   }, [user, selectedTenantId]);
 
+  // Identifica o insumo selecionado no momento para pegar a unidade de medida dele
+  const selectedInsumo = useMemo(() => {
+    return insumos.find(i => i.id === tempInsumoId);
+  }, [insumos, tempInsumoId]);
+
+  const unidadeAtual = selectedInsumo ? selectedInsumo.unidadePadrao : '';
+
   const handleAddItem = () => {
       if (!tempInsumoId || !tempDose) return Alert.alert("Atenção", "Selecione o produto e informe a dose.");
-      const insumo = insumos.find(i => i.id === tempInsumoId);
-      if (!insumo) return;
+      if (!selectedInsumo) return;
       
       const dose = parseFloat(tempDose.replace(',', '.'));
       if (isNaN(dose) || dose <= 0) return Alert.alert("Atenção", "A dose deve ser maior que zero.");
 
       setItens([...itens, {
           insumoId: tempInsumoId,
-          nomeInsumo: insumo.nome,
+          nomeInsumo: selectedInsumo.nome,
           dosePorTanque: dose,
-          unidade: insumo.unidadePadrao
+          unidade: selectedInsumo.unidadePadrao
       }]);
       setTempDose(''); // Limpa o campo após adicionar
   };
@@ -124,7 +129,6 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
             <View style={styles.inputGroup}>
                 <Text style={styles.label}>Plantio Alvo</Text>
                 <View style={styles.inputWrapper}>
-                    {/* Forçamos a cor do Picker para preto */}
                     <Picker selectedValue={plantioId} onValueChange={setPlantioId} style={{color: '#000000', fontWeight: 'bold'}}>
                         {plantios.length === 0 && <Picker.Item label="Nenhum plantio ativo" value="" />}
                         {plantios.map(p => <Picker.Item key={p.id} label={`${p.cultura} (${p.variedade || 'Comum'})`} value={p.id} />)}
@@ -156,21 +160,41 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
                 <View style={styles.inputWrapper}>
                     <Picker selectedValue={tempInsumoId} onValueChange={setTempInsumoId} style={{color: '#000000', fontWeight: 'bold'}}>
                         {insumos.length === 0 && <Picker.Item label="Nenhum insumo no stock" value="" />}
-                        {insumos.map(i => <Picker.Item key={i.id} label={`${i.nome} (Est: ${i.estoqueAtual})`} value={i.id} />)}
+                        {insumos.map(i => <Picker.Item key={i.id} label={`${i.nome} (Est: ${i.estoqueAtual} ${i.unidadePadrao})`} value={i.id} />)}
                     </Picker>
                 </View>
                 
                 <View style={[styles.row, {marginTop: 15, alignItems: 'flex-end'}]}>
                     <View style={{flex: 1}}>
                         <Text style={styles.label}>Dose por Tanque</Text>
-                        <View style={[styles.inputWrapper, {marginBottom: 0}]}>
-                            <TextInput style={styles.input} value={tempDose} onChangeText={setTempDose} keyboardType="numeric" placeholder="Ex: 0.5" placeholderTextColor={COLORS.textPlaceholder} selectionColor={COLORS.info} />
+                        
+                        {/* NOVO: Input com a Unidade de Medida anexada visualmente */}
+                        <View style={[styles.inputWrapper, {marginBottom: 0, flexDirection: 'row', alignItems: 'center', overflow: 'hidden'}]}>
+                            <TextInput 
+                                style={[styles.input, {flex: 1, borderRightWidth: 0}]} 
+                                value={tempDose} 
+                                onChangeText={setTempDose} 
+                                keyboardType="numeric" 
+                                placeholder="0.00" 
+                                placeholderTextColor={COLORS.textPlaceholder} 
+                                selectionColor={COLORS.info} 
+                            />
+                            {unidadeAtual ? (
+                                <View style={styles.unitSuffix}>
+                                    <Text style={styles.unitText}>{unidadeAtual.toUpperCase()}</Text>
+                                </View>
+                            ) : null}
                         </View>
+
                     </View>
                     <TouchableOpacity style={styles.addBtn} onPress={handleAddItem}>
                         <MaterialCommunityIcons name="plus" size={32} color="#FFF" />
                     </TouchableOpacity>
                 </View>
+                
+                {unidadeAtual === 'l' || unidadeAtual === 'kg' ? (
+                    <Text style={styles.helperText}>Dica: Para 500ml/g, digite 0.5</Text>
+                ) : null}
             </View>
 
             {itens.length > 0 && <View style={styles.divider} />}
@@ -215,10 +239,13 @@ const styles = StyleSheet.create({
   inputGroup: { marginBottom: 15 },
   label: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 },
   
-  // PADRÃO DE INPUTS BLINDADOS ALTO CONTRASTE
   inputWrapper: { backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.borderDark, height: 56, justifyContent: 'center' },
   input: { paddingHorizontal: 15, fontSize: 18, color: '#000000', height: '100%', fontWeight: 'bold' },
   
+  unitSuffix: { backgroundColor: '#E2E8F0', height: '100%', justifyContent: 'center', paddingHorizontal: 15, borderLeftWidth: 1.5, borderLeftColor: COLORS.borderDark },
+  unitText: { fontWeight: 'bold', color: '#475569', fontSize: 16 },
+  helperText: { fontSize: 11, color: '#64748B', marginTop: 8, fontStyle: 'italic' },
+
   row: { flexDirection: 'row' },
   
   addBox: { backgroundColor: '#EFF6FF', padding: 15, borderRadius: 16, borderWidth: 1, borderColor: '#BFDBFE' },

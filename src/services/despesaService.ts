@@ -7,7 +7,8 @@ import {
   getDocs, 
   deleteDoc, 
   doc, 
-  Timestamp
+  Timestamp,
+  updateDoc
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Despesa } from '../types/domain';
@@ -16,7 +17,9 @@ export type DespesaFormData = {
   descricao: string;
   categoria: string;
   valor: number;
-  dataDespesa: Timestamp;
+  dataDespesa: Date;
+  dataVencimento?: Date | null;
+  status: "pago" | "pendente";
   observacoes: string | null;
   registradoPor: string | null;
 };
@@ -25,6 +28,8 @@ export const createDespesa = async (data: DespesaFormData, userId: string) => {
   const novaDespesa = {
     ...data,
     userId,
+    dataDespesa: Timestamp.fromDate(data.dataDespesa),
+    dataVencimento: data.dataVencimento ? Timestamp.fromDate(data.dataVencimento) : null,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   };
@@ -50,13 +55,24 @@ export const listDespesas = async (userId: string): Promise<Despesa[]> => {
       despesas.push({ id: doc.id, ...doc.data() } as Despesa);
     });
     
-    // Ordenar por data (mais recente primeiro)
     despesas.sort((a, b) => b.dataDespesa.seconds - a.dataDespesa.seconds);
-    
     return despesas;
   } catch (error) {
     console.error("Erro ao listar despesas: ", error);
     throw new Error('Não foi possível buscar as despesas.');
+  }
+};
+
+export const updateDespesaStatus = async (id: string, novoStatus: "pago" | "pendente") => {
+  try {
+    const docRef = doc(db, 'despesas', id);
+    await updateDoc(docRef, { 
+      status: novoStatus, 
+      updatedAt: Timestamp.now() 
+    });
+  } catch (error) {
+    console.error("Erro ao atualizar status:", error);
+    throw new Error("Erro ao atualizar status da despesa.");
   }
 };
 
