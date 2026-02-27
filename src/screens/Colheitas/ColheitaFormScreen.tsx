@@ -49,7 +49,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: isEditMode ? 'Editar Venda' : 'Registrar Venda',
+      title: isEditMode ? 'Editar Venda / Colheita' : 'Registrar Venda (Colheita)',
       headerRight: () => isEditMode ? (
         <TouchableOpacity onPress={handleDelete} style={{marginRight: 15}}>
           <MaterialCommunityIcons name="trash-can-outline" size={24} color="#FFF" />
@@ -118,6 +118,11 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
     return (unidade === 'caixa' && pLiq > 0) ? prc / pLiq : 0;
   }, [unidade, pesoLiquido, preco]);
 
+  // Encontra o plantio selecionado para exibir o selo de rastreabilidade
+  const loteSelecionado = useMemo(() => {
+    return plantiosDisponiveis.find(p => p.id === selectedPlantioId);
+  }, [selectedPlantioId, plantiosDisponiveis]);
+
   const handleDelete = () => {
     Alert.alert("Excluir Venda", "Deseja remover este registro permanentemente?", [
       { text: "Cancelar", style: "cancel" },
@@ -151,7 +156,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
 
   const handleSave = async () => {
       const targetId = selectedTenantId || user?.uid;
-      if (!targetId || !quantidade || !selectedPlantioId) return Alert.alert("Erro", "Preencha os campos obrigatórios.");
+      if (!targetId || !quantidade || !selectedPlantioId) return Alert.alert("Erro", "Preencha os campos obrigatórios (Quantidade e Lote/Produto).");
       
       setLoading(true);
       try {
@@ -161,10 +166,10 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
               unidade,
               precoUnitario: parseFloat(preco.replace(',', '.')) || 0,
               clienteId: selectedClienteId,
-              destino: null,
+              destino: null, // Pode ser adicionado um campo visual depois se quiser
               metodoPagamento,
               registradoPor: user?.name || 'App',
-              observacoes: null,
+              observacoes: `Produto rastreado referente ao Lote: ${plantioObj?.codigoLote || 'N/A'}`,
               dataVenda,
               pesoBruto: parseFloat(pesoBruto.replace(',', '.')) || 0,
               pesoLiquido: parseFloat(pesoLiquido.replace(',', '.')) || 0
@@ -186,36 +191,53 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         
         <View style={styles.card}>
-            <Text style={styles.sectionHeader}>Informações Gerais</Text>
+            <Text style={styles.sectionHeader}>Origem e Destino (Rastreabilidade)</Text>
             
-            <Text style={styles.label}>Data</Text>
+            <Text style={styles.label}>Produto (Lote de Plantio)</Text>
+            <View style={[styles.pickerWrapper, isEditMode && styles.disabledPicker]}>
+                <Picker selectedValue={selectedPlantioId} onValueChange={setSelectedPlantioId} enabled={!isEditMode} style={styles.picker}>
+                    {plantiosDisponiveis.map(p => (
+                        <Picker.Item 
+                          key={p.id} 
+                          // Exibe o Lote primeiro para focar na rastreabilidade
+                          label={`[${p.codigoLote || 'S/ LOTE'}] ${p.cultura} - Estufa: ${estufasMap[p.estufaId] || '?'}`} 
+                          value={p.id} 
+                        />
+                    ))}
+                </Picker>
+            </View>
+
+            {/* --- SELO DE RASTREABILIDADE VISUAL --- */}
+            {loteSelecionado && (
+              <View style={styles.rastreioBox}>
+                <MaterialCommunityIcons name="shield-check" size={20} color="#16A34A" />
+                <View style={{ marginLeft: 10, flex: 1 }}>
+                  <Text style={styles.rastreioTitle}>Lote de Origem Rastreado</Text>
+                  <Text style={styles.rastreioText}>Código: {loteSelecionado.codigoLote || 'Não informado'}</Text>
+                  <Text style={styles.rastreioText}>Variedade: {loteSelecionado.variedade || 'Padrão'}</Text>
+                </View>
+              </View>
+            )}
+
+            <Text style={[styles.label, {marginTop: 15}]}>Cliente / Destino</Text>
+            <View style={styles.rowAlign}>
+                <View style={styles.pickerWrapper}>
+                    <Picker selectedValue={selectedClienteId} onValueChange={setSelectedClienteId} style={styles.picker}>
+                        <Picker.Item label="Venda Avulsa / Consumidor Final" value={null} />
+                        {clientesList.map(c => <Picker.Item key={c.id} label={c.nome} value={c.id} />)}
+                    </Picker>
+                </View>
+                <TouchableOpacity style={styles.addBtn} onPress={() => setModalVisible(true)}>
+                    <MaterialCommunityIcons name="account-plus" size={24} color="#FFF" />
+                </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.label, {marginTop: 15}]}>Data da Colheita/Venda</Text>
             <TouchableOpacity style={styles.dateButton} onPress={() => setShowDatePicker(true)}>
                 <MaterialCommunityIcons name="calendar" size={24} color={COLORS.primary} />
                 <Text style={styles.dateText}>{dataVenda.toLocaleDateString('pt-BR')}</Text>
             </TouchableOpacity>
             {showDatePicker && <DateTimePicker value={dataVenda} mode="date" display="default" onChange={(e, d) => { setShowDatePicker(false); if(d) setDataVenda(d); }} />}
-
-            <Text style={styles.label}>Cliente</Text>
-            <View style={styles.rowAlign}>
-                <View style={styles.pickerWrapper}>
-                    <Picker selectedValue={selectedClienteId} onValueChange={setSelectedClienteId} style={styles.picker}>
-                        <Picker.Item label="Venda Avulsa / Balcão" value={null} />
-                        {clientesList.map(c => <Picker.Item key={c.id} label={c.nome} value={c.id} />)}
-                    </Picker>
-                </View>
-                <TouchableOpacity style={styles.addBtn} onPress={() => setModalVisible(true)}>
-                    <MaterialCommunityIcons name="plus" size={24} color="#FFF" />
-                </TouchableOpacity>
-            </View>
-
-            <Text style={[styles.label, {marginTop: 10}]}>Produto (Plantio)</Text>
-            <View style={[styles.pickerWrapper, isEditMode && styles.disabledPicker]}>
-                <Picker selectedValue={selectedPlantioId} onValueChange={setSelectedPlantioId} enabled={!isEditMode} style={styles.picker}>
-                    {plantiosDisponiveis.map(p => (
-                        <Picker.Item key={p.id} label={`${p.cultura} - ${estufasMap[p.estufaId] || '?'}`} value={p.id} />
-                    ))}
-                </Picker>
-            </View>
         </View>
 
         <View style={styles.card}>
@@ -279,7 +301,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
         </View>
 
         <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>{isEditMode ? 'Salvar Alterações' : 'Confirmar Venda'}</Text>}
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>{isEditMode ? 'Salvar Alterações' : 'Confirmar Venda Rastreada'}</Text>}
         </TouchableOpacity>
 
       </ScrollView>
@@ -288,7 +310,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Novo Cliente</Text>
-            <TextInput style={styles.input} placeholder="Nome do Cliente" value={novoClienteNome} onChangeText={setNovoClienteNome} autoFocus />
+            <TextInput style={styles.input} placeholder="Nome do Cliente (Destino)" value={novoClienteNome} onChangeText={setNovoClienteNome} autoFocus />
             <View style={styles.modalActions}>
               <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={{color: '#64748B'}}>Cancelar</Text></TouchableOpacity>
               <TouchableOpacity onPress={handleQuickRegisterClient} style={styles.modalBtn}>
@@ -318,6 +340,12 @@ const styles = StyleSheet.create({
   disabledPicker: { opacity: 0.6, backgroundColor: '#E2E8F0' },
   picker: { color: '#000' },
   addBtn: { width: 50, height: 50, backgroundColor: COLORS.primary, borderRadius: 8, marginLeft: 10, justifyContent: 'center', alignItems: 'center' },
+  
+  // Estilos do Selo de Rastreabilidade
+  rastreioBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCFCE7', padding: 10, borderRadius: 8, marginTop: 10, borderWidth: 1, borderColor: '#86EFAC' },
+  rastreioTitle: { fontSize: 12, fontWeight: 'bold', color: '#166534' },
+  rastreioText: { fontSize: 11, color: '#15803D' },
+
   infoRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0FDF4', padding: 12, borderRadius: 8, marginBottom: 15 },
   infoText: { marginLeft: 8, color: COLORS.primary, fontWeight: 'bold' },
   totalContainer: { alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 15 },

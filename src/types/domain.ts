@@ -58,11 +58,8 @@ export interface Estufa extends BaseDoc {
 export interface Plantio extends BaseDoc {
   estufaId: string;
   safraId: string | null;
-  
-  // --- NOVOS CAMPOS PARA RASTREABILIDADE (LOTE) ---
   codigoLote?: string; 
   origemSemente?: string; 
-  
   cultura: string;
   variedade: string | null;
   quantidadePlantada: number;
@@ -152,4 +149,17 @@ export interface Despesa extends BaseDoc {
   registradoPor: string | null;
   dataVencimento?: Timestamp | null; 
   status: "pago" | "pendente"; 
+}
+
+// --- INTERFACE DE MANEJO SIMPLIFICADA ---
+export interface RegistroManejo extends BaseDoc {
+  plantioId: string; 
+  estufaId: string;
+  dataRegistro: Timestamp;
+  tipoManejo: "clima" | "praga_doenca" | "outro"; // Apenas o essencial do diário
+  descricao: string; 
+  responsavel: string | null;
+  temperatura?: number | null;
+  umidade?: number | null;
+  severidade?: "baixa" | "media" | "alta" | null;
 }

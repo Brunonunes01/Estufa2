@@ -1,3 +1,4 @@
+// src/screens/Plantios/PlantioFormScreen.tsx
 import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { 
   View, Text, TextInput, ScrollView, StyleSheet, 
@@ -23,6 +24,10 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
   
   const [quantidadePlantada, setQuantidadePlantada] = useState('');
   const [unidadeQuantidade, setUnidadeQuantidade] = useState('mudas');
+  
+  // --- NOVO: ESTADO PARA O CUSTO DA MUDA/SEMENTE ---
+  const [precoEstimadoUnidade, setPrecoEstimadoUnidade] = useState('');
+  
   const [cicloDias, setCicloDias] = useState('');
   const [observacoes, setObservacoes] = useState('');
   
@@ -55,7 +60,6 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
     setCodigoLote(`LT-${ano}${mes}-${randomSuffix}`);
   };
 
-  // Correção 1: Recebe o ID como string estrita
   const loadPlantio = async (id: string) => {
     const data = await getPlantioById(id);
     if (data) {
@@ -65,6 +69,8 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
       setOrigemSemente(data.origemSemente || '');
       setQuantidadePlantada(data.quantidadePlantada?.toString() || '');
       setUnidadeQuantidade(data.unidadeQuantidade || 'mudas');
+      // Carrega o preço se existir
+      setPrecoEstimadoUnidade(data.precoEstimadoUnidade?.toString() || '');
       setCicloDias(data.cicloDias?.toString() || '');
       setObservacoes(data.observacoes || '');
     }
@@ -73,7 +79,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
   const handleDelete = () => {
     Alert.alert(
       "Eliminar Lote",
-      "Tem a certeza? Isso apagará este registro de plantio.",
+      "Tem a certeza? Isso apagará este registro de plantio e afetará o histórico financeiro.",
       [
         { text: "Cancelar", style: "cancel" },
         { 
@@ -81,7 +87,6 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
           style: "destructive", 
           onPress: async () => {
             try {
-              // Correção 1: as string
               await deletePlantio(editingId as string);
               navigation.goBack();
             } catch (e) {
@@ -94,7 +99,6 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
   };
 
   const handleSave = async () => {
-    // Correção 1: as string para garantir que não será undefined na criação
     const targetId = (selectedTenantId || user?.uid) as string;
     
     if (!estufaId && !isEditMode) {
@@ -107,6 +111,8 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
     setLoading(true);
 
     const qtdNum = parseFloat(quantidadePlantada.replace(',', '.')) || 0;
+    // --- NOVO: CONVERTE O CUSTO PARA NÚMERO ---
+    const precoNum = parseFloat(precoEstimadoUnidade.replace(',', '.')) || 0;
     const cicloNum = parseInt(cicloDias) || 0;
     
     let previsaoData = null;
@@ -126,6 +132,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
       origemSemente,
       quantidadePlantada: qtdNum,
       unidadeQuantidade,
+      precoEstimadoUnidade: precoNum > 0 ? precoNum : null, // Salva no banco de dados
       cicloDias: cicloNum > 0 ? cicloNum : null,
       observacoes,
       ...(!isEditMode && { 
@@ -137,7 +144,6 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
 
     try {
       if (isEditMode && editingId) {
-        // Correção 1: as string
         await updatePlantio(editingId as string, plantioData as any);
       } else {
         await createPlantio(plantioData as any, targetId);
@@ -198,7 +204,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
           placeholderTextColor="#94A3B8" 
         />
 
-        <Text style={styles.sectionTitle}>Dados de Plantio</Text>
+        <Text style={styles.sectionTitle}>Dados de Plantio e Custos</Text>
 
         <View style={styles.row}>
           <View style={{flex: 1, marginRight: 5}}>
@@ -224,16 +230,32 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
           </View>
         </View>
 
-        <Text style={styles.label}>Ciclo Estimado (Dias até a colheita)</Text>
-        <TextInput 
-          style={styles.input} 
-          value={cicloDias} 
-          onChangeText={setCicloDias} 
-          placeholder="Ex: 90" 
-          placeholderTextColor="#94A3B8" 
-          keyboardType="numeric" 
-        />
-        <Text style={styles.hint}>O sistema calculará a previsão de colheita baseado nisso.</Text>
+        {/* --- NOVO: CAMPO DE CUSTO E CICLO LADO A LADO --- */}
+        <View style={styles.row}>
+          <View style={{flex: 1, marginRight: 5}}>
+            <Text style={styles.label}>Custo Un. da Muda (R$)</Text>
+            <TextInput 
+              style={styles.input} 
+              value={precoEstimadoUnidade} 
+              onChangeText={setPrecoEstimadoUnidade} 
+              placeholder="Ex: 1.50" 
+              placeholderTextColor="#94A3B8" 
+              keyboardType="numeric" 
+            />
+          </View>
+          <View style={{flex: 1, marginLeft: 5}}>
+            <Text style={styles.label}>Ciclo Est. (Dias)</Text>
+            <TextInput 
+              style={styles.input} 
+              value={cicloDias} 
+              onChangeText={setCicloDias} 
+              placeholder="Ex: 90" 
+              placeholderTextColor="#94A3B8" 
+              keyboardType="numeric" 
+            />
+          </View>
+        </View>
+        <Text style={styles.hint}>O custo unitário compõe a "Despesa Inicial" na rentabilidade.</Text>
 
         <Text style={styles.sectionTitle}>Outros</Text>
 
@@ -266,8 +288,6 @@ const styles = StyleSheet.create({
   
   loteContainer: { backgroundColor: '#E0F2FE', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, marginBottom: 20 },
   loteLabel: { fontSize: 11, fontWeight: 'bold', color: COLORS.primary, marginBottom: 5, textAlign: 'center' },
-  
-  // Correção 2: Substituído COLORS.text por COLORS.textPrimary
   loteInput: { fontSize: 18, fontWeight: 'bold', color: COLORS.textPrimary, textAlign: 'center', letterSpacing: 1 },
 
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.primary, marginTop: 10, marginBottom: 15 },

@@ -40,9 +40,9 @@ export const createColheita = async (
 
   const novaColheita = {
     ...data, 
-    userId: userId,
-    plantioId: plantioId,
-    estufaId: estufaId,
+    userId,
+    plantioId,
+    estufaId,
     dataColheita: dataFinal,
     statusPagamento: isPrazo ? 'pendente' : 'pago',
     dataPagamento: isPrazo ? null : dataFinal,
@@ -50,16 +50,19 @@ export const createColheita = async (
     updatedAt: Timestamp.now(),
   };
 
+  // Remove o campo local Date antes de mandar pro Firestore
   delete (novaColheita as any).dataVenda;
 
   try {
     const docRef = await addDoc(collection(db, 'colheitas'), novaColheita);
+    
+    // Atualiza o status do Lote/Plantio para "em_colheita" automaticamente
     if (plantioId) {
         await updatePlantioStatus(plantioId, "em_colheita");
     }
     return docRef.id;
   } catch (error) {
-    console.error("Erro ao criar colheita: ", error);
+    console.error("Erro ao criar colheita/venda: ", error);
     throw new Error('Não foi possível registrar a colheita.');
   }
 };

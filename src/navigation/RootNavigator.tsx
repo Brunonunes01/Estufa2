@@ -33,9 +33,12 @@ import ClienteFormScreen from '../screens/Clientes/ClienteFormScreen';
 import DespesasListScreen from '../screens/Despesas/DespesasListScreen';
 import DespesaFormScreen from '../screens/Despesas/DespesaFormScreen';
 
+import ManejoFormScreen from '../screens/Manejos/ManejoFormScreen';
+// --- NOVO IMPORT DO HISTÓRICO ---
+import ManejosHistoryScreen from '../screens/Manejos/ManejosHistoryScreen';
+
 const Stack = createNativeStackNavigator();
 
-// --- NOVO: Componente do Botão Home Global ---
 const HomeButton = () => {
   const navigation = useNavigation<any>();
   return (
@@ -56,7 +59,6 @@ const defaultScreenOptions: NativeStackNavigationOptions = {
     headerShadowVisible: false, 
     headerBackTitle: '', 
     animation: 'slide_from_right', 
-    // Adicionamos o botão Home como padrão no lado direito de todas as telas
     headerRight: () => <HomeButton />, 
 };
 
@@ -69,7 +71,6 @@ const AuthStack = () => (
 
 const AppStack = () => (
   <Stack.Navigator screenOptions={defaultScreenOptions}>
-    {/* O Dashboard não precisa do botão Home, pois já é a Home (headerShown: false) */}
     <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false, animation: 'fade' }} />
     <Stack.Screen name="ShareAccount" component={ShareAccountScreen} options={{ title: 'Partilhar Acesso' }} />
     <Stack.Screen name="Perfil" component={PerfilScreen} options={{ title: 'Minha Propriedade' }} />
@@ -77,8 +78,14 @@ const AppStack = () => (
     <Stack.Screen name="EstufasList" component={EstufasListScreen} options={{ title: 'Minhas Estufas' }} />
     <Stack.Screen name="EstufaForm" component={EstufaFormScreen} options={{ title: 'Gerir Estufa' }} />
     <Stack.Screen name="EstufaDetail" component={EstufaDetailScreen} options={{ title: 'Detalhes da Estufa' }} />
+    
     <Stack.Screen name="PlantioForm" component={PlantioFormScreen} options={{ title: 'Novo Plantio' }} />
     <Stack.Screen name="PlantioDetail" component={PlantioDetailScreen} options={{ title: 'Painel do Ciclo' }} />
+    
+    {/* Rotas de Manejo */}
+    <Stack.Screen name="ManejoForm" component={ManejoFormScreen} options={{ title: 'Registo de Manejo' }} />
+    <Stack.Screen name="ManejosHistory" component={ManejosHistoryScreen} options={{ title: 'Diário de Manejo' }} />
+    
     <Stack.Screen name="ColheitaForm" component={ColheitaFormScreen} options={{ title: 'Nova Venda' }} />
     <Stack.Screen name="VendasList" component={VendasListScreen} options={{ title: 'Histórico de Vendas' }} />
     <Stack.Screen name="ContasReceber" component={ContasReceberScreen} options={{ title: 'Contas a Receber', headerStyle: { backgroundColor: COLORS.modFinanceiro } }} />

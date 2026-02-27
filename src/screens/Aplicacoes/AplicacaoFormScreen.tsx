@@ -7,7 +7,7 @@ import { Picker } from '@react-native-picker/picker';
 import { useAuth } from '../../hooks/useAuth';
 import { listAllPlantios } from '../../services/plantioService';
 import { listInsumos } from '../../services/insumoService';
-import { createAplicacao, AplicacaoFormData, AplicacaoItemData } from '../../services/aplicacaoService';
+import { createAplicacao, AplicacaoItemData } from '../../services/aplicacaoService';
 import { Plantio, Insumo } from '../../types/domain';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -24,6 +24,10 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
   const [loading, setLoading] = useState(false);
 
   const [plantioId, setPlantioId] = useState(params.plantioId || '');
+  
+  // --- NOVO: ESTADO PARA O TIPO DE APLICAÇÃO ---
+  const [tipoAplicacao, setTipoAplicacao] = useState<'defensivo' | 'fertilizacao'>('defensivo');
+  
   const [volumeTanque, setVolumeTanque] = useState('');
   const [numTanques, setNumTanques] = useState('1');
   const [observacoes, setObservacoes] = useState('');
@@ -35,7 +39,8 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
   useEffect(() => {
     navigation.setOptions({ 
         headerStyle: { backgroundColor: COLORS.info }, 
-        headerTintColor: COLORS.textLight
+        headerTintColor: COLORS.textLight,
+        title: 'Nova Aplicação'
     });
 
     const load = async () => {
@@ -59,7 +64,6 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
     load();
   }, [user, selectedTenantId]);
 
-  // Identifica o insumo selecionado no momento para pegar a unidade de medida dele
   const selectedInsumo = useMemo(() => {
     return insumos.find(i => i.id === tempInsumoId);
   }, [insumos, tempInsumoId]);
@@ -79,7 +83,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
           dosePorTanque: dose,
           unidade: selectedInsumo.unidadePadrao
       }]);
-      setTempDose(''); // Limpa o campo após adicionar
+      setTempDose(''); 
   };
 
   const handleRemoveItem = (index: number) => {
@@ -103,14 +107,17 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
           const tanques = parseFloat(numTanques.replace(',', '.')) || 1;
           const itensFinais = itens.map(i => ({ ...i, quantidadeAplicada: i.dosePorTanque * tanques }));
 
+          // Cast para 'any' para evitar erros de tipagem no seu aplicacaoService
           await createAplicacao({
               plantioId,
               estufaId: p.estufaId,
+              tipoAplicacao, // <-- Enviando o tipo de aplicação
               volumeTanque: vol,
               numeroTanques: tanques,
               observacoes,
               itens: itensFinais
-          }, targetId);
+          } as any, targetId);
+          
           Alert.alert("Sucesso", "Aplicação registada com sucesso!");
           navigation.goBack();
       } catch { Alert.alert("Erro", "Falha ao salvar a aplicação."); }
@@ -123,6 +130,28 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
+        {/* --- NOVO: SELETOR DE FINALIDADE --- */}
+        <View style={styles.card}>
+            <Text style={styles.sectionHeader}>Finalidade da Aplicação</Text>
+            <View style={styles.pillContainer}>
+              <TouchableOpacity 
+                style={[styles.pill, tipoAplicacao === 'defensivo' && styles.pillActive]} 
+                onPress={() => setTipoAplicacao('defensivo')}
+              >
+                  <MaterialCommunityIcons name="shield-bug" size={20} color={tipoAplicacao === 'defensivo' ? '#FFF' : COLORS.info} style={{marginBottom: 4}} />
+                  <Text style={[styles.pillText, tipoAplicacao === 'defensivo' && styles.pillTextActive]}>Defensivo Fitosanitário</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.pill, tipoAplicacao === 'fertilizacao' && styles.pillActive]} 
+                onPress={() => setTipoAplicacao('fertilizacao')}
+              >
+                  <MaterialCommunityIcons name="sprout" size={20} color={tipoAplicacao === 'fertilizacao' ? '#FFF' : COLORS.info} style={{marginBottom: 4}} />
+                  <Text style={[styles.pillText, tipoAplicacao === 'fertilizacao' && styles.pillTextActive]}>Fertilização / Nutrição</Text>
+              </TouchableOpacity>
+            </View>
+        </View>
+
         <View style={styles.card}>
             <Text style={styles.sectionHeader}>Local e Equipamento</Text>
             
@@ -131,7 +160,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
                 <View style={styles.inputWrapper}>
                     <Picker selectedValue={plantioId} onValueChange={setPlantioId} style={{color: '#000000', fontWeight: 'bold'}}>
                         {plantios.length === 0 && <Picker.Item label="Nenhum plantio ativo" value="" />}
-                        {plantios.map(p => <Picker.Item key={p.id} label={`${p.cultura} (${p.variedade || 'Comum'})`} value={p.id} />)}
+                        {plantios.map(p => <Picker.Item key={p.id} label={`${p.codigoLote ? `[${p.codigoLote}] ` : ''}${p.cultura} (${p.variedade || 'Comum'})`} value={p.id} />)}
                     </Picker>
                 </View>
             </View>
@@ -160,15 +189,20 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
                 <View style={styles.inputWrapper}>
                     <Picker selectedValue={tempInsumoId} onValueChange={setTempInsumoId} style={{color: '#000000', fontWeight: 'bold'}}>
                         {insumos.length === 0 && <Picker.Item label="Nenhum insumo no stock" value="" />}
-                        {insumos.map(i => <Picker.Item key={i.id} label={`${i.nome} (Est: ${i.estoqueAtual} ${i.unidadePadrao})`} value={i.id} />)}
+                        {insumos.map(i => (
+                          <Picker.Item 
+                            key={i.id} 
+                            // Melhoria visual: Mostra a tag [ADUBO] ou [DEFENSIVO] antes do nome
+                            label={`[${i.tipo.toUpperCase()}] ${i.nome} (Est: ${i.estoqueAtual} ${i.unidadePadrao})`} 
+                            value={i.id} 
+                          />
+                        ))}
                     </Picker>
                 </View>
                 
                 <View style={[styles.row, {marginTop: 15, alignItems: 'flex-end'}]}>
                     <View style={{flex: 1}}>
                         <Text style={styles.label}>Dose por Tanque</Text>
-                        
-                        {/* NOVO: Input com a Unidade de Medida anexada visualmente */}
                         <View style={[styles.inputWrapper, {marginBottom: 0, flexDirection: 'row', alignItems: 'center', overflow: 'hidden'}]}>
                             <TextInput 
                                 style={[styles.input, {flex: 1, borderRightWidth: 0}]} 
@@ -185,7 +219,6 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
                                 </View>
                             ) : null}
                         </View>
-
                     </View>
                     <TouchableOpacity style={styles.addBtn} onPress={handleAddItem}>
                         <MaterialCommunityIcons name="plus" size={32} color="#FFF" />
@@ -202,7 +235,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
             {itens.map((item, index) => (
                 <View key={index} style={styles.itemRow}>
                     <View style={styles.itemIcon}>
-                        <MaterialCommunityIcons name="flask" size={20} color={COLORS.info} />
+                        <MaterialCommunityIcons name={tipoAplicacao === 'fertilizacao' ? 'sprout' : 'flask'} size={20} color={COLORS.info} />
                     </View>
                     <View style={{flex: 1, paddingHorizontal: 12}}>
                         <Text style={styles.itemName}>{item.nomeInsumo}</Text>
@@ -236,6 +269,13 @@ const styles = StyleSheet.create({
   card: { backgroundColor: COLORS.surface, padding: 20, borderRadius: 24, marginBottom: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 2, borderWidth: 1, borderColor: COLORS.border },
   sectionHeader: { fontSize: 16, fontWeight: '800', color: COLORS.info, marginBottom: 15, textTransform: 'uppercase' },
   
+  // Estilos da Finalidade (Pills)
+  pillContainer: { flexDirection: 'row', gap: 10 },
+  pill: { flex: 1, paddingVertical: 15, borderRadius: 12, borderWidth: 1, borderColor: COLORS.info, alignItems: 'center', backgroundColor: '#FFF' },
+  pillActive: { backgroundColor: COLORS.info },
+  pillText: { color: COLORS.info, fontWeight: 'bold', fontSize: 13, textAlign: 'center' },
+  pillTextActive: { color: '#FFF' },
+
   inputGroup: { marginBottom: 15 },
   label: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 },
   
