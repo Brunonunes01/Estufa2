@@ -1,3 +1,4 @@
+// src/screens/Vendas/VendasListScreen.tsx
 import React, { useState, useEffect, useLayoutEffect, useMemo } from 'react';
 import { 
   View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator, 
@@ -6,15 +7,18 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useIsFocused } from '@react-navigation/native';
+
 import { useAuth } from '../../hooks/useAuth';
 import { listAllColheitas } from '../../services/colheitaService';
 import { listClientes } from '../../services/clienteService';
 import { listEstufas } from '../../services/estufaService';
 import { shareVendaReceipt } from '../../services/receiptService';
-import { Colheita, Cliente, Estufa } from '../../types/domain';
+import { Colheita, Cliente } from '../../types/domain';
 
 const VendasListScreen = ({ navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const isFocused = useIsFocused();
   
   // --- ESTADOS DE DADOS ---
   const [allVendas, setAllVendas] = useState<Colheita[]>([]);
@@ -38,7 +42,6 @@ const VendasListScreen = ({ navigation }: any) => {
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
 
-  // --- BOTÕES NO HEADER ---
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
@@ -54,12 +57,13 @@ const VendasListScreen = ({ navigation }: any) => {
     });
   }, [navigation]);
 
-  // --- CARREGAMENTO INICIAL ---
   const loadData = async () => {
     const targetId = selectedTenantId || user?.uid;
     if (!targetId) return;
 
-    setLoading(true);
+    // Apenas mostra o loading full screen se a lista estiver vazia
+    if (allVendas.length === 0) setLoading(true);
+
     try {
       const [vendasData, clientesData, estufasData] = await Promise.all([
         listAllColheitas(targetId),
@@ -67,30 +71,34 @@ const VendasListScreen = ({ navigation }: any) => {
         listEstufas(targetId)
       ]);
 
-      setClientesList(clientesData);
-
-      // Mapeamento de Clientes
+      // Mapeamento de Clientes (CRUCIAL para a performance)
       const cMap: Record<string, string> = {};
-      clientesData.forEach(c => cMap[c.id] = c.nome);
+      clientesData.forEach(c => {
+          if (c.id) cMap[c.id] = c.nome;
+      });
       setClientesMap(cMap);
+      setClientesList(clientesData);
 
       // Mapeamento de Estufas
       const eMap: Record<string, string> = {};
-      estufasData.forEach(e => eMap[e.id] = e.nome);
+      estufasData.forEach(e => {
+          if (e.id) eMap[e.id] = e.nome;
+      });
       setEstufasMap(eMap);
 
       setAllVendas(vendasData);
     } catch (error) {
       console.error(error);
-      Alert.alert('Erro', 'Não foi possível carregar as vendas.');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
-  }, [selectedTenantId]);
+    if (isFocused) {
+        loadData();
+    }
+  }, [isFocused, selectedTenantId]);
 
   // --- LÓGICA DE FILTRAGEM ---
   const filteredVendas = useMemo(() => {
@@ -128,7 +136,6 @@ const VendasListScreen = ({ navigation }: any) => {
     });
   }, [allVendas, filterCliente, filterObs, filterStatus, startDate, endDate]);
 
-  // --- ESTATÍSTICAS DO RELATÓRIO ---
   const stats = useMemo(() => {
       const data = {
           totalValor: 0,
@@ -149,7 +156,17 @@ const VendasListScreen = ({ navigation }: any) => {
       return data;
   }, [filteredVendas]);
 
-  // --- COMPARTILHAR RELATÓRIO DE TEXTO (CORRIGIDO) ---
+  // Helper para pegar nome do cliente
+  const getClienteNome = (id: string | null) => {
+    if (!id) return 'Cliente Avulso';
+    // Se temos o mapa carregado e o ID existe lá:
+    if (clientesMap[id]) return clientesMap[id];
+    // Se ainda estamos carregando (mapa vazio)
+    if (loading && Object.keys(clientesMap).length === 0) return 'Carregando...';
+    // Se já carregou e não achou:
+    return 'Cliente Desconhecido'; 
+  };
+
   const handleShareReport = async () => {
       let msg = `📊 *Relatório de Vendas SGE*\n`;
       msg += `-----------------------------\n`;
@@ -159,7 +176,7 @@ const VendasListScreen = ({ navigation }: any) => {
       
       msg += `*Detalhamento:* \n`;
       filteredVendas.slice(0, 15).forEach(v => {
-          const cNome = v.clienteId ? clientesMap[v.clienteId] : 'Cliente Avulso';
+          const cNome = getClienteNome(v.clienteId);
           const total = v.quantidade * (v.precoUnitario || 0);
           msg += `• ${cNome}: R$ ${total.toFixed(2)}\n`;
       });
@@ -181,14 +198,13 @@ const VendasListScreen = ({ navigation }: any) => {
       }
   };
 
-  // --- GERAR PDF DA VENDA INDIVIDUAL ---
   const handlePrintReceipt = async (venda: Colheita) => {
     try {
         await shareVendaReceipt({
             venda,
             nomeProdutor: user?.name || 'Produtor',
-            nomeCliente: venda.clienteId ? (clientesMap[venda.clienteId] || 'Não Encontrado') : 'Cliente Avulso',
-            nomeProduto: 'Produtos da Colheita', // Pode ser expandido se houver campo de Cultura na Colheita
+            nomeCliente: getClienteNome(venda.clienteId),
+            nomeProduto: 'Produtos da Colheita', 
             nomeEstufa: estufasMap[venda.estufaId] || 'Estufa Geral'
         });
     } catch (error: any) {
@@ -196,7 +212,6 @@ const VendasListScreen = ({ navigation }: any) => {
     }
   };
 
-  // --- HELPERS ---
   const formatDate = (timestamp: any) => {
     if (!timestamp) return '-';
     const d = timestamp.toDate ? timestamp.toDate() : new Date(timestamp.seconds * 1000);
@@ -214,7 +229,7 @@ const VendasListScreen = ({ navigation }: any) => {
 
   const renderItem = ({ item }: { item: Colheita }) => {
     const total = item.quantidade * (item.precoUnitario || 0);
-    const clienteNome = item.clienteId ? (clientesMap[item.clienteId] || 'Cliente...') : 'Cliente Avulso';
+    const clienteNome = getClienteNome(item.clienteId);
     const isPendente = item.statusPagamento === 'pendente' || (!item.statusPagamento && item.metodoPagamento === 'prazo');
 
     return (
@@ -225,7 +240,7 @@ const VendasListScreen = ({ navigation }: any) => {
         >
           <View style={styles.cardHeader}>
               <View style={{flex: 1}}>
-                  <Text style={styles.clienteName}>{clienteNome}</Text>
+                  <Text style={styles.clienteName} numberOfLines={1}>{clienteNome}</Text>
                   <Text style={styles.dateText}>{formatDate(item.dataColheita)}</Text>
               </View>
               <View style={[styles.badge, isPendente ? styles.badgePending : styles.badgePaid]}>
@@ -243,7 +258,6 @@ const VendasListScreen = ({ navigation }: any) => {
           </View>
         </TouchableOpacity>
         
-        {/* Botão para Gerar PDF Individual */}
         <TouchableOpacity 
             style={styles.pdfIconBtn} 
             onPress={() => handlePrintReceipt(item)}
@@ -266,7 +280,7 @@ const VendasListScreen = ({ navigation }: any) => {
          </Text>
       </View>
 
-      {loading ? (
+      {loading && allVendas.length === 0 ? (
         <ActivityIndicator size="large" color="#166534" style={{marginTop: 50}} />
       ) : (
         <FlatList

@@ -2,9 +2,12 @@
 import React from 'react';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationOptions } from '@react-navigation/native-stack';
-import { useAuth } from '../hooks/useAuth';
-import { View, ActivityIndicator, Text, StatusBar, TouchableOpacity } from 'react-native';
+import { View, ActivityIndicator, Text, StatusBar, TouchableOpacity, Platform, SafeAreaView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+// --- NOVO: Importação do NetInfo para monitorar a internet ---
+import { useNetInfo } from '@react-native-community/netinfo';
+
+import { useAuth } from '../hooks/useAuth';
 import { COLORS } from '../constants/theme';
 
 import LoginScreen from '../screens/Auth/LoginScreen';
@@ -34,10 +37,38 @@ import DespesasListScreen from '../screens/Despesas/DespesasListScreen';
 import DespesaFormScreen from '../screens/Despesas/DespesaFormScreen';
 
 import ManejoFormScreen from '../screens/Manejos/ManejoFormScreen';
-// --- NOVO IMPORT DO HISTÓRICO ---
 import ManejosHistoryScreen from '../screens/Manejos/ManejosHistoryScreen';
 
 const Stack = createNativeStackNavigator();
+
+// --- NOVO: COMPONENTE DE BANNER OFFLINE GLOBAL ---
+const OfflineBanner = () => {
+  const netInfo = useNetInfo();
+
+  // Se o tipo for diferente de 'unknown' e isConnected for falso, estamos offline!
+  if (netInfo.type !== 'unknown' && netInfo.isConnected === false) {
+    return (
+      <SafeAreaView style={{ backgroundColor: '#F59E0B' }}>
+        <View style={{ 
+          backgroundColor: '#F59E0B', 
+          paddingVertical: 10, 
+          paddingHorizontal: 15, 
+          flexDirection: 'row', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          // Dá um pequeno espaçamento no Android para não colar no topo
+          paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ? StatusBar.currentHeight + 5 : 10 : 10
+        }}>
+          <MaterialCommunityIcons name="wifi-off" size={18} color="#FFF" style={{ marginRight: 8 }} />
+          <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13, textAlign: 'center' }}>
+            Modo Offline: Sincronização pendente
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+  return null; // Se tem internet, não renderiza nada
+};
 
 const HomeButton = () => {
   const navigation = useNavigation<any>();
@@ -82,7 +113,6 @@ const AppStack = () => (
     <Stack.Screen name="PlantioForm" component={PlantioFormScreen} options={{ title: 'Novo Plantio' }} />
     <Stack.Screen name="PlantioDetail" component={PlantioDetailScreen} options={{ title: 'Painel do Ciclo' }} />
     
-    {/* Rotas de Manejo */}
     <Stack.Screen name="ManejoForm" component={ManejoFormScreen} options={{ title: 'Registo de Manejo' }} />
     <Stack.Screen name="ManejosHistory" component={ManejosHistoryScreen} options={{ title: 'Diário de Manejo' }} />
     
@@ -120,8 +150,12 @@ export const RootNavigator = () => {
   }
 
   return (
-    <NavigationContainer>
-      {user ? <AppStack /> : <AuthStack />}
-    </NavigationContainer>
+    // Envolvemos todo o container de navegação com uma View flex para o Banner ficar fixo no topo
+    <View style={{ flex: 1 }}>
+      <OfflineBanner />
+      <NavigationContainer>
+        {user ? <AppStack /> : <AuthStack />}
+      </NavigationContainer>
+    </View>
   );
 };

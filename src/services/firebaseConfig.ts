@@ -1,6 +1,7 @@
 // src/services/firebaseConfig.ts
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+// --- NOVO: Importamos o initializeFirestore e o persistentLocalCache ---
+import { initializeFirestore, persistentLocalCache } from 'firebase/firestore';
 
 // CORREÇÃO: O Firebase v12 tem um bug nas definições de tipo para React Native.
 // A função existe, mas o TypeScript não a vê. Usamos @ts-ignore para corrigir o erro de build.
@@ -27,7 +28,11 @@ export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(ReactNativeAsyncStorage)
 });
 
-// O DB continua o mesmo
-export const db = getFirestore(app);
+// --- A MÁGICA DO OFFLINE-FIRST ACONTECE AQUI ---
+// Em vez de usar apenas getFirestore(app), nós inicializamos o banco
+// forçando ele a criar um cache local no armazenamento do celular.
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({})
+});
 
 export default app;
