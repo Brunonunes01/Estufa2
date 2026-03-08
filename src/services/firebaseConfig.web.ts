@@ -1,11 +1,8 @@
-// src/services/firebaseConfig.ts
+// src/services/firebaseConfig.web.ts
 import { initializeApp } from 'firebase/app';
 import { initializeFirestore, persistentLocalCache } from 'firebase/firestore';
-
-// Voltamos ao código original que funcionava bem no mobile
-// @ts-ignore
-import { initializeAuth, getReactNativePersistence } from 'firebase/auth'; 
-import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+// Na Web, importamos apenas o getAuth padrão, que já usa persistência local do browser automaticamente
+import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDNGftBmPuHi2wSbIGyE3qu20i0AsQ3HQk",
@@ -18,9 +15,8 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(ReactNativeAsyncStorage)
-});
+// A Web trata a persistência de forma nativa e automática
+export const auth = getAuth(app);
 
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({})

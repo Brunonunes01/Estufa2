@@ -2,20 +2,29 @@
 import React from 'react';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationOptions } from '@react-navigation/native-stack';
-import { View, ActivityIndicator, Text, StatusBar, TouchableOpacity, Platform, SafeAreaView } from 'react-native';
+import { 
+  View, 
+  ActivityIndicator, 
+  Text, 
+  StatusBar, 
+  TouchableOpacity, 
+  Platform, 
+  SafeAreaView, 
+  Dimensions, 
+  StyleSheet 
+} from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-// --- NOVO: Importação do NetInfo para monitorar a internet ---
 import { useNetInfo } from '@react-native-community/netinfo';
 
 import { useAuth } from '../hooks/useAuth';
 import { COLORS } from '../constants/theme';
 
+// Importação dos ecrãs
 import LoginScreen from '../screens/Auth/LoginScreen';
 import RegisterScreen from '../screens/Auth/RegisterScreen';
 import ShareAccountScreen from '../screens/Auth/ShareAccountScreen';
 import DashboardScreen from '../screens/Dashboard/DashboardScreen';
 import PerfilScreen from '../screens/Perfil/PerfilScreen';
-
 import EstufasListScreen from '../screens/Estufas/EstufasListScreen';
 import EstufaFormScreen from '../screens/Estufas/EstufaFormScreen';
 import EstufaDetailScreen from '../screens/Estufas/EstufaDetailScreen';
@@ -35,39 +44,27 @@ import ClientesListScreen from '../screens/Clientes/ClientesListScreen';
 import ClienteFormScreen from '../screens/Clientes/ClienteFormScreen';
 import DespesasListScreen from '../screens/Despesas/DespesasListScreen';
 import DespesaFormScreen from '../screens/Despesas/DespesaFormScreen';
-
 import ManejoFormScreen from '../screens/Manejos/ManejoFormScreen';
 import ManejosHistoryScreen from '../screens/Manejos/ManejosHistoryScreen';
 
 const Stack = createNativeStackNavigator();
 
-// --- NOVO: COMPONENTE DE BANNER OFFLINE GLOBAL ---
+// --- BANNER OFFLINE ---
 const OfflineBanner = () => {
   const netInfo = useNetInfo();
-
-  // Se o tipo for diferente de 'unknown' e isConnected for falso, estamos offline!
   if (netInfo.type !== 'unknown' && netInfo.isConnected === false) {
     return (
       <SafeAreaView style={{ backgroundColor: '#F59E0B' }}>
-        <View style={{ 
-          backgroundColor: '#F59E0B', 
-          paddingVertical: 10, 
-          paddingHorizontal: 15, 
-          flexDirection: 'row', 
-          alignItems: 'center', 
-          justifyContent: 'center',
-          // Dá um pequeno espaçamento no Android para não colar no topo
-          paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ? StatusBar.currentHeight + 5 : 10 : 10
-        }}>
+        <View style={styles.offlineBannerContainer}>
           <MaterialCommunityIcons name="wifi-off" size={18} color="#FFF" style={{ marginRight: 8 }} />
-          <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13, textAlign: 'center' }}>
+          <Text style={styles.offlineBannerText}>
             Modo Offline: Sincronização pendente
           </Text>
         </View>
       </SafeAreaView>
     );
   }
-  return null; // Se tem internet, não renderiza nada
+  return null;
 };
 
 const HomeButton = () => {
@@ -105,17 +102,13 @@ const AppStack = () => (
     <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false, animation: 'fade' }} />
     <Stack.Screen name="ShareAccount" component={ShareAccountScreen} options={{ title: 'Partilhar Acesso' }} />
     <Stack.Screen name="Perfil" component={PerfilScreen} options={{ title: 'Minha Propriedade' }} />
-
     <Stack.Screen name="EstufasList" component={EstufasListScreen} options={{ title: 'Minhas Estufas' }} />
     <Stack.Screen name="EstufaForm" component={EstufaFormScreen} options={{ title: 'Gerir Estufa' }} />
     <Stack.Screen name="EstufaDetail" component={EstufaDetailScreen} options={{ title: 'Detalhes da Estufa' }} />
-    
     <Stack.Screen name="PlantioForm" component={PlantioFormScreen} options={{ title: 'Novo Plantio' }} />
     <Stack.Screen name="PlantioDetail" component={PlantioDetailScreen} options={{ title: 'Painel do Ciclo' }} />
-    
     <Stack.Screen name="ManejoForm" component={ManejoFormScreen} options={{ title: 'Registo de Manejo' }} />
     <Stack.Screen name="ManejosHistory" component={ManejosHistoryScreen} options={{ title: 'Diário de Manejo' }} />
-    
     <Stack.Screen name="ColheitaForm" component={ColheitaFormScreen} options={{ title: 'Nova Venda' }} />
     <Stack.Screen name="VendasList" component={VendasListScreen} options={{ title: 'Histórico de Vendas' }} />
     <Stack.Screen name="ContasReceber" component={ContasReceberScreen} options={{ title: 'Contas a Receber', headerStyle: { backgroundColor: COLORS.modFinanceiro } }} />
@@ -135,27 +128,80 @@ const AppStack = () => (
 
 export const RootNavigator = () => {
   const { user, loading } = useAuth();
+  
+  // Lógica para detetar se é Web e calcular largura
+  const isWeb = Platform.OS === 'web';
+  const screenWidth = Dimensions.get('window').width;
+  const isWideScreen = isWeb && screenWidth > 500;
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
+      <View style={styles.loadingContainer}>
         <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
         <MaterialCommunityIcons name="greenhouse" size={80} color={COLORS.primary} style={{ marginBottom: 20, opacity: 0.9 }} />
         <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={{ marginTop: 20, color: COLORS.textSecondary, fontWeight: '700', fontSize: 16, letterSpacing: 1 }}>
-            A CARREGAR SGE...
-        </Text>
+        <Text style={styles.loadingText}>A CARREGAR SGE...</Text>
       </View>
     );
   }
 
   return (
-    // Envolvemos todo o container de navegação com uma View flex para o Banner ficar fixo no topo
-    <View style={{ flex: 1 }}>
-      <OfflineBanner />
-      <NavigationContainer>
-        {user ? <AppStack /> : <AuthStack />}
-      </NavigationContainer>
+    <View style={[styles.outerContainer, { backgroundColor: isWideScreen ? '#f0f2f5' : COLORS.background }]}>
+      <View style={[
+        styles.innerContainer, 
+        { width: isWideScreen ? 500 : '100%', elevation: isWideScreen ? 10 : 0 }
+      ]}>
+        <OfflineBanner />
+        <NavigationContainer>
+          {user ? <AppStack /> : <AuthStack />}
+        </NavigationContainer>
+      </View>
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  outerContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  innerContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    overflow: 'hidden',
+    // Sombra para Web
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.background
+  },
+  loadingText: {
+    marginTop: 20,
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+    fontSize: 16,
+    letterSpacing: 1
+  },
+  offlineBannerContainer: {
+    backgroundColor: '#F59E0B', 
+    paddingVertical: 10, 
+    paddingHorizontal: 15, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ? StatusBar.currentHeight + 5 : 10 : 10
+  },
+  offlineBannerText: {
+    color: '#FFF',
+    fontWeight: 'bold',
+    fontSize: 13,
+    textAlign: 'center'
+  }
+});
