@@ -10,6 +10,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { addEstoqueToInsumo, listInsumos, InsumoEntryData } from '../../services/insumoService'; 
 import { Fornecedor, Insumo } from '../../types/domain';
 import { listFornecedores as listFornecedoresService } from '../../services/fornecedorService'; 
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const InsumoEntryScreen = ({ navigation }: any) => {
     const { user } = useAuth();
@@ -117,7 +118,7 @@ const InsumoEntryScreen = ({ navigation }: any) => {
                 
                 <View style={styles.card}>
                     <View style={styles.titleRow}>
-                        <MaterialCommunityIcons name="select-group" size={20} color="#333" />
+                        <MaterialCommunityIcons name="select-group" size={20} color={COLORS.textPrimary} />
                         <Text style={styles.cardTitleText}>Seleção de Insumo</Text>
                     </View>
 
@@ -133,7 +134,7 @@ const InsumoEntryScreen = ({ navigation }: any) => {
 
                 <View style={styles.card}>
                     <View style={styles.titleRow}>
-                        <MaterialCommunityIcons name="cash-plus" size={20} color="#333" />
+                        <MaterialCommunityIcons name="cash-plus" size={20} color={COLORS.textPrimary} />
                         <Text style={styles.cardTitleText}>Detalhes da Compra</Text>
                     </View>
 
@@ -164,7 +165,7 @@ const InsumoEntryScreen = ({ navigation }: any) => {
 
                 {/* BOTÃO SALVAR (Limpado de espaços em branco) */}
                 <TouchableOpacity style={styles.saveButton} onPress={handleSaveEntry} disabled={loadingForm}>
-                    {loadingForm ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Registrar Entrada de Estoque</Text>}
+                    {loadingForm ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.saveButtonText}>Registrar Entrada de Estoque</Text>}
                 </TouchableOpacity>
 
             </ScrollView>
@@ -173,22 +174,22 @@ const InsumoEntryScreen = ({ navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-    fullContainer: { flex: 1, backgroundColor: '#FAFAFA' },
+    fullContainer: { flex: 1, backgroundColor: COLORS.background },
     scrollContainer: { flex: 1 },
-    scrollContent: { padding: 16, paddingBottom: 60, alignItems: 'center' },
+    scrollContent: { padding: SPACING.lg, paddingBottom: 60, alignItems: 'center' },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    card: { width: '100%', backgroundColor: '#fff', padding: 20, borderRadius: 12, marginBottom: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3, borderWidth: 1, borderColor: '#eee' },
-    titleRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 10, marginBottom: 20 },
-    cardTitleText: { fontSize: 20, fontWeight: 'bold', color: '#333', marginLeft: 8 },
-    label: { fontSize: 14, marginBottom: 4, fontWeight: 'bold', color: '#555' },
-    input: { borderWidth: 1, borderColor: '#ccc', padding: 12, borderRadius: 8, marginBottom: 16, backgroundColor: '#fff', fontSize: 16, color: '#333' },
-    pickerContainer: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, marginBottom: 16, backgroundColor: '#fff' },
-    totalBox: { backgroundColor: '#E8F5E9', padding: 15, borderRadius: 8, marginBottom: 20, alignItems: 'center', borderWidth: 1, borderColor: '#C8E6C9' },
-    totalLabel: { fontSize: 16, color: '#006400', fontWeight: 'bold' },
-    totalValue: { fontSize: 24, fontWeight: 'bold', color: '#006400', marginTop: 5 },
-    saveButton: { width: '100%', backgroundColor: '#4CAF50', padding: 18, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginTop: 10, minHeight: 55 },
-    saveButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
-    emptyText: { textAlign: 'center', color: '#666', fontSize: 16 }
+    card: { width: '100%', backgroundColor: COLORS.surface, padding: SPACING.xl, borderRadius: RADIUS.lg, marginBottom: SPACING.xl, borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.card },
+    titleRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: COLORS.divider, paddingBottom: 10, marginBottom: SPACING.lg },
+    cardTitleText: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.textPrimary, marginLeft: 8 },
+    label: { fontSize: 14, marginBottom: 4, fontWeight: '700', color: COLORS.textSecondary },
+    input: { borderWidth: 1, borderColor: COLORS.border, padding: 12, borderRadius: RADIUS.sm, marginBottom: SPACING.md, backgroundColor: COLORS.surfaceMuted, fontSize: TYPOGRAPHY.body, color: COLORS.textPrimary },
+    pickerContainer: { borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.sm, marginBottom: SPACING.md, backgroundColor: COLORS.surfaceMuted },
+    totalBox: { backgroundColor: COLORS.successSoft, padding: 15, borderRadius: RADIUS.sm, marginBottom: SPACING.lg, alignItems: 'center', borderWidth: 1, borderColor: COLORS.cBBF7D0 },
+    totalLabel: { fontSize: TYPOGRAPHY.body, color: COLORS.success, fontWeight: '700' },
+    totalValue: { fontSize: TYPOGRAPHY.h2, fontWeight: '800', color: COLORS.success, marginTop: 5 },
+    saveButton: { width: '100%', backgroundColor: COLORS.primary, padding: 18, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginTop: 10, minHeight: 55, ...SHADOWS.card },
+    saveButtonText: { color: COLORS.textLight, fontWeight: '800', fontSize: TYPOGRAPHY.title },
+    emptyText: { textAlign: 'center', color: COLORS.textSecondary, fontSize: TYPOGRAPHY.body }
 });
 
 export default InsumoEntryScreen;

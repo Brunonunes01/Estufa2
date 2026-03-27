@@ -1,6 +1,7 @@
 // src/components/Card.tsx
 import React, { ReactNode } from 'react';
 import { View, StyleSheet, StyleProp, ViewStyle } from 'react-native';
+import { COLORS, RADIUS, SHADOWS, SPACING } from '../constants/theme';
 
 interface CardProps {
   /** Conteúdo que será envolvido pelo Card. */
@@ -21,18 +22,13 @@ const Card = ({ children, style, fullWidth = true }: CardProps) => {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#fff',
-    padding: 20, // Padding padrão de Material Design
-    borderRadius: 12,
-    marginBottom: 20,
-    // Estilos de Sombra (Material Design Elevation)
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: COLORS.card,
+    padding: SPACING.lg,
+    borderRadius: RADIUS.lg,
+    marginBottom: SPACING.lg,
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: COLORS.border,
+    ...SHADOWS.card,
   },
   fullWidth: {
     width: '100%',

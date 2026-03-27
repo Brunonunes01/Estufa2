@@ -15,6 +15,7 @@ import { Aplicacao } from '../../types/domain';
 import { listAplicacoesByPlantio } from '../../services/aplicacaoService'; 
 import { useIsFocused } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ícones
+import { COLORS } from '../../constants/theme';
 
 const AplicacoesHistoryScreen = ({ route, navigation }: any) => {
   const { user } = useAuth();
@@ -63,7 +64,7 @@ const AplicacoesHistoryScreen = ({ route, navigation }: any) => {
             style={styles.newApplicationButton}
             onPress={() => navigation.navigate('AplicacaoForm', { plantioId: plantioId, estufaId: estufaId })}
           >
-              <MaterialCommunityIcons name="plus-circle-outline" size={20} color="#fff" />
+              <MaterialCommunityIcons name="plus-circle-outline" size={20} color={COLORS.textLight} />
               <Text style={styles.newApplicationButtonText}>Nova Aplicação</Text>
           </TouchableOpacity>
       </View>
@@ -80,7 +81,7 @@ const AplicacoesHistoryScreen = ({ route, navigation }: any) => {
             
             <View style={styles.itemHeader}>
                 <View style={styles.dateInfo}>
-                    <MaterialCommunityIcons name="calendar-range" size={18} color="#555" />
+                    <MaterialCommunityIcons name="calendar-range" size={18} color={COLORS.textLight} />
                     <Text style={styles.itemDate}>
                         {item.dataAplicacao.toDate().toLocaleDateString('pt-BR')}
                     </Text>
@@ -90,7 +91,7 @@ const AplicacoesHistoryScreen = ({ route, navigation }: any) => {
                   onPress={() => handleClonarAplicacao(item)}
                   style={styles.cloneButton}
                 >
-                    <MaterialCommunityIcons name="content-copy" size={16} color="#007bff" />
+                    <MaterialCommunityIcons name="content-copy" size={16} color={COLORS.textLight} />
                     <Text style={styles.cloneText}>CLONAR</Text>
                 </TouchableOpacity>
             </View>
@@ -114,7 +115,7 @@ const AplicacoesHistoryScreen = ({ route, navigation }: any) => {
             {/* Detalhe do Volume (CORRIGIDO AQUI) */}
             {(item.volumeTanque !== null && item.numeroTanques !== null && item.numeroTanques > 0) && (
                 <Text style={styles.caldaDetail}>
-                    <MaterialCommunityIcons name="flask-outline" size={14} color="#856404" />
+                    <MaterialCommunityIcons name="flask-outline" size={14} color={COLORS.textLight} />
                     Total Calda: {(item.volumeTanque * item.numeroTanques).toFixed(0)}L (em {item.numeroTanques} Tanques)
                 </Text>
             )}
@@ -128,10 +129,10 @@ const AplicacoesHistoryScreen = ({ route, navigation }: any) => {
 
 // ESTILOS PARA DESIGN PROFISSIONAL
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 10, backgroundColor: '#FAFAFA' },
+  container: { flex: 1, padding: 10, backgroundColor: COLORS.cFAFAFA },
   scrollContent: { paddingBottom: 50 }, 
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  sectionHeader: { fontSize: 18, fontWeight: 'bold', marginTop: 20, marginBottom: 10, color: '#333', textAlign: 'center' },
+  sectionHeader: { fontSize: 18, fontWeight: 'bold', marginTop: 20, marginBottom: 10, color: COLORS.c333333, textAlign: 'center' },
   
   // Botão Nova Aplicação
   topButtonContainer: {
@@ -139,7 +140,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   newApplicationButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: COLORS.c4CAF50,
     padding: 15,
     borderRadius: 8,
     alignItems: 'center',
@@ -147,7 +148,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   newApplicationButtonText: {
-    color: '#fff',
+    color: COLORS.textPrimary,
     fontWeight: 'bold',
     fontSize: 16,
     marginLeft: 10,
@@ -155,13 +156,13 @@ const styles = StyleSheet.create({
 
   // Estilos de Card (Aplicação)
   itemCard: { 
-    backgroundColor: '#fff', 
+    backgroundColor: COLORS.surface, 
     padding: 15, 
     marginVertical: 8, 
     borderRadius: 12, 
     borderLeftWidth: 5,
-    borderLeftColor: '#FF9800', // Destaque Laranja
-    shadowColor: "#000",
+    borderLeftColor: COLORS.cFF9800, // Destaque Laranja
+    shadowColor: COLORS.textDark,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -174,37 +175,37 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     paddingBottom: 5,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: COLORS.cEEEEEE,
   },
   dateInfo: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  itemDate: { color: '#555', fontSize: 14, fontWeight: 'bold', marginLeft: 5 },
-  itemTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#333' },
+  itemDate: { color: COLORS.c555555, fontSize: 14, fontWeight: 'bold', marginLeft: 5 },
+  itemTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: COLORS.c333333 },
   caldaDetail: { 
     fontSize: 14, 
-    color: '#856404', 
+    color: COLORS.c856404, 
     marginTop: 10, 
     fontStyle: 'italic',
     paddingTop: 5,
     borderTopWidth: 1,
-    borderTopColor: '#f9f9f9',
+    borderTopColor: COLORS.cF9F9F9,
   },
   
   // Detalhes dos Insumos
   itemsListContainer: {
-    backgroundColor: '#f9f9f9',
+    backgroundColor: COLORS.cF9F9F9,
     borderRadius: 8,
     padding: 10,
   },
   itemsListTitle: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#333',
+    color: COLORS.c333333,
     marginBottom: 5,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: COLORS.cEEEEEE,
     paddingBottom: 5,
   },
   subItemRow: {
@@ -214,18 +215,18 @@ const styles = StyleSheet.create({
   },
   subItemName: { 
     fontSize: 14, 
-    color: '#555', 
+    color: COLORS.c555555, 
     flex: 2,
   },
   subItemValue: { 
     fontSize: 14, 
     fontWeight: 'bold', 
-    color: '#006400', // Verde para o valor gasto
+    color: COLORS.c006400, // Verde para o valor gasto
   },
 
   // Botão Clonar
   cloneButton: { 
-    backgroundColor: '#E3F2FD', 
+    backgroundColor: COLORS.cE3F2FD, 
     paddingHorizontal: 8, 
     paddingVertical: 4, 
     borderRadius: 15, 
@@ -233,22 +234,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cloneText: { 
-    color: '#007bff', 
+    color: COLORS.c007BFF, 
     fontWeight: 'bold', 
     fontSize: 12, 
     marginLeft: 4,
   },
   
   emptyContainer: {
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.surface,
     padding: 20,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: COLORS.cDDDDDD,
   },
   emptyText: {
     textAlign: 'center',
-    color: '#666',
+    color: COLORS.c666666,
   }
 });
 

@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { createManejo } from '../../services/manejoService';
-import { COLORS } from '../../constants/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { Timestamp } from 'firebase/firestore'; 
 
 const tiposManejo = [
@@ -100,7 +100,7 @@ const ManejoFormScreen = ({ route, navigation }: any) => {
           value={descricao} 
           onChangeText={setDescricao} 
           placeholder="Descreva o que foi observado..." 
-          placeholderTextColor="#94A3B8" 
+          placeholderTextColor={COLORS.textPlaceholder} 
           multiline
         />
 
@@ -109,7 +109,7 @@ const ManejoFormScreen = ({ route, navigation }: any) => {
           style={styles.input} 
           value={responsavel} 
           onChangeText={setResponsavel} 
-          placeholderTextColor="#94A3B8" 
+          placeholderTextColor={COLORS.textPlaceholder} 
         />
 
         {/* --- CAMPOS CONDICIONAIS --- */}
@@ -134,14 +134,14 @@ const ManejoFormScreen = ({ route, navigation }: any) => {
           <View style={styles.dynamicBox}>
             <Text style={styles.dynamicTitle}>Nível de Severidade</Text>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <TouchableOpacity style={[styles.sevBtn, severidade === 'baixa' && {backgroundColor: '#FDE047'}]} onPress={() => setSeveridade('baixa')}>
+              <TouchableOpacity style={[styles.sevBtn, severidade === 'baixa' && {backgroundColor: COLORS.cFDE047}]} onPress={() => setSeveridade('baixa')}>
                 <Text style={styles.sevText}>Baixa</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.sevBtn, severidade === 'media' && {backgroundColor: '#FB923C'}]} onPress={() => setSeveridade('media')}>
+              <TouchableOpacity style={[styles.sevBtn, severidade === 'media' && {backgroundColor: COLORS.cFB923C}]} onPress={() => setSeveridade('media')}>
                 <Text style={styles.sevText}>Média</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.sevBtn, severidade === 'alta' && {backgroundColor: '#EF4444'}]} onPress={() => setSeveridade('alta')}>
-                <Text style={[styles.sevText, severidade === 'alta' && {color: '#FFF'}]}>Alta</Text>
+              <TouchableOpacity style={[styles.sevBtn, severidade === 'alta' && {backgroundColor: COLORS.danger}]} onPress={() => setSeveridade('alta')}>
+                <Text style={[styles.sevText, severidade === 'alta' && {color: COLORS.textLight}]}>Alta</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -149,7 +149,7 @@ const ManejoFormScreen = ({ route, navigation }: any) => {
 
         <TouchableOpacity style={styles.btn} onPress={handleSave} disabled={loading}>
           {loading ? (
-            <ActivityIndicator color="#FFF" />
+            <ActivityIndicator color={COLORS.textLight} />
           ) : (
             <Text style={styles.btnText}>Adicionar ao Diário</Text>
           )}
@@ -162,26 +162,26 @@ const ManejoFormScreen = ({ route, navigation }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  padding: { padding: 20 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.primary, marginTop: 10, marginBottom: 15 },
+  padding: { padding: SPACING.xl },
+  sectionTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.secondary, marginTop: 10, marginBottom: 15 },
   label: { fontWeight: 'bold', marginBottom: 5, color: COLORS.textSecondary, fontSize: 13 },
-  input: { backgroundColor: '#FFF', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, color: '#000' },
+  input: { backgroundColor: COLORS.surfaceMuted, padding: 15, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, color: COLORS.textDark },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   
   pillContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
-  pill: { paddingVertical: 8, paddingHorizontal: 15, borderRadius: 20, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: '#FFF' },
+  pill: { paddingVertical: 8, paddingHorizontal: 15, borderRadius: RADIUS.pill, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.surface },
   pillActive: { backgroundColor: COLORS.primary },
   pillText: { color: COLORS.primary, fontWeight: 'bold', fontSize: 13 },
-  pillTextActive: { color: '#FFF' },
+  pillTextActive: { color: COLORS.textLight },
 
-  dynamicBox: { backgroundColor: '#F8FAFC', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 20 },
+  dynamicBox: { backgroundColor: COLORS.surface, padding: 15, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 20, ...SHADOWS.card },
   dynamicTitle: { fontWeight: 'bold', color: COLORS.textPrimary, marginBottom: 10 },
   
-  sevBtn: { flex: 1, padding: 12, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, marginHorizontal: 4, alignItems: 'center', backgroundColor: '#FFF' },
+  sevBtn: { flex: 1, padding: 12, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.sm, marginHorizontal: 4, alignItems: 'center', backgroundColor: COLORS.surface },
   sevText: { fontWeight: 'bold', color: COLORS.textSecondary },
 
-  btn: { backgroundColor: COLORS.primary, padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 10, marginBottom: 30 },
-  btnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 }
+  btn: { backgroundColor: COLORS.primary, padding: 18, borderRadius: RADIUS.md, alignItems: 'center', marginTop: 10, marginBottom: 30, ...SHADOWS.card },
+  btnText: { color: COLORS.textLight, fontWeight: '800', fontSize: TYPOGRAPHY.body }
 });
 
 export default ManejoFormScreen;

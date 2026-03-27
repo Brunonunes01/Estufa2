@@ -6,6 +6,7 @@ import { listEstufas } from '../../services/estufaService';
 import { Estufa } from '../../types/domain';
 import { useIsFocused } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const EstufasListScreen = ({ navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
@@ -15,8 +16,8 @@ const EstufasListScreen = ({ navigation }: any) => {
 
   useEffect(() => {
     navigation.setOptions({ 
-        headerStyle: { backgroundColor: '#14532d' },
-        headerTintColor: '#fff'
+        headerStyle: { backgroundColor: COLORS.secondary },
+        headerTintColor: COLORS.textLight
     });
   }, []);
 
@@ -50,7 +51,7 @@ const EstufasListScreen = ({ navigation }: any) => {
       >
         <View style={styles.cardHeader}>
             <View style={styles.iconContainer}>
-                <MaterialCommunityIcons name="greenhouse" size={24} color={isAtiva ? '#166534' : '#9CA3AF'} />
+                <MaterialCommunityIcons name="greenhouse" size={24} color={isAtiva ? COLORS.primary : COLORS.c9CA3AF} />
             </View>
             <View style={styles.textContainer}>
                 <Text style={styles.cardTitle}>{item.nome}</Text>
@@ -65,7 +66,7 @@ const EstufasListScreen = ({ navigation }: any) => {
         
         <View style={styles.cardFooter}>
             <Text style={styles.footerText}>Ver detalhes e plantios</Text>
-            <MaterialCommunityIcons name="arrow-right" size={16} color="#166534" />
+            <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.primary} />
         </View>
       </TouchableOpacity>
     );
@@ -73,16 +74,16 @@ const EstufasListScreen = ({ navigation }: any) => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#14532d" />
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.secondary} />
       <FlatList
         data={estufas}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={carregarEstufas} tintColor="#fff" />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={carregarEstufas} tintColor={COLORS.textLight} />}
         ListEmptyComponent={
             !loading ? (
                 <View style={styles.emptyContainer}>
-                    <MaterialCommunityIcons name="greenhouse" size={60} color="rgba(255,255,255,0.3)" />
+                    <MaterialCommunityIcons name="greenhouse" size={60} color={COLORS.textMuted} />
                     <Text style={styles.emptyTitle}>Nenhuma estufa</Text>
                     <Text style={styles.emptySub}>Cadastre sua primeira estufa para começar.</Text>
                 </View>
@@ -96,52 +97,54 @@ const EstufasListScreen = ({ navigation }: any) => {
         activeOpacity={0.8}
         onPress={() => navigation.navigate('EstufaForm')}
       >
-        <MaterialCommunityIcons name="plus" size={32} color="#166534" />
+        <MaterialCommunityIcons name="plus" size={32} color={COLORS.textLight} />
       </TouchableOpacity>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#14532d' }, // Fundo Verde
-  listContent: { padding: 20, paddingBottom: 100 },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  listContent: { padding: SPACING.xl, paddingBottom: 100 },
   
   card: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    elevation: 4,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.card,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   iconContainer: {
-    width: 48, height: 48, borderRadius: 12, backgroundColor: '#ECFDF5',
+    width: 48, height: 48, borderRadius: RADIUS.md, backgroundColor: COLORS.primaryLight,
     justifyContent: 'center', alignItems: 'center', marginRight: 12,
   },
   textContainer: { flex: 1 },
-  cardTitle: { fontSize: 16, fontWeight: '700', color: '#111827' },
-  cardSubTitle: { fontSize: 13, color: '#6B7280', marginTop: 2 },
+  cardTitle: { fontSize: TYPOGRAPHY.title, fontWeight: '800', color: COLORS.textPrimary },
+  cardSubTitle: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
   
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  badgeActive: { backgroundColor: '#D1FAE5' },
-  badgeInactive: { backgroundColor: '#F3F4F6' },
+  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS.pill },
+  badgeActive: { backgroundColor: COLORS.successSoft },
+  badgeInactive: { backgroundColor: COLORS.surfaceMuted },
   badgeText: { fontSize: 10, fontWeight: '700' },
-  textActive: { color: '#059669' },
-  textInactive: { color: '#6B7280' },
+  textActive: { color: COLORS.success },
+  textInactive: { color: COLORS.c6B7280 },
 
   cardFooter: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 12,
+    borderTopWidth: 1, borderTopColor: COLORS.divider, paddingTop: 12,
   },
-  footerText: { fontSize: 12, fontWeight: '600', color: '#166534' },
+  footerText: { fontSize: 12, fontWeight: '700', color: COLORS.primary },
 
   emptyContainer: { alignItems: 'center', marginTop: 60 },
-  emptyTitle: { fontSize: 18, fontWeight: 'bold', color: '#FFF', marginTop: 10 },
-  emptySub: { fontSize: 14, color: '#A7F3D0', marginTop: 5 },
+  emptyTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.textPrimary, marginTop: 10 },
+  emptySub: { fontSize: TYPOGRAPHY.body, color: COLORS.textSecondary, marginTop: 5 },
 
   fab: {
     position: 'absolute', right: 20, bottom: 30, width: 64, height: 64, borderRadius: 32,
-    backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center', elevation: 8,
+    backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.floating,
   },
 });
 

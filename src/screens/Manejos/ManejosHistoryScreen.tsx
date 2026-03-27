@@ -4,7 +4,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { listManejosByPlantio, deleteManejo } from '../../services/manejoService';
 import { RegistroManejo } from '../../types/domain';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS } from '../../constants/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { useIsFocused } from '@react-navigation/native';
 
 const getManejoIcon = (tipo: string) => {
@@ -31,7 +31,7 @@ const ManejosHistoryScreen = ({ route, navigation }: any) => {
           onPress={() => navigation.navigate('ManejoForm', { plantioId, estufaId })}
           style={{ marginRight: 15 }}
         >
-          <MaterialCommunityIcons name="plus-circle-outline" size={28} color="#FFF" />
+          <MaterialCommunityIcons name="plus-circle-outline" size={28} color={COLORS.textLight} />
         </TouchableOpacity>
       ),
     });
@@ -74,7 +74,7 @@ const ManejosHistoryScreen = ({ route, navigation }: any) => {
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <View style={styles.iconContainer}>
-          <MaterialCommunityIcons name={getManejoIcon(item.tipoManejo) as any} size={22} color="#F59E0B" />
+          <MaterialCommunityIcons name={getManejoIcon(item.tipoManejo) as any} size={22} color={COLORS.textLight} />
         </View>
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={styles.tipoText}>
@@ -83,7 +83,7 @@ const ManejosHistoryScreen = ({ route, navigation }: any) => {
           <Text style={styles.dateText}>{item.dataRegistro.toDate().toLocaleString('pt-BR')}</Text>
         </View>
         <TouchableOpacity onPress={() => handleDelete(item.id)} style={{ padding: 5 }}>
-          <MaterialCommunityIcons name="trash-can-outline" size={20} color="#EF4444" />
+          <MaterialCommunityIcons name="trash-can-outline" size={20} color={COLORS.textLight} />
         </TouchableOpacity>
       </View>
       
@@ -113,7 +113,7 @@ const ManejosHistoryScreen = ({ route, navigation }: any) => {
         <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 50 }} />
       ) : manejos.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <MaterialCommunityIcons name="notebook-outline" size={60} color="#CBD5E1" />
+          <MaterialCommunityIcons name="notebook-outline" size={60} color={COLORS.textLight} />
           <Text style={styles.emptyText}>O Diário de Manejo está vazio.</Text>
           <Text style={styles.emptySub}>Toque no botão '+' para registar o primeiro evento (Clima, Praga, etc).</Text>
         </View>
@@ -122,7 +122,7 @@ const ManejosHistoryScreen = ({ route, navigation }: any) => {
           data={manejos}
           keyExtractor={item => item.id}
           renderItem={renderItem}
-          contentContainerStyle={{ padding: 20 }}
+          contentContainerStyle={{ padding: SPACING.xl }}
           showsVerticalScrollIndicator={false}
         />
       )}
@@ -133,21 +133,21 @@ const ManejosHistoryScreen = ({ route, navigation }: any) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
-  emptyText: { fontSize: 18, fontWeight: 'bold', color: COLORS.textSecondary, marginTop: 15 },
-  emptySub: { textAlign: 'center', color: '#94A3B8', marginTop: 10 },
+  emptyText: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.textSecondary, marginTop: 15 },
+  emptySub: { textAlign: 'center', color: COLORS.textPrimary, marginTop: 10 },
   
-  card: { backgroundColor: '#FFF', borderRadius: 12, padding: 15, marginBottom: 15, elevation: 1, borderWidth: 1, borderColor: '#F1F5F9' },
+  card: { backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: 15, marginBottom: 15, borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.card },
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  iconContainer: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#FEF3C7', justifyContent: 'center', alignItems: 'center' },
+  iconContainer: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.cFEF3C7, justifyContent: 'center', alignItems: 'center' },
   tipoText: { fontWeight: 'bold', color: COLORS.textDark, fontSize: 14 },
   dateText: { color: COLORS.textSecondary, fontSize: 12 },
   
   descricao: { color: COLORS.textDark, fontSize: 14, marginBottom: 10, lineHeight: 20 },
   
-  metaDataBox: { backgroundColor: '#F8FAFC', padding: 10, borderRadius: 8, marginTop: 5, marginBottom: 10, borderWidth: 1, borderColor: '#E2E8F0' },
-  metaDataText: { fontSize: 12, color: '#475569', fontWeight: '600' },
+  metaDataBox: { backgroundColor: COLORS.surfaceMuted, padding: 10, borderRadius: RADIUS.sm, marginTop: 5, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },
+  metaDataText: { fontSize: 12, color: COLORS.c475569, fontWeight: '600' },
   
-  respText: { fontSize: 11, color: '#94A3B8', fontStyle: 'italic', textAlign: 'right' }
+  respText: { fontSize: 11, color: COLORS.textPrimary, fontStyle: 'italic', textAlign: 'right' }
 });
 
 export default ManejosHistoryScreen;

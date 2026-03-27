@@ -5,7 +5,7 @@ import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { auth, db } from '../../services/firebaseConfig';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS } from '../../constants/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const RegisterScreen = ({ navigation }: any) => {
   const [name, setName] = useState('');
@@ -72,7 +72,7 @@ const RegisterScreen = ({ navigation }: any) => {
                 ) : null}
                 
                 <TouchableOpacity style={styles.registerBtn} onPress={handleRegister} disabled={loading}>
-                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.registerBtnText}>Criar Conta</Text>}
+                    {loading ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.registerBtnText}>Criar Conta</Text>}
                 </TouchableOpacity>
 
                 <View style={styles.footer}>
@@ -88,21 +88,21 @@ const RegisterScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: COLORS.background },
     scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
-    header: { alignItems: 'center', marginBottom: 30 },
-    iconCircle: { width: 80, height: 80, backgroundColor: COLORS.surface, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 15, elevation: 2, borderWidth: 1, borderColor: COLORS.border },
-    title: { fontSize: 28, fontWeight: 'bold', color: COLORS.primary },
-    subtitle: { fontSize: 16, color: COLORS.textSecondary, marginTop: 4 },
-    card: { backgroundColor: COLORS.surface, borderRadius: 24, padding: 24, elevation: 2, borderWidth: 1, borderColor: COLORS.border },
-    label: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8, marginLeft: 4 },
-    inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.borderDark, marginBottom: 16, paddingHorizontal: 12, height: 56 },
+    header: { alignItems: 'center', marginBottom: SPACING.xl, backgroundColor: COLORS.backgroundAlt, paddingVertical: SPACING.xl, borderRadius: RADIUS.xl, borderWidth: 1, borderColor: COLORS.border },
+    iconCircle: { width: 74, height: 74, backgroundColor: COLORS.surface, borderRadius: RADIUS.pill, alignItems: 'center', justifyContent: 'center', marginBottom: 15, borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.card },
+    title: { fontSize: TYPOGRAPHY.h2, fontWeight: '800', color: COLORS.secondary },
+    subtitle: { fontSize: TYPOGRAPHY.body, color: COLORS.textSecondary, marginTop: 4 },
+    card: { backgroundColor: COLORS.surface, borderRadius: RADIUS.xl, padding: SPACING.xl, borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.card },
+    label: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8, marginLeft: 4 },
+    inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surfaceMuted, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: COLORS.border, marginBottom: 16, paddingHorizontal: 12, height: 56 },
     inputIcon: { marginRight: 10 },
-    input: { flex: 1, color: '#000000', fontSize: 16, fontWeight: 'bold', height: '100%' },
-    registerBtn: { backgroundColor: COLORS.primary, height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 10, elevation: 2 },
-    registerBtnText: { color: '#FFF', fontWeight: '800', fontSize: 18 },
+    input: { flex: 1, color: COLORS.textDark, fontSize: TYPOGRAPHY.body, fontWeight: '700', height: '100%' },
+    registerBtn: { backgroundColor: COLORS.primary, height: 56, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginTop: 10, ...SHADOWS.card },
+    registerBtnText: { color: COLORS.textLight, fontWeight: '800', fontSize: TYPOGRAPHY.title },
     footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 24, gap: 5 },
     footerText: { color: COLORS.textSecondary },
     loginLink: { color: COLORS.primary, fontWeight: 'bold' },
-    errorBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.dangerBg, borderColor: COLORS.danger, borderWidth: 1, padding: 12, borderRadius: 12, marginBottom: 20 },
+    errorBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.dangerBg, borderColor: COLORS.border, borderWidth: 1, padding: 12, borderRadius: RADIUS.sm, marginBottom: 20 },
     errorText: { color: COLORS.danger, marginLeft: 8, fontSize: 14, flex: 1 }
 });
 export default RegisterScreen;

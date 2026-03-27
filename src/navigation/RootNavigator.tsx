@@ -17,7 +17,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNetInfo } from '@react-native-community/netinfo';
 
 import { useAuth } from '../hooks/useAuth';
-import { COLORS } from '../constants/theme';
+import { COLORS, RADIUS } from '../constants/theme';
 
 // Importação dos ecrãs
 import LoginScreen from '../screens/Auth/LoginScreen';
@@ -54,9 +54,9 @@ const OfflineBanner = () => {
   const netInfo = useNetInfo();
   if (netInfo.type !== 'unknown' && netInfo.isConnected === false) {
     return (
-      <SafeAreaView style={{ backgroundColor: '#F59E0B' }}>
+      <SafeAreaView style={{ backgroundColor: COLORS.warning }}>
         <View style={styles.offlineBannerContainer}>
-          <MaterialCommunityIcons name="wifi-off" size={18} color="#FFF" style={{ marginRight: 8 }} />
+          <MaterialCommunityIcons name="wifi-off" size={18} color={COLORS.textLight} style={{ marginRight: 8 }} />
           <Text style={styles.offlineBannerText}>
             Modo Offline: Sincronização pendente
           </Text>
@@ -74,17 +74,17 @@ const HomeButton = () => {
       onPress={() => navigation.navigate('Dashboard')} 
       style={{ marginRight: 15, padding: 5 }}
     >
-      <MaterialCommunityIcons name="home-outline" size={26} color="#FFF" />
+      <MaterialCommunityIcons name="home-outline" size={26} color={COLORS.textLight} />
     </TouchableOpacity>
   );
 };
 
 const defaultScreenOptions: NativeStackNavigationOptions = {
-    headerStyle: { backgroundColor: COLORS.primary },
+    headerStyle: { backgroundColor: COLORS.secondary },
     headerTintColor: COLORS.textLight,
-    headerTitleStyle: { fontWeight: '700', fontSize: 18 },
+    headerTitleStyle: { fontWeight: '800', fontSize: 17 },
     headerTitleAlign: 'center', 
-    headerShadowVisible: false, 
+    headerShadowVisible: false,
     headerBackTitle: '', 
     animation: 'slide_from_right', 
     headerRight: () => <HomeButton />, 
@@ -100,29 +100,29 @@ const AuthStack = () => (
 const AppStack = () => (
   <Stack.Navigator screenOptions={defaultScreenOptions}>
     <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false, animation: 'fade' }} />
-    <Stack.Screen name="ShareAccount" component={ShareAccountScreen} options={{ title: 'Partilhar Acesso' }} />
+    <Stack.Screen name="ShareAccount" component={ShareAccountScreen} options={{ title: 'Compartilhar Acesso' }} />
     <Stack.Screen name="Perfil" component={PerfilScreen} options={{ title: 'Minha Propriedade' }} />
     <Stack.Screen name="EstufasList" component={EstufasListScreen} options={{ title: 'Minhas Estufas' }} />
-    <Stack.Screen name="EstufaForm" component={EstufaFormScreen} options={{ title: 'Gerir Estufa' }} />
+    <Stack.Screen name="EstufaForm" component={EstufaFormScreen} options={{ title: 'Cadastro da Estufa' }} />
     <Stack.Screen name="EstufaDetail" component={EstufaDetailScreen} options={{ title: 'Detalhes da Estufa' }} />
     <Stack.Screen name="PlantioForm" component={PlantioFormScreen} options={{ title: 'Novo Plantio' }} />
     <Stack.Screen name="PlantioDetail" component={PlantioDetailScreen} options={{ title: 'Painel do Ciclo' }} />
-    <Stack.Screen name="ManejoForm" component={ManejoFormScreen} options={{ title: 'Registo de Manejo' }} />
+    <Stack.Screen name="ManejoForm" component={ManejoFormScreen} options={{ title: 'Registro de Manejo' }} />
     <Stack.Screen name="ManejosHistory" component={ManejosHistoryScreen} options={{ title: 'Diário de Manejo' }} />
-    <Stack.Screen name="ColheitaForm" component={ColheitaFormScreen} options={{ title: 'Nova Venda' }} />
-    <Stack.Screen name="VendasList" component={VendasListScreen} options={{ title: 'Histórico de Vendas' }} />
-    <Stack.Screen name="ContasReceber" component={ContasReceberScreen} options={{ title: 'Contas a Receber', headerStyle: { backgroundColor: COLORS.modFinanceiro } }} />
+    <Stack.Screen name="ColheitaForm" component={ColheitaFormScreen} options={{ title: 'Registrar Venda' }} />
+    <Stack.Screen name="VendasList" component={VendasListScreen} options={{ title: 'Relatórios de Vendas' }} />
+    <Stack.Screen name="ContasReceber" component={ContasReceberScreen} options={{ title: 'Contas a Receber' }} />
     <Stack.Screen name="AplicacaoForm" component={AplicacaoFormScreen} options={{ title: 'Aplicação' }} />
     <Stack.Screen name="AplicacoesHistory" component={AplicacoesHistoryScreen} options={{ title: 'Histórico de Aplicações' }} />
-    <Stack.Screen name="InsumosList" component={InsumosListScreen} options={{ title: 'Stock de Insumos' }} />
-    <Stack.Screen name="InsumoForm" component={InsumoFormScreen} options={{ title: 'Registo de Insumo' }} />
-    <Stack.Screen name="InsumoEntry" component={InsumoEntryScreen} options={{ title: 'Entrada de Stock' }} />
+    <Stack.Screen name="InsumosList" component={InsumosListScreen} options={{ title: 'Estoque de Insumos' }} />
+    <Stack.Screen name="InsumoForm" component={InsumoFormScreen} options={{ title: 'Cadastro de Insumo' }} />
+    <Stack.Screen name="InsumoEntry" component={InsumoEntryScreen} options={{ title: 'Entrada de Estoque' }} />
     <Stack.Screen name="FornecedoresList" component={FornecedoresListScreen} options={{ title: 'Fornecedores' }} />
-    <Stack.Screen name="FornecedorForm" component={FornecedorFormScreen} options={{ title: 'Gerir Fornecedor' }} />
-    <Stack.Screen name="ClientesList" component={ClientesListScreen} options={{ title: 'Meus Clientes', headerStyle: { backgroundColor: COLORS.modClientes } }} />
-    <Stack.Screen name="ClienteForm" component={ClienteFormScreen} options={{ title: 'Gerir Cliente', headerStyle: { backgroundColor: COLORS.modClientes } }} />
-    <Stack.Screen name="DespesasList" component={DespesasListScreen} options={{ title: 'Gestão de Despesas', headerStyle: { backgroundColor: COLORS.modDespesas } }} />
-    <Stack.Screen name="DespesaForm" component={DespesaFormScreen} options={{ title: 'Lançar Despesa', headerStyle: { backgroundColor: COLORS.modDespesas } }} />
+    <Stack.Screen name="FornecedorForm" component={FornecedorFormScreen} options={{ title: 'Cadastro de Fornecedor' }} />
+    <Stack.Screen name="ClientesList" component={ClientesListScreen} options={{ title: 'Clientes' }} />
+    <Stack.Screen name="ClienteForm" component={ClienteFormScreen} options={{ title: 'Cadastro de Cliente' }} />
+    <Stack.Screen name="DespesasList" component={DespesasListScreen} options={{ title: 'Despesas' }} />
+    <Stack.Screen name="DespesaForm" component={DespesaFormScreen} options={{ title: 'Lançar Despesa' }} />
   </Stack.Navigator>
 );
 
@@ -146,10 +146,15 @@ export const RootNavigator = () => {
   }
 
   return (
-    <View style={[styles.outerContainer, { backgroundColor: isWideScreen ? '#f0f2f5' : COLORS.background }]}>
+    <View style={[styles.outerContainer, { backgroundColor: isWideScreen ? COLORS.backgroundAlt : COLORS.background }]}>
       <View style={[
         styles.innerContainer, 
-        { width: isWideScreen ? 500 : '100%', elevation: isWideScreen ? 10 : 0 }
+        {
+          width: isWideScreen ? 500 : '100%',
+          elevation: isWideScreen ? 10 : 0,
+          borderRadius: isWideScreen ? RADIUS.xl : 0,
+          borderWidth: isWideScreen ? 1 : 0,
+        }
       ]}>
         <OfflineBanner />
         <NavigationContainer>
@@ -170,11 +175,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
     overflow: 'hidden',
+    borderColor: COLORS.border,
     // Sombra para Web
-    shadowColor: "#000",
+    shadowColor: COLORS.textDark,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 12,
+    shadowRadius: 16,
   },
   loadingContainer: {
     flex: 1,
@@ -186,12 +192,12 @@ const styles = StyleSheet.create({
     marginTop: 20,
     color: COLORS.textSecondary,
     fontWeight: '700',
-    fontSize: 16,
-    letterSpacing: 1
+    fontSize: 13,
+    letterSpacing: 1.5
   },
   offlineBannerContainer: {
-    backgroundColor: '#F59E0B', 
-    paddingVertical: 10, 
+    backgroundColor: COLORS.warning, 
+    paddingVertical: 10,
     paddingHorizontal: 15, 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -199,7 +205,7 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ? StatusBar.currentHeight + 5 : 10 : 10
   },
   offlineBannerText: {
-    color: '#FFF',
+    color: COLORS.textLight,
     fontWeight: 'bold',
     fontSize: 13,
     textAlign: 'center'

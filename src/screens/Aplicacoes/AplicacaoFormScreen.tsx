@@ -138,7 +138,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
                 style={[styles.pill, tipoAplicacao === 'defensivo' && styles.pillActive]} 
                 onPress={() => setTipoAplicacao('defensivo')}
               >
-                  <MaterialCommunityIcons name="shield-bug" size={20} color={tipoAplicacao === 'defensivo' ? '#FFF' : COLORS.info} style={{marginBottom: 4}} />
+                  <MaterialCommunityIcons name="shield-bug" size={20} color={tipoAplicacao === 'defensivo' ? COLORS.textLight : COLORS.info} style={{marginBottom: 4}} />
                   <Text style={[styles.pillText, tipoAplicacao === 'defensivo' && styles.pillTextActive]}>Defensivo Fitosanitário</Text>
               </TouchableOpacity>
               
@@ -146,7 +146,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
                 style={[styles.pill, tipoAplicacao === 'fertilizacao' && styles.pillActive]} 
                 onPress={() => setTipoAplicacao('fertilizacao')}
               >
-                  <MaterialCommunityIcons name="sprout" size={20} color={tipoAplicacao === 'fertilizacao' ? '#FFF' : COLORS.info} style={{marginBottom: 4}} />
+                  <MaterialCommunityIcons name="sprout" size={20} color={tipoAplicacao === 'fertilizacao' ? COLORS.textLight : COLORS.info} style={{marginBottom: 4}} />
                   <Text style={[styles.pillText, tipoAplicacao === 'fertilizacao' && styles.pillTextActive]}>Fertilização / Nutrição</Text>
               </TouchableOpacity>
             </View>
@@ -158,7 +158,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
             <View style={styles.inputGroup}>
                 <Text style={styles.label}>Plantio Alvo</Text>
                 <View style={styles.inputWrapper}>
-                    <Picker selectedValue={plantioId} onValueChange={setPlantioId} style={{color: '#000000', fontWeight: 'bold'}}>
+                    <Picker selectedValue={plantioId} onValueChange={setPlantioId} style={{color: COLORS.textPrimary, fontWeight: 'bold'}}>
                         {plantios.length === 0 && <Picker.Item label="Nenhum plantio ativo" value="" />}
                         {plantios.map(p => <Picker.Item key={p.id} label={`${p.codigoLote ? `[${p.codigoLote}] ` : ''}${p.cultura} (${p.variedade || 'Comum'})`} value={p.id} />)}
                     </Picker>
@@ -187,7 +187,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
             <View style={styles.addBox}>
                 <Text style={styles.label}>Adicionar Produto</Text>
                 <View style={styles.inputWrapper}>
-                    <Picker selectedValue={tempInsumoId} onValueChange={setTempInsumoId} style={{color: '#000000', fontWeight: 'bold'}}>
+                    <Picker selectedValue={tempInsumoId} onValueChange={setTempInsumoId} style={{color: COLORS.textPrimary, fontWeight: 'bold'}}>
                         {insumos.length === 0 && <Picker.Item label="Nenhum insumo no stock" value="" />}
                         {insumos.map(i => (
                           <Picker.Item 
@@ -221,7 +221,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
                         </View>
                     </View>
                     <TouchableOpacity style={styles.addBtn} onPress={handleAddItem}>
-                        <MaterialCommunityIcons name="plus" size={32} color="#FFF" />
+                        <MaterialCommunityIcons name="plus" size={32} color={COLORS.textLight} />
                     </TouchableOpacity>
                 </View>
                 
@@ -255,7 +255,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
         </View>
 
         <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={loading}>
-            {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveText}>Registrar Aplicação</Text>}
+            {loading ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.saveText}>Registrar Aplicação</Text>}
         </TouchableOpacity>
 
       </ScrollView>
@@ -266,40 +266,40 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
   scrollContent: { padding: 20 },
-  card: { backgroundColor: COLORS.surface, padding: 20, borderRadius: 24, marginBottom: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 2, borderWidth: 1, borderColor: COLORS.border },
+  card: { backgroundColor: COLORS.surface, padding: 20, borderRadius: 24, marginBottom: 20, shadowColor: COLORS.textDark, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 2, borderWidth: 1, borderColor: COLORS.border },
   sectionHeader: { fontSize: 16, fontWeight: '800', color: COLORS.info, marginBottom: 15, textTransform: 'uppercase' },
   
   // Estilos da Finalidade (Pills)
   pillContainer: { flexDirection: 'row', gap: 10 },
-  pill: { flex: 1, paddingVertical: 15, borderRadius: 12, borderWidth: 1, borderColor: COLORS.info, alignItems: 'center', backgroundColor: '#FFF' },
+  pill: { flex: 1, paddingVertical: 15, borderRadius: 12, borderWidth: 1, borderColor: COLORS.info, alignItems: 'center', backgroundColor: COLORS.surface },
   pillActive: { backgroundColor: COLORS.info },
   pillText: { color: COLORS.info, fontWeight: 'bold', fontSize: 13, textAlign: 'center' },
-  pillTextActive: { color: '#FFF' },
+  pillTextActive: { color: COLORS.textLight },
 
   inputGroup: { marginBottom: 15 },
   label: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 },
   
-  inputWrapper: { backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.borderDark, height: 56, justifyContent: 'center' },
-  input: { paddingHorizontal: 15, fontSize: 18, color: '#000000', height: '100%', fontWeight: 'bold' },
+  inputWrapper: { backgroundColor: COLORS.cFFFFFF, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.borderDark, height: 56, justifyContent: 'center' },
+  input: { paddingHorizontal: 15, fontSize: 18, color: COLORS.textPrimary, height: '100%', fontWeight: 'bold' },
   
-  unitSuffix: { backgroundColor: '#E2E8F0', height: '100%', justifyContent: 'center', paddingHorizontal: 15, borderLeftWidth: 1.5, borderLeftColor: COLORS.borderDark },
-  unitText: { fontWeight: 'bold', color: '#475569', fontSize: 16 },
-  helperText: { fontSize: 11, color: '#64748B', marginTop: 8, fontStyle: 'italic' },
+  unitSuffix: { backgroundColor: COLORS.surface, height: '100%', justifyContent: 'center', paddingHorizontal: 15, borderLeftWidth: 1.5, borderLeftColor: COLORS.borderDark },
+  unitText: { fontWeight: 'bold', color: COLORS.c475569, fontSize: 16 },
+  helperText: { fontSize: 11, color: COLORS.textPrimary, marginTop: 8, fontStyle: 'italic' },
 
   row: { flexDirection: 'row' },
   
-  addBox: { backgroundColor: '#EFF6FF', padding: 15, borderRadius: 16, borderWidth: 1, borderColor: '#BFDBFE' },
+  addBox: { backgroundColor: COLORS.cEFF6FF, padding: 15, borderRadius: 16, borderWidth: 1, borderColor: COLORS.cBFDBFE },
   addBtn: { backgroundColor: COLORS.info, width: 56, height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginLeft: 15, elevation: 2 },
   
   divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 20 },
   
-  itemRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 12, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: COLORS.borderDark, elevation: 1 },
-  itemIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#DBEAFE', alignItems: 'center', justifyContent: 'center' },
-  itemName: { fontWeight: '800', color: '#000000', fontSize: 15 },
+  itemRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.cFFFFFF, padding: 12, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: COLORS.borderDark, elevation: 1 },
+  itemIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center' },
+  itemName: { fontWeight: '800', color: COLORS.textPrimary, fontSize: 15 },
   itemDose: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
 
   saveBtn: { backgroundColor: COLORS.info, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 40, elevation: 4 },
-  saveText: { color: '#FFF', fontWeight: '800', fontSize: 18, letterSpacing: 0.5 }
+  saveText: { color: COLORS.textPrimary, fontWeight: '800', fontSize: 18, letterSpacing: 0.5 }
 });
 
 export default AplicacaoFormScreen;

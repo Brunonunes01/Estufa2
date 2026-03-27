@@ -10,6 +10,7 @@ import { listContasAReceber, receberConta } from '../../services/colheitaService
 import { listClientes } from '../../services/clienteService';
 import { Colheita } from '../../types/domain';
 import { useIsFocused } from '@react-navigation/native';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const ContasReceberScreen = ({ navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
@@ -111,7 +112,7 @@ const ContasReceberScreen = ({ navigation }: any) => {
             <View style={{flex: 1}}>
                 <Text style={styles.clienteName}>{clienteNome}</Text>
                 <View style={styles.metodoRow}>
-                    <MaterialCommunityIcons name="credit-card-clock-outline" size={14} color="#B45309" />
+                    <MaterialCommunityIcons name="credit-card-clock-outline" size={14} color={COLORS.modFinanceiro} />
                     <Text style={styles.metodoText}>{metodoLabel}</Text>
                 </View>
                 <Text style={styles.dateText}>Venda em: {formatDate(item.dataColheita)}</Text>
@@ -131,8 +132,8 @@ const ContasReceberScreen = ({ navigation }: any) => {
         </View>
 
         <TouchableOpacity style={styles.receiveBtn} onPress={() => handleOpenReceber(item)}>
-            <MaterialCommunityIcons name="check-circle-outline" size={20} color="#FFF" />
-            <Text style={styles.btnText}>Dar Baixa (Receber)</Text>
+            <MaterialCommunityIcons name="check-circle-outline" size={20} color={COLORS.textLight} />
+            <Text style={styles.btnText}>Receber Agora</Text>
         </TouchableOpacity>
       </View>
     );
@@ -140,24 +141,34 @@ const ContasReceberScreen = ({ navigation }: any) => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#B45309" />
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.secondary} />
       
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Contas a Receber</Text>
-        <Text style={styles.headerSub}>Total para receber: R$ {totalPendente.toFixed(2)}</Text>
+        <Text style={styles.headerSub}>Acompanhe as vendas pendentes e dê baixa no recebimento.</Text>
+        <View style={styles.kpisRow}>
+          <View style={styles.kpiBox}>
+            <Text style={styles.kpiLabel}>Total pendente</Text>
+            <Text style={styles.kpiValue}>R$ {totalPendente.toFixed(2)}</Text>
+          </View>
+          <View style={styles.kpiBox}>
+            <Text style={styles.kpiLabel}>Contas abertas</Text>
+            <Text style={styles.kpiValue}>{contas.length}</Text>
+          </View>
+        </View>
       </View>
 
       <FlatList
         data={contas}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={carregarDados} tintColor="#fff" />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={carregarDados} tintColor={COLORS.textLight} />}
         ListEmptyComponent={
             !loading ? (
                 <View style={styles.emptyContainer}>
-                    <MaterialCommunityIcons name="hand-coin" size={60} color="rgba(255,255,255,0.3)" />
+                    <MaterialCommunityIcons name="hand-coin" size={60} color={COLORS.textMuted} />
                     <Text style={styles.emptyTitle}>Tudo recebido!</Text>
-                    <Text style={styles.emptySub}>Nenhuma conta pendente.</Text>
+                    <Text style={styles.emptySub}>Não há cobranças pendentes no momento.</Text>
                 </View>
             ) : null
         }
@@ -183,7 +194,7 @@ const ContasReceberScreen = ({ navigation }: any) => {
                         </Text>
                         
                         <Text style={[styles.resumoLabel, {marginTop: 10}]}>Valor Total:</Text>
-                        <Text style={[styles.resumoValue, {color: '#B45309', fontSize: 20}]}>
+                        <Text style={[styles.resumoValue, {color: COLORS.modFinanceiro, fontSize: 20}]}>
                             R$ {(selectedConta.quantidade * (selectedConta.precoUnitario || 0)).toFixed(2)}
                         </Text>
                     </View>
@@ -194,7 +205,7 @@ const ContasReceberScreen = ({ navigation }: any) => {
                     <Picker
                         selectedValue={metodoRecebimento}
                         onValueChange={setMetodoRecebimento}
-                        style={{color: '#1E293B'}}
+                        style={{color: COLORS.textPrimary}}
                     >
                         <Picker.Item label="Pix" value="pix" />
                         <Picker.Item label="Dinheiro" value="dinheiro" />
@@ -235,48 +246,52 @@ const ContasReceberScreen = ({ navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#B45309' }, 
-  header: { padding: 20, backgroundColor: '#B45309' },
-  headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#FFF' },
-  headerSub: { fontSize: 16, color: '#FEF3C7', marginTop: 5, fontWeight: 'bold' },
-  listContent: { padding: 20 },
+  container: { flex: 1, backgroundColor: COLORS.background }, 
+  header: { padding: SPACING.xl, backgroundColor: COLORS.secondary, borderBottomLeftRadius: RADIUS.xl, borderBottomRightRadius: RADIUS.xl },
+  headerTitle: { fontSize: TYPOGRAPHY.h2, fontWeight: '800', color: COLORS.textLight },
+  headerSub: { fontSize: TYPOGRAPHY.body, color: COLORS.whiteAlpha80, marginTop: 5, marginBottom: SPACING.md, fontWeight: '600' },
+  kpisRow: { flexDirection: 'row', gap: 10 },
+  kpiBox: { flex: 1, backgroundColor: COLORS.whiteAlpha10, borderWidth: 1, borderColor: COLORS.whiteAlpha20, borderRadius: RADIUS.md, padding: 10 },
+  kpiLabel: { color: COLORS.cD1FAE5, fontSize: 12, fontWeight: '600' },
+  kpiValue: { color: COLORS.textLight, fontSize: TYPOGRAPHY.title, fontWeight: '800', marginTop: 4 },
+  listContent: { padding: SPACING.xl },
   
-  card: { backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 16, elevation: 4 },
+  card: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.card },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  clienteName: { fontSize: 18, fontWeight: 'bold', color: '#1E293B' },
+  clienteName: { fontSize: TYPOGRAPHY.title, fontWeight: '800', color: COLORS.textPrimary },
   
   metodoRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, marginBottom: 2 },
-  metodoText: { fontSize: 13, color: '#B45309', fontWeight: '600', marginLeft: 4 },
+  metodoText: { fontSize: 13, color: COLORS.modFinanceiro, fontWeight: '700', marginLeft: 4 },
   
-  dateText: { fontSize: 12, color: '#64748B', marginTop: 2 },
-  badge: { backgroundColor: '#FEF2F2', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#FECACA' },
-  badgeText: { color: '#DC2626', fontSize: 10, fontWeight: 'bold' },
-  divider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 12 },
+  dateText: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  badge: { backgroundColor: COLORS.dangerBg, paddingHorizontal: 8, paddingVertical: 4, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.cFECACA },
+  badgeText: { color: COLORS.danger, fontSize: 10, fontWeight: 'bold' },
+  divider: { height: 1, backgroundColor: COLORS.divider, marginVertical: 12 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  details: { fontSize: 14, color: '#475569' },
-  totalValue: { fontSize: 18, fontWeight: 'bold', color: '#B45309' },
-  receiveBtn: { backgroundColor: '#166534', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: 12, gap: 8 },
-  btnText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
+  details: { fontSize: 14, color: COLORS.textSecondary },
+  totalValue: { fontSize: TYPOGRAPHY.title, fontWeight: '800', color: COLORS.modFinanceiro },
+  receiveBtn: { backgroundColor: COLORS.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: RADIUS.md, gap: 8 },
+  btnText: { color: COLORS.textLight, fontWeight: '700', fontSize: 14 },
   emptyContainer: { alignItems: 'center', marginTop: 60 },
-  emptyTitle: { fontSize: 20, fontWeight: 'bold', color: '#FFF', marginTop: 10 },
-  emptySub: { color: '#FEF3C7' },
+  emptyTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.textPrimary, marginTop: 10 },
+  emptySub: { color: COLORS.textSecondary },
 
   // MODAL STYLES
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 20 },
-  modalContent: { backgroundColor: '#FFF', borderRadius: 16, padding: 24, elevation: 5 },
-  modalTitle: { fontSize: 22, fontWeight: 'bold', color: '#1E293B', marginBottom: 20, textAlign: 'center' },
-  resumoConta: { backgroundColor: '#FFF7ED', padding: 15, borderRadius: 10, marginBottom: 20, borderWidth: 1, borderColor: '#FED7AA' },
-  resumoLabel: { fontSize: 14, color: '#9A3412', fontWeight: '600' },
-  resumoValue: { fontSize: 16, color: '#1E293B', fontWeight: 'bold' },
+  modalOverlay: { flex: 1, backgroundColor: COLORS.rgba00006, justifyContent: 'center', padding: 20 },
+  modalContent: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.xl, ...SHADOWS.card },
+  modalTitle: { fontSize: TYPOGRAPHY.h2, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 20, textAlign: 'center' },
+  resumoConta: { backgroundColor: COLORS.warningSoft, padding: 15, borderRadius: RADIUS.sm, marginBottom: 20, borderWidth: 1, borderColor: COLORS.cFED7AA },
+  resumoLabel: { fontSize: 14, color: COLORS.c9A3412, fontWeight: '600' },
+  resumoValue: { fontSize: 16, color: COLORS.textPrimary, fontWeight: 'bold' },
   
-  labelPicker: { fontSize: 16, fontWeight: '600', color: '#334155', marginBottom: 8 },
-  pickerWrapper: { borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, backgroundColor: '#F8FAFC', marginBottom: 25 },
+  labelPicker: { fontSize: TYPOGRAPHY.body, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 },
+  pickerWrapper: { borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.sm, backgroundColor: COLORS.surfaceMuted, marginBottom: 25 },
   
   modalActions: { flexDirection: 'row', gap: 15 },
-  cancelBtn: { flex: 1, padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#94A3B8', alignItems: 'center' },
-  cancelText: { color: '#64748B', fontWeight: 'bold', fontSize: 16 },
-  confirmBtn: { flex: 1, padding: 15, borderRadius: 8, backgroundColor: '#166534', alignItems: 'center' },
-  confirmText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  cancelBtn: { flex: 1, padding: 15, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.borderDark, alignItems: 'center' },
+  cancelText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: TYPOGRAPHY.body },
+  confirmBtn: { flex: 1, padding: 15, borderRadius: RADIUS.sm, backgroundColor: COLORS.primary, alignItems: 'center' },
+  confirmText: { color: COLORS.textLight, fontWeight: '700', fontSize: TYPOGRAPHY.body },
 });
 
 export default ContasReceberScreen;

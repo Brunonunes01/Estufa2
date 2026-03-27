@@ -2,6 +2,7 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { Colheita } from '../types/domain';
+import { COLORS } from '../constants/theme';
 
 interface ReceiptData {
   venda: Colheita;
@@ -29,6 +30,17 @@ export const shareVendaReceipt = async (data: ReceiptData) => {
 
   // Pega iniciais do produtor para criar um "Logo"
   const iniciais = nomeProdutor.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  const receiptColors = {
+    text: COLORS.textPrimary,
+    textMuted: COLORS.textSecondary,
+    bg: COLORS.background,
+    surface: COLORS.surface,
+    primary: COLORS.primary,
+    border: COLORS.border,
+    subtle: COLORS.surfaceMuted,
+    accent: COLORS.successSoft,
+    strong: COLORS.textDark,
+  };
 
   const html = `
     <!DOCTYPE html>
@@ -37,33 +49,33 @@ export const shareVendaReceipt = async (data: ReceiptData) => {
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
         <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
         <style>
-          body { font-family: 'Roboto', sans-serif; margin: 0; padding: 0; color: #333; background-color: #f4f4f4; }
-          .container { max-width: 800px; margin: 20px auto; background: #fff; padding: 40px; border-radius: 8px; }
-          .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #4CAF50; padding-bottom: 20px; margin-bottom: 30px; }
+          body { font-family: 'Roboto', sans-serif; margin: 0; padding: 0; color: ${receiptColors.text}; background-color: ${receiptColors.bg}; }
+          .container { max-width: 800px; margin: 20px auto; background: ${receiptColors.surface}; padding: 40px; border-radius: 8px; }
+          .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid ${receiptColors.primary}; padding-bottom: 20px; margin-bottom: 30px; }
           .brand { display: flex; align-items: center; }
-          .logo-box { width: 50px; height: 50px; background-color: #4CAF50; color: #fff; font-size: 20px; font-weight: bold; display: flex; align-items: center; justify-content: center; border-radius: 8px; margin-right: 15px; }
-          .company-name { font-size: 24px; font-weight: bold; color: #2E7D32; margin: 0; }
+          .logo-box { width: 50px; height: 50px; background-color: ${receiptColors.primary}; color: ${COLORS.textLight}; font-size: 20px; font-weight: bold; display: flex; align-items: center; justify-content: center; border-radius: 8px; margin-right: 15px; }
+          .company-name { font-size: 24px; font-weight: bold; color: ${receiptColors.primary}; margin: 0; }
           .invoice-details { text-align: right; }
           .invoice-title { font-size: 18px; font-weight: bold; text-transform: uppercase; }
           
           .info-grid { display: flex; justify-content: space-between; margin-bottom: 30px; }
-          .section-title { font-size: 12px; color: #888; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 10px; }
+          .section-title { font-size: 12px; color: ${receiptColors.textMuted}; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid ${receiptColors.border}; padding-bottom: 5px; margin-bottom: 10px; }
           .info-value { font-size: 16px; font-weight: 500; }
 
           table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-          th { background-color: #E8F5E9; color: #2E7D32; text-align: left; padding: 12px; font-size: 11px; text-transform: uppercase; }
-          td { padding: 12px; border-bottom: 1px solid #eee; font-size: 13px; }
+          th { background-color: ${receiptColors.accent}; color: ${receiptColors.primary}; text-align: left; padding: 12px; font-size: 11px; text-transform: uppercase; }
+          td { padding: 12px; border-bottom: 1px solid ${receiptColors.border}; font-size: 13px; }
           
-          .weight-box { background-color: #F9FAFB; padding: 15px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #E5E7EB; }
+          .weight-box { background-color: ${receiptColors.subtle}; padding: 15px; border-radius: 8px; margin-bottom: 30px; border: 1px solid ${receiptColors.border}; }
           .weight-row { display: flex; gap: 20px; }
           .weight-item { flex: 1; }
-          .weight-label { font-size: 11px; color: #6B7280; text-transform: uppercase; font-weight: bold; }
-          .weight-val { font-size: 15px; color: #111827; font-weight: bold; }
+          .weight-label { font-size: 11px; color: ${receiptColors.textMuted}; text-transform: uppercase; font-weight: bold; }
+          .weight-val { font-size: 15px; color: ${receiptColors.strong}; font-weight: bold; }
 
           .totals-box { display: flex; justify-content: flex-end; }
           .totals-table { width: 250px; }
-          .grand-total { border-top: 2px solid #333; padding-top: 10px; font-size: 18px; font-weight: bold; color: #2E7D32; display: flex; justify-content: space-between; }
-          .footer { margin-top: 50px; text-align: center; font-size: 12px; color: #aaa; border-top: 1px dashed #ddd; padding-top: 20px; }
+          .grand-total { border-top: 2px solid ${receiptColors.strong}; padding-top: 10px; font-size: 18px; font-weight: bold; color: ${receiptColors.primary}; display: flex; justify-content: space-between; }
+          .footer { margin-top: 50px; text-align: center; font-size: 12px; color: ${receiptColors.textMuted}; border-top: 1px dashed ${receiptColors.border}; padding-top: 20px; }
         </style>
       </head>
       <body>
@@ -73,7 +85,7 @@ export const shareVendaReceipt = async (data: ReceiptData) => {
               <div class="logo-box">${iniciais}</div>
               <div>
                 <h1 class="company-name">${nomeProdutor}</h1>
-                <div style="font-size: 12px; color: #666;">Gestão de Estufas</div>
+                <div style="font-size: 12px; color: ${receiptColors.textMuted};">Gestão de Estufas</div>
               </div>
             </div>
             <div class="invoice-details">
@@ -138,7 +150,7 @@ export const shareVendaReceipt = async (data: ReceiptData) => {
                 <span>Total:</span>
                 <span>${fmtMoeda(total)}</span>
               </div>
-              <div style="text-align: right; font-size: 12px; color: #666; margin-top: 5px;">
+              <div style="text-align: right; font-size: 12px; color: ${receiptColors.textMuted}; margin-top: 5px;">
                 Forma de Pagamento: ${venda.metodoPagamento?.toUpperCase() || 'N/A'}
               </div>
             </div>

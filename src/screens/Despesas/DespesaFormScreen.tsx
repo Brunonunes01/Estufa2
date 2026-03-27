@@ -6,7 +6,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { createDespesa } from '../../services/despesaService';
 import { useAuth } from '../../hooks/useAuth';
-import { COLORS } from '../../constants/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const DespesaFormScreen = ({ navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
@@ -67,7 +67,7 @@ const DespesaFormScreen = ({ navigation }: any) => {
 
             <Text style={styles.label}>Categoria</Text>
             <View style={styles.inputWrapper}>
-                <Picker selectedValue={categoria} onValueChange={setCategoria} style={{color: '#000', fontWeight: 'bold'}}>
+                <Picker selectedValue={categoria} onValueChange={setCategoria} style={{color: COLORS.textPrimary, fontWeight: 'bold'}}>
                     <Picker.Item label="Energia Elétrica" value="energia" />
                     <Picker.Item label="Mão de Obra / Diária" value="mao_de_obra" />
                     <Picker.Item label="Manutenção" value="manutencao" />
@@ -80,7 +80,7 @@ const DespesaFormScreen = ({ navigation }: any) => {
 
             <Text style={styles.label}>Situação</Text>
             <View style={styles.inputWrapper}>
-                <Picker selectedValue={status} onValueChange={(v: any) => setStatus(v)} style={{color: '#000', fontWeight: 'bold'}}>
+                <Picker selectedValue={status} onValueChange={(v: any) => setStatus(v)} style={{color: COLORS.textPrimary, fontWeight: 'bold'}}>
                     <Picker.Item label="Já Paguei" value="pago" />
                     <Picker.Item label="Pendente (Conta a Pagar)" value="pendente" />
                 </Picker>
@@ -96,7 +96,7 @@ const DespesaFormScreen = ({ navigation }: any) => {
                 <>
                     <Text style={styles.label}>Data de Vencimento</Text>
                     <TouchableOpacity style={styles.dateBtn} onPress={() => setShowPicker('vencimento')}>
-                        <MaterialCommunityIcons name="calendar-clock" size={24} color="#E11D48" />
+                        <MaterialCommunityIcons name="calendar-clock" size={24} color={COLORS.textLight} />
                         <Text style={styles.dateText}>{dataVencimento.toLocaleDateString('pt-BR')}</Text>
                     </TouchableOpacity>
                 </>
@@ -109,7 +109,7 @@ const DespesaFormScreen = ({ navigation }: any) => {
         </View>
 
         <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={loading}>
-            {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveText}>Registrar Despesa</Text>}
+            {loading ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.saveText}>Registrar Despesa</Text>}
         </TouchableOpacity>
 
         {showPicker && (
@@ -130,16 +130,16 @@ const DespesaFormScreen = ({ navigation }: any) => {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
-  scrollContent: { padding: 20 },
-  card: { backgroundColor: COLORS.surface, borderRadius: 20, padding: 20, marginBottom: 20, elevation: 1, borderWidth: 1, borderColor: COLORS.border },
-  sectionHeader: { fontSize: 16, fontWeight: '800', color: COLORS.modDespesas, marginBottom: 15, textTransform: 'uppercase' },
+  scrollContent: { padding: SPACING.xl },
+  card: { backgroundColor: COLORS.surface, borderRadius: RADIUS.xl, padding: SPACING.xl, marginBottom: SPACING.xl, borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.card },
+  sectionHeader: { fontSize: TYPOGRAPHY.title, fontWeight: '800', color: COLORS.modDespesas, marginBottom: SPACING.md, textTransform: 'uppercase', letterSpacing: 0.6 },
   label: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 },
-  inputWrapper: { backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.borderDark, marginBottom: 15, height: 56, justifyContent: 'center' },
-  input: { paddingHorizontal: 15, fontSize: 16, color: '#000000', height: '100%', fontWeight: 'bold' },
-  dateBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', paddingHorizontal: 15, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.borderDark, height: 56, marginBottom: 15 },
-  dateText: { marginLeft: 10, fontSize: 16, fontWeight: 'bold', color: '#000' },
-  saveBtn: { backgroundColor: COLORS.modDespesas, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', elevation: 2, marginBottom: 30 },
-  saveText: { fontSize: 18, fontWeight: '800', color: '#FFF' },
+  inputWrapper: { backgroundColor: COLORS.surfaceMuted, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: COLORS.border, marginBottom: SPACING.md, height: 56, justifyContent: 'center' },
+  input: { paddingHorizontal: 15, fontSize: TYPOGRAPHY.body, color: COLORS.textDark, height: '100%', fontWeight: '700' },
+  dateBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surfaceMuted, paddingHorizontal: 15, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: COLORS.border, height: 56, marginBottom: SPACING.md },
+  dateText: { marginLeft: 10, fontSize: TYPOGRAPHY.body, fontWeight: '700', color: COLORS.textDark },
+  saveBtn: { backgroundColor: COLORS.modDespesas, height: 56, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginBottom: 30, ...SHADOWS.card },
+  saveText: { fontSize: TYPOGRAPHY.title, fontWeight: '800', color: COLORS.textLight },
 });
 
 export default DespesaFormScreen;

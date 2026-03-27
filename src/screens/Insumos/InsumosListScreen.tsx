@@ -6,18 +6,7 @@ import { listInsumos } from '../../services/insumoService';
 import { Insumo } from '../../types/domain';
 import { useIsFocused } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-
-const COLORS = {
-  background: '#F3F4F6',
-  card: '#FFFFFF',
-  primary: '#8B5CF6', 
-  secondary: '#A78BFA',
-  textDark: '#111827',
-  textGray: '#6B7280',
-  danger: '#EF4444',
-  warning: '#F59E0B',
-  success: '#10B981'
-};
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const InsumosListScreen = ({ navigation }: any) => {
   const { user, selectedTenantId } = useAuth(); 
@@ -71,7 +60,7 @@ const InsumosListScreen = ({ navigation }: any) => {
                 {/* CORREÇÃO: Usando ternário para garantir que renderize a View ou anule com segurança */}
                 {isLowStock ? (
                     <View style={styles.alertBadge}>
-                        <MaterialCommunityIcons name="alert-circle" size={16} color="#FFF" />
+                        <MaterialCommunityIcons name="alert-circle" size={16} color={COLORS.textLight} />
                         <Text style={styles.alertText}>BAIXO</Text>
                     </View>
                 ) : null}
@@ -108,12 +97,12 @@ const InsumosListScreen = ({ navigation }: any) => {
       
       {/* Botão de Adicionar (Principal) */}
       <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('InsumoForm')}>
-        <MaterialCommunityIcons name="plus" size={32} color="#fff" />
+        <MaterialCommunityIcons name="plus" size={32} color={COLORS.textLight} />
       </TouchableOpacity>
       
       {/* Botão de Entrada Rápida (Secundário) */}
       <TouchableOpacity style={styles.fabSmall} onPress={() => navigation.navigate('InsumoEntry')}>
-        <MaterialCommunityIcons name="arrow-down-bold-box" size={24} color="#fff" />
+        <MaterialCommunityIcons name="arrow-down-bold-box" size={24} color={COLORS.textLight} />
       </TouchableOpacity>
     </View>
   );
@@ -121,27 +110,27 @@ const InsumosListScreen = ({ navigation }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  listContent: { padding: 16, paddingBottom: 100 },
+  listContent: { padding: SPACING.lg, paddingBottom: 100 },
   
-  card: { backgroundColor: COLORS.card, borderRadius: 16, padding: 16, marginBottom: 12, shadowColor: "#000", shadowOffset: {width:0, height:2}, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  card: { backgroundColor: COLORS.card, borderRadius: RADIUS.lg, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.card },
   cardHeader: { flexDirection: 'row', alignItems: 'center' },
-  iconBox: { width: 48, height: 48, borderRadius: 12, backgroundColor: '#F3E8FF', justifyContent: 'center', alignItems: 'center' },
-  cardTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textDark },
+  iconBox: { width: 48, height: 48, borderRadius: RADIUS.md, backgroundColor: COLORS.primaryLight, justifyContent: 'center', alignItems: 'center' },
+  cardTitle: { fontSize: TYPOGRAPHY.body, fontWeight: '800', color: COLORS.textDark },
   cardType: { fontSize: 11, fontWeight: '600', color: COLORS.textGray, marginTop: 2 },
   
-  alertBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.danger, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  alertText: { color: '#FFF', fontSize: 10, fontWeight: '700', marginLeft: 4 },
+  alertBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.danger, paddingHorizontal: 8, paddingVertical: 4, borderRadius: RADIUS.sm },
+  alertText: { color: COLORS.textLight, fontSize: 10, fontWeight: '700', marginLeft: 4 },
 
-  divider: { height: 1, backgroundColor: '#F3F4F6', marginVertical: 12 },
+  divider: { height: 1, backgroundColor: COLORS.divider, marginVertical: 12 },
 
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between' },
   footerLabel: { fontSize: 11, color: COLORS.textGray, marginBottom: 2 },
-  footerValue: { fontSize: 16, fontWeight: '700', color: COLORS.textDark },
+  footerValue: { fontSize: TYPOGRAPHY.body, fontWeight: '700', color: COLORS.textDark },
 
   empty: { textAlign: 'center', marginTop: 50, color: COLORS.textGray, fontSize: 16 },
   
-  fab: { position: 'absolute', right: 20, bottom: 20, width: 64, height: 64, borderRadius: 32, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', elevation: 8, shadowColor: COLORS.primary, shadowOffset: {width:0, height:4}, shadowOpacity: 0.3 },
-  fabSmall: { position: 'absolute', right: 28, bottom: 100, width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.textDark, alignItems: 'center', justifyContent: 'center', elevation: 6 },
+  fab: { position: 'absolute', right: 20, bottom: 20, width: 64, height: 64, borderRadius: 32, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', ...SHADOWS.floating },
+  fabSmall: { position: 'absolute', right: 28, bottom: 100, width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.secondary, alignItems: 'center', justifyContent: 'center', ...SHADOWS.card },
 });
 
 export default InsumosListScreen;

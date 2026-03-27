@@ -1,11 +1,12 @@
 // src/screens/Fornecedores/FornecedoresListScreen.tsx
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity } from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { listFornecedores } from '../../services/fornecedorService';
 import { Fornecedor } from '../../types/domain';
 import { useIsFocused } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const FornecedoresListScreen = ({ navigation }: any) => {
   const { user, selectedTenantId } = useAuth(); // <--- ID SELECIONADO
@@ -38,14 +39,17 @@ const FornecedoresListScreen = ({ navigation }: any) => {
         data={fornecedores}
         keyExtractor={item => item.id}
         contentContainerStyle={{ paddingBottom: 80 }}
-        ListEmptyComponent={<Text style={styles.empty}>Nenhum fornecedor encontrado nesta conta.</Text>}
+        ListEmptyComponent={!loading ? <Text style={styles.empty}>Nenhum fornecedor encontrado nesta conta.</Text> : null}
         renderItem={({ item }) => (
           <TouchableOpacity 
             style={styles.item} 
             onPress={() => navigation.navigate('FornecedorForm', { fornecedorId: item.id })}
           >
-            <Text style={styles.name}>{item.nome}</Text>
-            {item.telefone && <Text style={styles.info}>{item.telefone}</Text>}
+            <View style={styles.header}>
+              <Text style={styles.name}>{item.nome}</Text>
+              <MaterialCommunityIcons name="chevron-right" size={24} color={COLORS.textPlaceholder} />
+            </View>
+            {item.telefone ? <Text style={styles.info}>{item.telefone}</Text> : <Text style={styles.info}>Sem telefone cadastrado</Text>}
           </TouchableOpacity>
         )}
       />
@@ -53,19 +57,20 @@ const FornecedoresListScreen = ({ navigation }: any) => {
         style={styles.fab} 
         onPress={() => navigation.navigate('FornecedorForm')}
       >
-        <MaterialCommunityIcons name="plus" size={30} color="#fff" />
+        <MaterialCommunityIcons name="plus" size={30} color={COLORS.textLight} />
       </TouchableOpacity>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FAFAFA', padding: 10 },
-  item: { backgroundColor: '#fff', padding: 15, borderRadius: 10, marginBottom: 10, elevation: 2 },
-  name: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  info: { color: '#666' },
-  empty: { textAlign: 'center', marginTop: 50, color: '#888' },
-  fab: { position: 'absolute', right: 20, bottom: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#FF9800', alignItems: 'center', justifyContent: 'center', elevation: 5 }
+  container: { flex: 1, backgroundColor: COLORS.background, padding: SPACING.md },
+  item: { backgroundColor: COLORS.surface, padding: SPACING.md, borderRadius: RADIUS.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.card },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  name: { fontSize: TYPOGRAPHY.title, fontWeight: '800', color: COLORS.textPrimary },
+  info: { color: COLORS.textSecondary, marginTop: 6 },
+  empty: { textAlign: 'center', marginTop: 50, color: COLORS.textSecondary },
+  fab: { position: 'absolute', right: 20, bottom: 20, width: 62, height: 62, borderRadius: 31, backgroundColor: COLORS.warning, alignItems: 'center', justifyContent: 'center', ...SHADOWS.floating }
 });
 
 export default FornecedoresListScreen;

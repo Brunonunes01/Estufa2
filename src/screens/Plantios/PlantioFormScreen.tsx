@@ -7,7 +7,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { createPlantio, updatePlantio, getPlantioById, deletePlantio } from '../../services/plantioService';
-import { COLORS } from '../../constants/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { Timestamp } from 'firebase/firestore'; 
 
 const PlantioFormScreen = ({ route, navigation }: any) => {
@@ -38,7 +38,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
       title: isEditMode ? 'Editar Lote (Plantio)' : 'Novo Lote',
       headerRight: () => isEditMode ? (
         <TouchableOpacity onPress={handleDelete} style={{marginRight: 15}}>
-          <MaterialCommunityIcons name="trash-can-outline" size={24} color="#FFF" />
+          <MaterialCommunityIcons name="trash-can-outline" size={24} color={COLORS.textLight} />
         </TouchableOpacity>
       ) : null,
     });
@@ -180,7 +180,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
               value={cultura} 
               onChangeText={setCultura} 
               placeholder="Ex: Tomate" 
-              placeholderTextColor="#94A3B8" 
+              placeholderTextColor={COLORS.textPlaceholder} 
             />
           </View>
           <View style={{flex: 1, marginLeft: 5}}>
@@ -190,7 +190,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
               value={variedade} 
               onChangeText={setVariedade} 
               placeholder="Ex: Italiano" 
-              placeholderTextColor="#94A3B8" 
+              placeholderTextColor={COLORS.textPlaceholder} 
             />
           </View>
         </View>
@@ -201,7 +201,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
           value={origemSemente} 
           onChangeText={setOrigemSemente} 
           placeholder="Ex: Viveiro X, Lote Fornecedor Y" 
-          placeholderTextColor="#94A3B8" 
+          placeholderTextColor={COLORS.textPlaceholder} 
         />
 
         <Text style={styles.sectionTitle}>Dados de Plantio e Custos</Text>
@@ -214,7 +214,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
               value={quantidadePlantada} 
               onChangeText={setQuantidadePlantada} 
               placeholder="Ex: 500" 
-              placeholderTextColor="#94A3B8" 
+              placeholderTextColor={COLORS.textPlaceholder} 
               keyboardType="numeric" 
             />
           </View>
@@ -225,7 +225,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
               value={unidadeQuantidade} 
               onChangeText={setUnidadeQuantidade} 
               placeholder="Ex: mudas, kg" 
-              placeholderTextColor="#94A3B8" 
+              placeholderTextColor={COLORS.textPlaceholder} 
             />
           </View>
         </View>
@@ -239,7 +239,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
               value={precoEstimadoUnidade} 
               onChangeText={setPrecoEstimadoUnidade} 
               placeholder="Ex: 1.50" 
-              placeholderTextColor="#94A3B8" 
+              placeholderTextColor={COLORS.textPlaceholder} 
               keyboardType="numeric" 
             />
           </View>
@@ -250,7 +250,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
               value={cicloDias} 
               onChangeText={setCicloDias} 
               placeholder="Ex: 90" 
-              placeholderTextColor="#94A3B8" 
+              placeholderTextColor={COLORS.textPlaceholder} 
               keyboardType="numeric" 
             />
           </View>
@@ -265,13 +265,13 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
           value={observacoes} 
           onChangeText={setObservacoes} 
           placeholder="Condições climáticas no dia, tipo de adubação de base..." 
-          placeholderTextColor="#94A3B8" 
+          placeholderTextColor={COLORS.textPlaceholder} 
           multiline
         />
 
         <TouchableOpacity style={styles.btn} onPress={handleSave} disabled={loading}>
           {loading ? (
-            <ActivityIndicator color="#FFF" />
+            <ActivityIndicator color={COLORS.textLight} />
           ) : (
             <Text style={styles.btnText}>Guardar Lote de Plantio</Text>
           )}
@@ -284,20 +284,20 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  padding: { padding: 20 },
+  padding: { padding: SPACING.xl },
   
-  loteContainer: { backgroundColor: '#E0F2FE', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, marginBottom: 20 },
+  loteContainer: { backgroundColor: COLORS.infoSoft, padding: 15, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.info, marginBottom: 20 },
   loteLabel: { fontSize: 11, fontWeight: 'bold', color: COLORS.primary, marginBottom: 5, textAlign: 'center' },
-  loteInput: { fontSize: 18, fontWeight: 'bold', color: COLORS.textPrimary, textAlign: 'center', letterSpacing: 1 },
+  loteInput: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.textPrimary, textAlign: 'center', letterSpacing: 1 },
 
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.primary, marginTop: 10, marginBottom: 15 },
+  sectionTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.secondary, marginTop: 10, marginBottom: 15 },
   label: { fontWeight: 'bold', marginBottom: 5, color: COLORS.textSecondary, fontSize: 13 },
-  input: { backgroundColor: '#FFF', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, color: '#000' },
+  input: { backgroundColor: COLORS.surfaceMuted, padding: 15, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, color: COLORS.textDark },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
-  hint: { fontSize: 12, color: '#94A3B8', marginTop: -10, marginBottom: 15, fontStyle: 'italic' },
+  hint: { fontSize: 12, color: COLORS.textPrimary, marginTop: -10, marginBottom: 15, fontStyle: 'italic' },
   
-  btn: { backgroundColor: COLORS.primary, padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 10, marginBottom: 30 },
-  btnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 }
+  btn: { backgroundColor: COLORS.primary, padding: 18, borderRadius: RADIUS.md, alignItems: 'center', marginTop: 10, marginBottom: 30, ...SHADOWS.card },
+  btnText: { color: COLORS.textLight, fontWeight: '800', fontSize: TYPOGRAPHY.body }
 });
 
 export default PlantioFormScreen;

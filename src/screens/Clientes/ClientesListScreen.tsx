@@ -6,6 +6,7 @@ import { listClientes } from '../../services/clienteService';
 import { Cliente } from '../../types/domain';
 import { useIsFocused } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const ClientesListScreen = ({ navigation }: any) => {
   const { user, selectedTenantId } = useAuth(); // <--- ID SELECIONADO
@@ -46,12 +47,12 @@ const ClientesListScreen = ({ navigation }: any) => {
           >
             <View style={styles.header}>
                 <Text style={styles.name}>{item.nome}</Text>
-                <MaterialCommunityIcons name="chevron-right" size={24} color="#ccc" />
+                <MaterialCommunityIcons name="chevron-right" size={24} color={COLORS.textLight} />
             </View>
             <View style={styles.details}>
                 {item.telefone && (
                     <View style={styles.rowCenter}>
-                        <MaterialCommunityIcons name="phone" size={14} color="#666"/>
+                        <MaterialCommunityIcons name="phone" size={14} color={COLORS.textLight}/>
                         <Text style={styles.info}> {item.telefone}</Text>
                     </View>
                 )}
@@ -65,23 +66,23 @@ const ClientesListScreen = ({ navigation }: any) => {
         style={styles.fab} 
         onPress={() => navigation.navigate('ClienteForm')}
       >
-        <MaterialCommunityIcons name="plus" size={30} color="#fff" />
+        <MaterialCommunityIcons name="plus" size={30} color={COLORS.textLight} />
       </TouchableOpacity>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FAFAFA', padding: 10 },
-  item: { backgroundColor: '#fff', padding: 15, borderRadius: 10, marginBottom: 10, elevation: 2 },
+  container: { flex: 1, backgroundColor: COLORS.background, padding: SPACING.md },
+  item: { backgroundColor: COLORS.surface, padding: SPACING.md, borderRadius: RADIUS.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.card },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  name: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  name: { fontSize: TYPOGRAPHY.title, fontWeight: '800', color: COLORS.textPrimary },
   details: { flexDirection: 'row', marginTop: 8, alignItems: 'center', gap: 10 },
   rowCenter: { flexDirection: 'row', alignItems: 'center' },
-  info: { color: '#666', fontSize: 14 },
-  typeBadge: { backgroundColor: '#E3F2FD', color: '#2196F3', fontSize: 10, padding: 4, borderRadius: 4, fontWeight: 'bold' },
-  empty: { textAlign: 'center', marginTop: 50, color: '#888' },
-  fab: { position: 'absolute', right: 20, bottom: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#2196F3', alignItems: 'center', justifyContent: 'center', elevation: 5 }
+  info: { color: COLORS.textSecondary, fontSize: 14 },
+  typeBadge: { backgroundColor: COLORS.infoSoft, color: COLORS.info, fontSize: 10, padding: 5, borderRadius: 6, fontWeight: 'bold' },
+  empty: { textAlign: 'center', marginTop: 50, color: COLORS.textSecondary },
+  fab: { position: 'absolute', right: 20, bottom: 20, width: 62, height: 62, borderRadius: 31, backgroundColor: COLORS.modClientes, alignItems: 'center', justifyContent: 'center', ...SHADOWS.floating }
 });
 
 export default ClientesListScreen;

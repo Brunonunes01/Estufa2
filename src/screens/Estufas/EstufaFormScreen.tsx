@@ -7,7 +7,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useAuth } from '../../hooks/useAuth';
 import { createEstufa, updateEstufa, getEstufaById, deleteEstufa } from '../../services/estufaService';
-import { COLORS } from '../../constants/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { Timestamp } from 'firebase/firestore'; 
 
 const EstufaFormScreen = ({ route, navigation }: any) => {
@@ -43,7 +43,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
       title: isEditMode ? 'Editar Estufa' : 'Nova Estufa',
       headerRight: () => isEditMode ? (
         <TouchableOpacity onPress={handleDelete} style={{marginRight: 15}}>
-          <MaterialCommunityIcons name="trash-can-outline" size={24} color="#FFF" />
+          <MaterialCommunityIcons name="trash-can-outline" size={24} color={COLORS.textLight} />
         </TouchableOpacity>
       ) : null,
     });
@@ -171,7 +171,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
           value={nome} 
           onChangeText={setNome} 
           placeholder="Ex: Estufa 01" 
-          placeholderTextColor="#94A3B8" 
+          placeholderTextColor={COLORS.textPlaceholder} 
         />
 
         {/* --- SELEÇÃO DE STATUS --- */}
@@ -209,7 +209,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
               value={comprimento} 
               onChangeText={setComprimento} 
               placeholder="Ex: 50" 
-              placeholderTextColor="#94A3B8" 
+              placeholderTextColor={COLORS.textPlaceholder} 
               keyboardType="numeric" 
             />
           </View>
@@ -220,7 +220,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
               value={largura} 
               onChangeText={setLargura} 
               placeholder="Ex: 8" 
-              placeholderTextColor="#94A3B8" 
+              placeholderTextColor={COLORS.textPlaceholder} 
               keyboardType="numeric" 
             />
           </View>
@@ -231,7 +231,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
               value={altura} 
               onChangeText={setAltura} 
               placeholder="Ex: 3" 
-              placeholderTextColor="#94A3B8" 
+              placeholderTextColor={COLORS.textPlaceholder} 
               keyboardType="numeric" 
             />
           </View>
@@ -243,7 +243,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
           value={tipoCobertura} 
           onChangeText={setTipoCobertura} 
           placeholder="Ex: Filme difusor, Sombrite" 
-          placeholderTextColor="#94A3B8" 
+          placeholderTextColor={COLORS.textPlaceholder} 
         />
 
         <Text style={styles.sectionTitle}>Localização e Responsabilidade</Text>
@@ -254,7 +254,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
           value={propriedade} 
           onChangeText={setPropriedade} 
           placeholder="Ex: Sítio São João" 
-          placeholderTextColor="#94A3B8" 
+          placeholderTextColor={COLORS.textPlaceholder} 
         />
 
         <Text style={styles.label}>Cidade</Text>
@@ -263,7 +263,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
           value={cidade} 
           onChangeText={setCidade} 
           placeholder="Ex: Jales - SP" 
-          placeholderTextColor="#94A3B8" 
+          placeholderTextColor={COLORS.textPlaceholder} 
         />
 
         <View style={styles.row}>
@@ -274,7 +274,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
               value={latitude} 
               onChangeText={setLatitude} 
               placeholder="-20.26" 
-              placeholderTextColor="#94A3B8" 
+              placeholderTextColor={COLORS.textPlaceholder} 
               keyboardType="numeric" 
             />
           </View>
@@ -285,7 +285,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
               value={longitude} 
               onChangeText={setLongitude} 
               placeholder="-50.54" 
-              placeholderTextColor="#94A3B8" 
+              placeholderTextColor={COLORS.textPlaceholder} 
               keyboardType="numeric" 
             />
           </View>
@@ -312,7 +312,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
           value={responsavel} 
           onChangeText={setResponsavel} 
           placeholder="Nome do responsável" 
-          placeholderTextColor="#94A3B8" 
+          placeholderTextColor={COLORS.textPlaceholder} 
         />
 
         <Text style={styles.sectionTitle}>Dados de Cultivo</Text>
@@ -323,7 +323,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
           value={tipoCultivo} 
           onChangeText={setTipoCultivo} 
           placeholder="Ex: Tomate Italiano" 
-          placeholderTextColor="#94A3B8" 
+          placeholderTextColor={COLORS.textPlaceholder} 
         />
 
         <Text style={styles.label}>Sistema de Cultivo</Text>
@@ -332,7 +332,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
           value={sistemaCultivo} 
           onChangeText={setSistemaCultivo} 
           placeholder="Ex: Solo, Hidroponia" 
-          placeholderTextColor="#94A3B8" 
+          placeholderTextColor={COLORS.textPlaceholder} 
         />
 
         <Text style={styles.sectionTitle}>Outros</Text>
@@ -343,13 +343,13 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
           value={observacoes} 
           onChangeText={setObservacoes} 
           placeholder="Detalhes adicionais sobre a estufa..." 
-          placeholderTextColor="#94A3B8" 
+          placeholderTextColor={COLORS.textPlaceholder} 
           multiline
         />
 
         <TouchableOpacity style={styles.btn} onPress={handleSave} disabled={loading}>
           {loading ? (
-            <ActivityIndicator color="#FFF" />
+            <ActivityIndicator color={COLORS.textLight} />
           ) : (
             <Text style={styles.btnText}>Guardar Cadastro</Text>
           )}
@@ -362,25 +362,25 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  padding: { padding: 20 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.primary, marginTop: 10, marginBottom: 15 },
+  padding: { padding: SPACING.xl },
+  sectionTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.secondary, marginTop: 10, marginBottom: 15 },
   label: { fontWeight: 'bold', marginBottom: 5, color: COLORS.textSecondary, fontSize: 13 },
-  input: { backgroundColor: '#FFF', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, color: '#000' },
+  input: { backgroundColor: COLORS.surfaceMuted, padding: 15, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, color: COLORS.textDark },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   
   // Estilos do seletor de status
   statusContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
-  statusBtn: { flex: 1, paddingVertical: 12, paddingHorizontal: 5, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', marginHorizontal: 4, backgroundColor: '#FFF' },
+  statusBtn: { flex: 1, paddingVertical: 12, paddingHorizontal: 5, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', marginHorizontal: 4, backgroundColor: COLORS.surface },
   statusBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  statusBtnWarning: { backgroundColor: '#F59E0B', borderColor: '#F59E0B' }, // Laranja para manutenção
-  statusBtnDanger: { backgroundColor: '#EF4444', borderColor: '#EF4444' }, // Vermelho para desativada
+  statusBtnWarning: { backgroundColor: COLORS.warning, borderColor: COLORS.warning },
+  statusBtnDanger: { backgroundColor: COLORS.danger, borderColor: COLORS.danger },
   statusText: { color: COLORS.textSecondary, fontWeight: 'bold', fontSize: 13 },
-  statusTextActive: { color: '#FFF' },
+  statusTextActive: { color: COLORS.textLight },
 
-  locationBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, marginBottom: 15, backgroundColor: '#E0F2FE' },
+  locationBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.primary, marginBottom: 15, backgroundColor: COLORS.primaryLight },
   locationBtnText: { color: COLORS.primary, fontWeight: 'bold', fontSize: 14 },
-  btn: { backgroundColor: COLORS.primary, padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 10, marginBottom: 30 },
-  btnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 }
+  btn: { backgroundColor: COLORS.primary, padding: 18, borderRadius: RADIUS.md, alignItems: 'center', marginTop: 10, marginBottom: 30, ...SHADOWS.card },
+  btnText: { color: COLORS.textLight, fontWeight: '800', fontSize: TYPOGRAPHY.body }
 });
 
 export default EstufaFormScreen;

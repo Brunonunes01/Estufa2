@@ -4,7 +4,7 @@ import { View, Text, TextInput, ScrollView, Alert, StyleSheet, TouchableOpacity,
 import { Picker } from '@react-native-picker/picker';
 import { createCliente, updateCliente, getClienteById, ClienteFormData } from '../../services/clienteService';
 import { useAuth } from '../../hooks/useAuth';
-import { COLORS } from '../../constants/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const ClienteFormScreen = ({ route, navigation }: any) => {
   const { user } = useAuth();
@@ -54,7 +54,7 @@ const ClienteFormScreen = ({ route, navigation }: any) => {
 
           <Text style={styles.label}>Tipo de Cliente</Text>
           <View style={styles.inputWrapper}>
-              <Picker selectedValue={tipo} onValueChange={(v) => setTipo(v)} style={{color: '#000', fontWeight: 'bold'}}>
+              <Picker selectedValue={tipo} onValueChange={(v) => setTipo(v)} style={{color: COLORS.textPrimary, fontWeight: 'bold'}}>
                   <Picker.Item label="Varejo (Consumidor)" value="varejo" />
                   <Picker.Item label="Atacado (Revenda)" value="atacado" />
                   <Picker.Item label="Restaurante" value="restaurante" />
@@ -67,7 +67,7 @@ const ClienteFormScreen = ({ route, navigation }: any) => {
         </View>
 
         <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={loading}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Salvar Cliente</Text>}
+          {loading ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.saveText}>Salvar Cliente</Text>}
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -75,14 +75,15 @@ const ClienteFormScreen = ({ route, navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.background }, scrollContent: { padding: 20 },
-  card: { backgroundColor: COLORS.surface, borderRadius: 20, padding: 20, marginBottom: 20, elevation: 1, borderWidth: 1, borderColor: COLORS.border },
-  sectionHeader: { fontSize: 16, fontWeight: '800', color: COLORS.modClientes, marginBottom: 15, textTransform: 'uppercase' },
+  screen: { flex: 1, backgroundColor: COLORS.background },
+  scrollContent: { padding: SPACING.xl },
+  card: { backgroundColor: COLORS.surface, borderRadius: RADIUS.xl, padding: SPACING.xl, marginBottom: SPACING.xl, borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.card },
+  sectionHeader: { fontSize: TYPOGRAPHY.title, fontWeight: '800', color: COLORS.modClientes, marginBottom: SPACING.md, textTransform: 'uppercase', letterSpacing: 0.6 },
   label: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 },
-  inputWrapper: { backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.borderDark, marginBottom: 15, height: 56, justifyContent: 'center' },
-  input: { paddingHorizontal: 15, fontSize: 16, color: '#000000', height: '100%', fontWeight: 'bold' },
-  saveBtn: { backgroundColor: COLORS.modClientes, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', elevation: 2 },
-  saveText: { color: '#FFF', fontWeight: '800', fontSize: 18 },
+  inputWrapper: { backgroundColor: COLORS.surfaceMuted, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: COLORS.border, marginBottom: SPACING.md, height: 56, justifyContent: 'center' },
+  input: { paddingHorizontal: 15, fontSize: TYPOGRAPHY.body, color: COLORS.textDark, height: '100%', fontWeight: '700' },
+  saveBtn: { backgroundColor: COLORS.modClientes, height: 56, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', ...SHADOWS.card },
+  saveText: { color: COLORS.textLight, fontWeight: '800', fontSize: TYPOGRAPHY.title },
 });
 
 export default ClienteFormScreen;

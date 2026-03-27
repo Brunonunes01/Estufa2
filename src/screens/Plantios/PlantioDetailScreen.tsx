@@ -11,19 +11,7 @@ import { Plantio, Colheita } from '../../types/domain';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 // CORRIGIDO: Adicionado o hífen no @react-navigation
 import { useIsFocused } from '@react-navigation/native';
-
-// --- TEMA ---
-const COLORS = {
-  background: '#F3F4F6',
-  card: '#FFFFFF',
-  primary: '#059669',
-  textDark: '#111827',
-  textGray: '#6B7280',
-  danger: '#EF4444',
-  success: '#10B981',
-  blue: '#3B82F6',
-  orange: '#F59E0B' 
-};
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const PlantioDetailScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth(); 
@@ -104,7 +92,7 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
                   style={{backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8, marginTop: 10}}
                   onPress={() => navigation.goBack()}
               >
-                  <Text style={{color: '#FFF', fontWeight: 'bold'}}>Voltar</Text>
+                  <Text style={{color: COLORS.textPrimary, fontWeight: 'bold'}}>Voltar</Text>
               </TouchableOpacity>
           </View>
       );
@@ -119,12 +107,12 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
             <Text style={styles.title}>{plantio.cultura}</Text>
             <Text style={styles.subTitle}>{plantio.variedade || 'Variedade Comum'}</Text>
             <View style={styles.loteBadge}>
-              <MaterialCommunityIcons name="barcode-scan" size={14} color="#166534" />
+              <MaterialCommunityIcons name="barcode-scan" size={14} color={COLORS.textLight} />
               <Text style={styles.loteText}> LOTE: {plantio.codigoLote || 'Não gerado'}</Text>
             </View>
         </View>
-        <View style={[styles.badge, plantio.status === 'finalizado' ? {backgroundColor:'#E5E7EB'} : {backgroundColor:'#D1FAE5'}]}>
-            <Text style={[styles.badgeText, plantio.status === 'finalizado' ? {color:'#6B7280'} : {color:'#059669'}]}>
+        <View style={[styles.badge, plantio.status === 'finalizado' ? {backgroundColor:COLORS.cE5E7EB} : {backgroundColor:COLORS.cD1FAE5}]}>
+            <Text style={[styles.badgeText, plantio.status === 'finalizado' ? {color:COLORS.c6B7280} : {color: COLORS.success}]}>
                 {plantio.status === 'finalizado' ? 'Finalizado' : 'Em Andamento'}
             </Text>
         </View>
@@ -135,19 +123,19 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
           <View style={styles.financeCard}>
               <View style={styles.financeHeader}>
                   <Text style={styles.financeTitle}>Lucro Bruto do Ciclo</Text>
-                  <MaterialCommunityIcons name="trending-up" size={24} color="#FFF" />
+                  <MaterialCommunityIcons name="trending-up" size={24} color={COLORS.textLight} />
               </View>
-              <Text style={[styles.lucroValue, { color: financeiro.lucroBruto >= 0 ? '#FFF' : '#FCA5A5' }]}>
+              <Text style={[styles.lucroValue, { color: financeiro.lucroBruto >= 0 ? COLORS.textLight : COLORS.cFCA5A5 }]}>
                   R$ {financeiro.lucroBruto.toFixed(2)}
               </Text>
               <View style={styles.financeDivider} />
               <View style={styles.financeRow}>
                   <Text style={styles.financeLabel}>Receita Vendas</Text>
-                  <Text style={[styles.financeNum, {color: '#6EE7B7'}]}>+ R$ {financeiro.receitaTotal.toFixed(2)}</Text>
+                  <Text style={[styles.financeNum, {color: COLORS.c6EE7B7}]}>+ R$ {financeiro.receitaTotal.toFixed(2)}</Text>
               </View>
               <View style={styles.financeRow}>
                   <Text style={styles.financeLabel}>Custos Totais</Text>
-                  <Text style={[styles.financeNum, {color: '#FCA5A5'}]}>- R$ {financeiro.custoTotal.toFixed(2)}</Text>
+                  <Text style={[styles.financeNum, {color: COLORS.cFCA5A5}]}>- R$ {financeiro.custoTotal.toFixed(2)}</Text>
               </View>
           </View>
       )}
@@ -216,34 +204,34 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background, padding: 20 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
-  title: { fontSize: 24, fontWeight: '800', color: COLORS.textDark },
-  subTitle: { fontSize: 16, color: COLORS.textGray },
-  loteBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCFCE7', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginTop: 5, borderWidth: 1, borderColor: '#86EFAC' },
-  loteText: { fontSize: 11, fontWeight: 'bold', color: '#166534' },
-  badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  container: { flex: 1, backgroundColor: COLORS.background, padding: SPACING.xl },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING.lg },
+  title: { fontSize: TYPOGRAPHY.h2, fontWeight: '800', color: COLORS.textDark },
+  subTitle: { fontSize: TYPOGRAPHY.body, color: COLORS.textGray },
+  loteBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginTop: 5, borderWidth: 1, borderColor: COLORS.c86EFAC },
+  loteText: { fontSize: 11, fontWeight: 'bold', color: COLORS.primary },
+  badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: RADIUS.pill },
   badgeText: { fontSize: 12, fontWeight: '700' },
-  financeCard: { backgroundColor: '#1F2937', padding: 20, borderRadius: 16, marginBottom: 25, shadowColor: "#000", shadowOffset: {width:0, height:4}, shadowOpacity: 0.2, elevation: 5 },
+  financeCard: { backgroundColor: COLORS.secondary, padding: SPACING.xl, borderRadius: RADIUS.lg, marginBottom: 25, ...SHADOWS.card },
   financeHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  financeTitle: { color: '#9CA3AF', fontSize: 14, fontWeight: '600', textTransform: 'uppercase' },
-  lucroValue: { color: '#FFF', fontSize: 32, fontWeight: '800' },
-  financeDivider: { height: 1, backgroundColor: '#374151', marginVertical: 15 },
+  financeTitle: { color: COLORS.c9CA3AF, fontSize: 14, fontWeight: '600', textTransform: 'uppercase' },
+  lucroValue: { color: COLORS.textPrimary, fontSize: 32, fontWeight: '800' },
+  financeDivider: { height: 1, backgroundColor: COLORS.c374151, marginVertical: 15 },
   financeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  financeLabel: { color: '#D1D5DB', fontSize: 14 },
+  financeLabel: { color: COLORS.cD1D5DB, fontSize: 14 },
   financeNum: { fontWeight: '700', fontSize: 14 },
   gridBtns: { flexDirection: 'row', gap: 10, marginBottom: 25 },
-  btnAction: { flex: 1, height: 80, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
+  btnAction: { flex: 1, height: 80, borderRadius: RADIUS.md, borderWidth: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.surface },
   btnText: { fontWeight: '700', fontSize: 13, marginTop: 6 },
   sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textDark },
-  emptyBox: { padding: 20, backgroundColor: '#FFF', borderRadius: 12, alignItems: 'center', marginBottom: 10 },
-  listItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 15, borderRadius: 12, marginBottom: 10 },
-  listIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  sectionTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '700', color: COLORS.textDark },
+  emptyBox: { padding: 20, backgroundColor: COLORS.surface, borderRadius: RADIUS.md, alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },
+  listItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, padding: 15, borderRadius: RADIUS.md, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },
+  listIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.cECFDF5, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   listMain: { fontWeight: '700', color: COLORS.textDark, fontSize: 13 },
   listSub: { fontSize: 12, color: COLORS.textGray, marginTop: 2 },
   listValue: { fontWeight: '700', color: COLORS.primary },
-  dangerBtn: { marginTop: 20, padding: 15, borderWidth: 1, borderColor: COLORS.danger, borderRadius: 12, alignItems: 'center' },
+  dangerBtn: { marginTop: 20, padding: 15, borderWidth: 1, borderColor: COLORS.danger, borderRadius: RADIUS.md, alignItems: 'center' },
   dangerText: { color: COLORS.danger, fontWeight: '700' }
 });
 

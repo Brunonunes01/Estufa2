@@ -187,7 +187,7 @@ export default function PerfilScreen({ navigation }: any) {
             {/* BOTÃO DE PARTILHA - SÓ APARECE SE TIVER COORDENADAS */}
             {latitude && longitude ? (
                 <TouchableOpacity style={styles.shareBtn} onPress={handleShareLocation}>
-                    <MaterialCommunityIcons name="share-variant" size={20} color="#FFF" style={{marginRight: 8}} />
+                    <MaterialCommunityIcons name="share-variant" size={20} color={COLORS.textLight} style={{marginRight: 8}} />
                     <Text style={styles.shareText}>Enviar Localização (WhatsApp / SMS)</Text>
                 </TouchableOpacity>
             ) : null}
@@ -196,7 +196,7 @@ export default function PerfilScreen({ navigation }: any) {
         </View>
 
         <TouchableOpacity style={styles.saveBtn} onPress={handleSaveProfile} disabled={saving}>
-            {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveText}>Guardar Perfil</Text>}
+            {saving ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.saveText}>Guardar Perfil</Text>}
         </TouchableOpacity>
 
       </ScrollView>
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   scrollContent: { padding: 20 },
   headerInfo: { alignItems: 'center', marginBottom: 25, marginTop: 10 },
-  avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.primaryLight, justifyContent: 'center', alignItems: 'center', marginBottom: 15, borderWidth: 2, borderColor: '#FFF', elevation: 2 },
+  avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.primaryLight, justifyContent: 'center', alignItems: 'center', marginBottom: 15, borderWidth: 2, borderColor: COLORS.border, elevation: 2 },
   title: { fontSize: 24, fontWeight: '800', color: COLORS.textPrimary },
   subtitle: { fontSize: 14, color: COLORS.textSecondary, marginTop: 4 },
   card: { backgroundColor: COLORS.surface, borderRadius: 20, padding: 20, marginBottom: 20, elevation: 2, borderWidth: 1, borderColor: COLORS.border },
@@ -217,13 +217,13 @@ const styles = StyleSheet.create({
   inputWrapper: { backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.borderDark, marginBottom: 15, height: 50, justifyContent: 'center' },
   input: { paddingHorizontal: 15, fontSize: 16, color: COLORS.textDark, height: '100%', fontWeight: '600' },
   row: { flexDirection: 'row' },
-  gpsBtn: { flexDirection: 'row', backgroundColor: COLORS.primaryLight, height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#A7F3D0' },
+  gpsBtn: { flexDirection: 'row', backgroundColor: COLORS.primaryLight, height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 20, borderWidth: 1, borderColor: COLORS.cA7F3D0 },
   gpsBtnText: { color: COLORS.primary, fontWeight: '800', fontSize: 15 },
   gpsHelpText: { fontSize: 12, color: COLORS.textSecondary, fontStyle: 'italic', textAlign: 'center', marginTop: 15 },
   
   // Estilo do Botão de Partilha
   shareBtn: { flexDirection: 'row', backgroundColor: COLORS.info, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 5, elevation: 2 },
-  shareText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
+  shareText: { color: COLORS.textPrimary, fontWeight: 'bold', fontSize: 14 },
 
   saveBtn: { backgroundColor: COLORS.primary, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 40, elevation: 4 },
   saveText: { color: COLORS.textLight, fontWeight: '800', fontSize: 18 },

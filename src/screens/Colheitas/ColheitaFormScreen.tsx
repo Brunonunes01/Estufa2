@@ -49,10 +49,10 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: isEditMode ? 'Editar Venda / Colheita' : 'Registrar Venda (Colheita)',
+      title: isEditMode ? 'Editar Venda' : 'Registrar Venda',
       headerRight: () => isEditMode ? (
         <TouchableOpacity onPress={handleDelete} style={{marginRight: 15}}>
-          <MaterialCommunityIcons name="trash-can-outline" size={24} color="#FFF" />
+          <MaterialCommunityIcons name="trash-can-outline" size={24} color={COLORS.textLight} />
         </TouchableOpacity>
       ) : null,
     });
@@ -191,7 +191,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         
         <View style={styles.card}>
-            <Text style={styles.sectionHeader}>Origem e Destino (Rastreabilidade)</Text>
+            <Text style={styles.sectionHeader}>Origem e Destino</Text>
             
             <Text style={styles.label}>Produto (Lote de Plantio)</Text>
             <View style={[styles.pickerWrapper, isEditMode && styles.disabledPicker]}>
@@ -210,7 +210,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
             {/* --- SELO DE RASTREABILIDADE VISUAL --- */}
             {loteSelecionado && (
               <View style={styles.rastreioBox}>
-                <MaterialCommunityIcons name="shield-check" size={20} color="#16A34A" />
+                <MaterialCommunityIcons name="shield-check" size={20} color={COLORS.textLight} />
                 <View style={{ marginLeft: 10, flex: 1 }}>
                   <Text style={styles.rastreioTitle}>Lote de Origem Rastreado</Text>
                   <Text style={styles.rastreioText}>Código: {loteSelecionado.codigoLote || 'Não informado'}</Text>
@@ -228,7 +228,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                     </Picker>
                 </View>
                 <TouchableOpacity style={styles.addBtn} onPress={() => setModalVisible(true)}>
-                    <MaterialCommunityIcons name="account-plus" size={24} color="#FFF" />
+                    <MaterialCommunityIcons name="account-plus" size={24} color={COLORS.textLight} />
                 </TouchableOpacity>
             </View>
 
@@ -301,7 +301,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
         </View>
 
         <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>{isEditMode ? 'Salvar Alterações' : 'Confirmar Venda Rastreada'}</Text>}
+            {loading ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.saveText}>{isEditMode ? 'Salvar Alterações' : 'Confirmar Venda'}</Text>}
         </TouchableOpacity>
 
       </ScrollView>
@@ -312,9 +312,9 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
             <Text style={styles.modalTitle}>Novo Cliente</Text>
             <TextInput style={styles.input} placeholder="Nome do Cliente (Destino)" value={novoClienteNome} onChangeText={setNovoClienteNome} autoFocus />
             <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={{color: '#64748B'}}>Cancelar</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={{color: COLORS.textSecondary}}>Cancelar</Text></TouchableOpacity>
               <TouchableOpacity onPress={handleQuickRegisterClient} style={styles.modalBtn}>
-                {salvandoNovoCliente ? <ActivityIndicator color="#FFF" /> : <Text style={{color: '#FFF', fontWeight: 'bold'}}>Salvar</Text>}
+                {salvandoNovoCliente ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={{color: COLORS.textLight, fontWeight: 'bold'}}>Salvar</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -328,33 +328,33 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   scrollContent: { padding: 20 },
-  card: { backgroundColor: '#FFF', borderRadius: 15, padding: 18, marginBottom: 15, elevation: 2 },
+  card: { backgroundColor: COLORS.surface, borderRadius: 15, padding: 18, marginBottom: 15, elevation: 2 },
   sectionHeader: { fontSize: 14, fontWeight: 'bold', color: COLORS.primary, marginBottom: 12, textTransform: 'uppercase' },
-  label: { fontSize: 12, color: '#64748B', marginBottom: 5, fontWeight: '600' },
-  input: { backgroundColor: '#F8FAFC', borderRadius: 8, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0', color: '#000', fontWeight: 'bold' },
-  dateButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8, marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0' },
-  dateText: { marginLeft: 10, fontWeight: 'bold', color: '#000' },
+  label: { fontSize: 12, color: COLORS.textPrimary, marginBottom: 5, fontWeight: '600' },
+  input: { backgroundColor: COLORS.surface, borderRadius: 8, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border, color: COLORS.textPrimary, fontWeight: 'bold' },
+  dateButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, padding: 12, borderRadius: 8, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border },
+  dateText: { marginLeft: 10, fontWeight: 'bold', color: COLORS.textPrimary },
   row: { flexDirection: 'row' },
   rowAlign: { flexDirection: 'row', alignItems: 'center' },
-  pickerWrapper: { flex: 1, backgroundColor: '#F8FAFC', borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', height: 50, justifyContent: 'center' },
-  disabledPicker: { opacity: 0.6, backgroundColor: '#E2E8F0' },
-  picker: { color: '#000' },
+  pickerWrapper: { flex: 1, backgroundColor: COLORS.surface, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, height: 50, justifyContent: 'center' },
+  disabledPicker: { opacity: 0.6, backgroundColor: COLORS.disabledBg },
+  picker: { color: COLORS.textPrimary },
   addBtn: { width: 50, height: 50, backgroundColor: COLORS.primary, borderRadius: 8, marginLeft: 10, justifyContent: 'center', alignItems: 'center' },
   
   // Estilos do Selo de Rastreabilidade
-  rastreioBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCFCE7', padding: 10, borderRadius: 8, marginTop: 10, borderWidth: 1, borderColor: '#86EFAC' },
-  rastreioTitle: { fontSize: 12, fontWeight: 'bold', color: '#166534' },
-  rastreioText: { fontSize: 11, color: '#15803D' },
+  rastreioBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, padding: 10, borderRadius: 8, marginTop: 10, borderWidth: 1, borderColor: COLORS.c86EFAC },
+  rastreioTitle: { fontSize: 12, fontWeight: 'bold', color: COLORS.primary },
+  rastreioText: { fontSize: 11, color: COLORS.c15803D },
 
-  infoRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0FDF4', padding: 12, borderRadius: 8, marginBottom: 15 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.cF0FDF4, padding: 12, borderRadius: 8, marginBottom: 15 },
   infoText: { marginLeft: 8, color: COLORS.primary, fontWeight: 'bold' },
-  totalContainer: { alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 15 },
-  totalLabel: { fontSize: 11, color: '#64748B', fontWeight: 'bold' },
+  totalContainer: { alignItems: 'center', borderTopWidth: 1, borderTopColor: COLORS.divider, paddingTop: 15 },
+  totalLabel: { fontSize: 11, color: COLORS.textPrimary, fontWeight: 'bold' },
   totalValue: { fontSize: 24, fontWeight: 'bold', color: COLORS.primary },
   saveBtn: { backgroundColor: COLORS.primary, padding: 18, borderRadius: 12, alignItems: 'center', marginBottom: 30 },
-  saveText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 30 },
-  modalContent: { backgroundColor: '#FFF', borderRadius: 15, padding: 20 },
+  saveText: { color: COLORS.textLight, fontWeight: 'bold', fontSize: 16 },
+  modalOverlay: { flex: 1, backgroundColor: COLORS.rgba00005, justifyContent: 'center', padding: 30 },
+  modalContent: { backgroundColor: COLORS.surface, borderRadius: 15, padding: 20 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 20, alignItems: 'center' },
   modalBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }
