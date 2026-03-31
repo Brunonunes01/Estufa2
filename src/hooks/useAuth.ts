@@ -11,11 +11,17 @@ export const useAuth = () => {
 
   // Lógica de segurança para saber se sou dono
   const isOwner = !context.selectedTenantId || context.selectedTenantId === context.user?.uid;
+  const isAdmin = context.user?.role === 'admin';
+  const canDeleteEstufa = isOwner && isAdmin;
+  const canManageSecurity = isOwner && isAdmin;
 
   // Retornamos tudo do contexto (...) + o isOwner
   // O TypeScript vai inferir automaticamente que 'signIn' está incluso aqui
   return {
     ...context, 
-    isOwner 
+    isOwner,
+    isAdmin,
+    canDeleteEstufa,
+    canManageSecurity,
   };
 };

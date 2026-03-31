@@ -17,6 +17,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNetInfo } from '@react-native-community/netinfo';
 
 import { useAuth } from '../hooks/useAuth';
+import { useAppSettings } from '../hooks/useAppSettings';
 import { COLORS, RADIUS } from '../constants/theme';
 
 // Importação dos ecrãs
@@ -25,6 +26,7 @@ import RegisterScreen from '../screens/Auth/RegisterScreen';
 import ShareAccountScreen from '../screens/Auth/ShareAccountScreen';
 import DashboardScreen from '../screens/Dashboard/DashboardScreen';
 import PerfilScreen from '../screens/Perfil/PerfilScreen';
+import SettingsScreen from '../screens/Configuracoes/SettingsScreen';
 import EstufasListScreen from '../screens/Estufas/EstufasListScreen';
 import EstufaFormScreen from '../screens/Estufas/EstufaFormScreen';
 import EstufaDetailScreen from '../screens/Estufas/EstufaDetailScreen';
@@ -102,7 +104,8 @@ const AppStack = () => (
     <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false, animation: 'fade' }} />
     <Stack.Screen name="ShareAccount" component={ShareAccountScreen} options={{ title: 'Compartilhar Acesso' }} />
     <Stack.Screen name="Perfil" component={PerfilScreen} options={{ title: 'Minha Propriedade' }} />
-    <Stack.Screen name="EstufasList" component={EstufasListScreen} options={{ title: 'Minhas Estufas' }} />
+    <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Configurações' }} />
+    <Stack.Screen name="EstufasList" component={EstufasListScreen} options={{ title: 'Hubs de Estufa' }} />
     <Stack.Screen name="EstufaForm" component={EstufaFormScreen} options={{ title: 'Cadastro da Estufa' }} />
     <Stack.Screen name="EstufaDetail" component={EstufaDetailScreen} options={{ title: 'Detalhes da Estufa' }} />
     <Stack.Screen name="PlantioForm" component={PlantioFormScreen} options={{ title: 'Novo Plantio' }} />
@@ -128,6 +131,7 @@ const AppStack = () => (
 
 export const RootNavigator = () => {
   const { user, loading } = useAuth();
+  const { settings } = useAppSettings();
   
   // Lógica para detetar se é Web e calcular largura
   const isWeb = Platform.OS === 'web';
@@ -146,7 +150,7 @@ export const RootNavigator = () => {
   }
 
   return (
-    <View style={[styles.outerContainer, { backgroundColor: isWideScreen ? COLORS.backgroundAlt : COLORS.background }]}>
+    <View style={[styles.outerContainer, { backgroundColor: isWideScreen ? COLORS.backgroundAlt : settings.darkMode ? COLORS.c1E293B : COLORS.background }]}>
       <View style={[
         styles.innerContainer, 
         {
@@ -154,6 +158,7 @@ export const RootNavigator = () => {
           elevation: isWideScreen ? 10 : 0,
           borderRadius: isWideScreen ? RADIUS.xl : 0,
           borderWidth: isWideScreen ? 1 : 0,
+          backgroundColor: settings.darkMode ? COLORS.c1E293B : COLORS.background,
         }
       ]}>
         <OfflineBanner />

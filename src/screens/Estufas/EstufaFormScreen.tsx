@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { 
   View, Text, TextInput, ScrollView, StyleSheet, 
-  TouchableOpacity, Alert, ActivityIndicator 
+  TouchableOpacity, Alert, ActivityIndicator, Modal 
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -9,9 +9,10 @@ import { useAuth } from '../../hooks/useAuth';
 import { createEstufa, updateEstufa, getEstufaById, deleteEstufa } from '../../services/estufaService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { Timestamp } from 'firebase/firestore'; 
+import { verifyCurrentUserPassword } from '../../services/securityService';
 
 const EstufaFormScreen = ({ route, navigation }: any) => {
-  const { user, selectedTenantId } = useAuth();
+  const { user, selectedTenantId, canDeleteEstufa } = useAuth();
   const editingId = route.params?.estufaId;
   const isEditMode = !!editingId;
 
@@ -37,17 +38,20 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
   
   const [loading, setLoading] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   useLayoutEffect(() => {
     navigation.setOptions({
       title: isEditMode ? 'Editar Estufa' : 'Nova Estufa',
-      headerRight: () => isEditMode ? (
+      headerRight: () => isEditMode && canDeleteEstufa ? (
         <TouchableOpacity onPress={handleDelete} style={{marginRight: 15}}>
           <MaterialCommunityIcons name="trash-can-outline" size={24} color={COLORS.textLight} />
         </TouchableOpacity>
       ) : null,
     });
-  }, [navigation, isEditMode]);
+  }, [navigation, isEditMode, canDeleteEstufa]);
 
   useEffect(() => {
     if (isEditMode) loadEstufa();
@@ -96,25 +100,34 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
   };
 
   const handleDelete = () => {
-    Alert.alert(
-      "Eliminar Estufa",
-      "Tem a certeza? Isso não apagará os plantios vinculados, mas eles ficarão sem referência.",
-      [
-        { text: "Cancelar", style: "cancel" },
-        { 
-          text: "Eliminar", 
-          style: "destructive", 
-          onPress: async () => {
-            try {
-              await deleteEstufa(editingId);
-              navigation.goBack();
-            } catch (e) {
-              Alert.alert("Erro", "Falha ao eliminar.");
-            }
-          } 
-        }
-      ]
-    );
+    if (!canDeleteEstufa) {
+      Alert.alert('Permissão negada', 'Apenas administradores da conta principal podem excluir estufas.');
+      return;
+    }
+    setAdminPassword('');
+    setDeleteModalVisible(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!adminPassword.trim()) {
+      Alert.alert('Atenção', 'Informe a senha de administrador.');
+      return;
+    }
+    setDeleting(true);
+    try {
+      const valid = await verifyCurrentUserPassword(adminPassword.trim());
+      if (!valid) {
+        Alert.alert('Senha inválida', 'A senha de administrador está incorreta.');
+        return;
+      }
+      await deleteEstufa(editingId);
+      setDeleteModalVisible(false);
+      navigation.goBack();
+    } catch (e) {
+      Alert.alert('Erro', 'Falha ao excluir a estufa.');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleSave = async () => {
@@ -356,6 +369,38 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
         </TouchableOpacity>
         
       </ScrollView>
+
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Excluir Estufa</Text>
+            <Text style={styles.modalText}>
+              Esta ação é crítica. Digite a senha de administrador para confirmar a exclusão.
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={adminPassword}
+              onChangeText={setAdminPassword}
+              placeholder="Senha de administrador"
+              placeholderTextColor={COLORS.textPlaceholder}
+              secureTextEntry
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalBtnCancel} onPress={() => setDeleteModalVisible(false)} disabled={deleting}>
+                <Text style={styles.modalBtnCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalBtnDelete} onPress={handleConfirmDelete} disabled={deleting}>
+                {deleting ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.modalBtnDeleteText}>Excluir</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -381,6 +426,17 @@ const styles = StyleSheet.create({
   locationBtnText: { color: COLORS.primary, fontWeight: 'bold', fontSize: 14 },
   btn: { backgroundColor: COLORS.primary, padding: 18, borderRadius: RADIUS.md, alignItems: 'center', marginTop: 10, marginBottom: 30, ...SHADOWS.card },
   btnText: { color: COLORS.textLight, fontWeight: '800', fontSize: TYPOGRAPHY.body }
+  ,
+  modalOverlay: { flex: 1, backgroundColor: COLORS.rgba00006, justifyContent: 'center', padding: 24 },
+  modalCard: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.xl, ...SHADOWS.card },
+  modalTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 8 },
+  modalText: { color: COLORS.textSecondary, fontSize: 13, marginBottom: SPACING.md },
+  modalInput: { height: 48, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.sm, paddingHorizontal: 12, color: COLORS.textPrimary, backgroundColor: COLORS.surfaceMuted, marginBottom: SPACING.md },
+  modalActions: { flexDirection: 'row', gap: 10 },
+  modalBtnCancel: { flex: 1, height: 44, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.borderDark, justifyContent: 'center', alignItems: 'center' },
+  modalBtnCancelText: { color: COLORS.textSecondary, fontWeight: '700' },
+  modalBtnDelete: { flex: 1, height: 44, borderRadius: RADIUS.sm, backgroundColor: COLORS.danger, justifyContent: 'center', alignItems: 'center' },
+  modalBtnDeleteText: { color: COLORS.textLight, fontWeight: '800' }
 });
 
 export default EstufaFormScreen;

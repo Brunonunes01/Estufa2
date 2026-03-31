@@ -123,6 +123,10 @@ export default function PerfilScreen({ navigation }: any) {
             </View>
             <Text style={styles.title}>Dados da Propriedade</Text>
             <Text style={styles.subtitle}>Configure os detalhes do seu local de cultivo</Text>
+            <TouchableOpacity style={styles.settingsLink} onPress={() => navigation.navigate('Settings')}>
+                <MaterialCommunityIcons name="cog-outline" size={16} color={COLORS.primary} />
+                <Text style={styles.settingsLinkText}>Abrir Configurações</Text>
+            </TouchableOpacity>
         </View>
 
         <View style={styles.card}>
@@ -211,6 +215,8 @@ const styles = StyleSheet.create({
   avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.primaryLight, justifyContent: 'center', alignItems: 'center', marginBottom: 15, borderWidth: 2, borderColor: COLORS.border, elevation: 2 },
   title: { fontSize: 24, fontWeight: '800', color: COLORS.textPrimary },
   subtitle: { fontSize: 14, color: COLORS.textSecondary, marginTop: 4 },
+  settingsLink: { marginTop: 10, flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.primaryLight, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999 },
+  settingsLinkText: { color: COLORS.primary, fontWeight: '700', marginLeft: 6, fontSize: 12 },
   card: { backgroundColor: COLORS.surface, borderRadius: 20, padding: 20, marginBottom: 20, elevation: 2, borderWidth: 1, borderColor: COLORS.border },
   sectionHeader: { fontSize: 16, fontWeight: '800', color: COLORS.primary, marginBottom: 15, textTransform: 'uppercase' },
   label: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 },

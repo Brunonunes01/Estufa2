@@ -147,7 +147,7 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
             onPress={() => navigation.navigate('ColheitaForm', { plantioId: plantio.id, estufaId: plantio.estufaId })}
           >
               <MaterialCommunityIcons name="basket-plus" size={26} color={COLORS.primary} />
-              <Text style={[styles.btnText, {color: COLORS.primary}]}>Venda</Text>
+              <Text style={[styles.btnText, {color: COLORS.primary}]}>Registrar Venda</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -155,7 +155,7 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
             onPress={() => navigation.navigate('AplicacaoForm', { plantioId: plantio.id, estufaId: plantio.estufaId })}
           >
               <MaterialCommunityIcons name="flask-plus" size={26} color={COLORS.blue} />
-              <Text style={[styles.btnText, {color: COLORS.blue}]}>Química</Text>
+              <Text style={[styles.btnText, {color: COLORS.blue}]}>Aplicar Insumo</Text>
           </TouchableOpacity>
 
           {/* O BOTÃO AGORA REDIRECIONA PARA A TELA DE HISTÓRICO */}
@@ -165,6 +165,17 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
           >
               <MaterialCommunityIcons name="notebook-outline" size={26} color={COLORS.orange} />
               <Text style={[styles.btnText, {color: COLORS.orange}]}>Diário</Text>
+          </TouchableOpacity>
+      </View>
+
+      <View style={styles.secondaryActions}>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={() => navigation.navigate('ContasReceber')}>
+              <MaterialCommunityIcons name="hand-coin-outline" size={16} color={COLORS.warning} />
+              <Text style={styles.secondaryBtnText}>Contas a Receber</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={() => navigation.navigate('VendasList')}>
+              <MaterialCommunityIcons name="chart-box-outline" size={16} color={COLORS.info} />
+              <Text style={styles.secondaryBtnText}>Relatórios de Vendas</Text>
           </TouchableOpacity>
       </View>
 
@@ -223,6 +234,9 @@ const styles = StyleSheet.create({
   gridBtns: { flexDirection: 'row', gap: 10, marginBottom: 25 },
   btnAction: { flex: 1, height: 80, borderRadius: RADIUS.md, borderWidth: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.surface },
   btnText: { fontWeight: '700', fontSize: 13, marginTop: 6 },
+  secondaryActions: { flexDirection: 'row', gap: 10, marginTop: -10, marginBottom: 24 },
+  secondaryBtn: { flex: 1, height: 40, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surfaceMuted, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
+  secondaryBtnText: { fontSize: 12, fontWeight: '700', color: COLORS.textPrimary },
   sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '700', color: COLORS.textDark },
   emptyBox: { padding: 20, backgroundColor: COLORS.surface, borderRadius: RADIUS.md, alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },

@@ -12,6 +12,7 @@ interface AuthContextData {
   changeTenant: (uid: string) => void;
   availableTenants: { uid: string; name: string }[];
   signIn: (email: string, password: string) => Promise<void>;
+  refreshUserProfile: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextData>({} as AuthContextData);
@@ -22,17 +23,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
   const [availableTenants, setAvailableTenants] = useState<{ uid: string; name: string }[]>([]);
 
+  const loadUserProfile = async (uid: string) => {
+    const userDocRef = doc(db, 'users', uid);
+    const userDoc = await getDoc(userDocRef);
+
+    if (!userDoc.exists()) {
+      setUser(null);
+      return null;
+    }
+
+    const raw = userDoc.data();
+    const userData = {
+      uid,
+      ...raw,
+      role: raw.role || 'admin',
+    } as User;
+
+    setUser(userData);
+    if (!selectedTenantId) setSelectedTenantId(userData.uid);
+    return userData;
+  };
+
   useEffect(() => {
     let unsubscribeShares: Unsubscribe | undefined;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          const userDocRef = doc(db, 'users', firebaseUser.uid);
-          const userDoc = await getDoc(userDocRef);
-        
-          if (userDoc.exists()) {
-            const userData = { uid: firebaseUser.uid, ...userDoc.data() } as User;
+          const userData = await loadUserProfile(firebaseUser.uid);
+          if (userData) {
             setUser(userData);
             
             // Se não tiver selecionado, seleciona a própria conta
@@ -78,9 +97,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 setAvailableTenants(uniqueTenants);
             });
 
-          } else {
-            setUser(null);
-          }
+          } 
         } catch (error) {
            console.error('AuthContext Error:', error);
            setUser(null);
@@ -109,6 +126,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       await signInWithEmailAndPassword(auth, email, password);
   };
 
+  const refreshUserProfile = async () => {
+    if (!user?.uid) return;
+    await loadUserProfile(user.uid);
+  };
+
   return (
     <AuthContext.Provider value={{ 
         user, 
@@ -116,7 +138,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         selectedTenantId: selectedTenantId || (user?.uid || ''), 
         changeTenant,
         availableTenants,
-        signIn 
+        signIn,
+        refreshUserProfile
     }}>
       {!loading && children}
     </AuthContext.Provider>
