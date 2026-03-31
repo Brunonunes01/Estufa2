@@ -7,9 +7,9 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Switch,
 } from 'react-native';
+import { useNetInfo } from '@react-native-community/netinfo';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -20,10 +20,13 @@ import { useAppSettings } from '../../hooks/useAppSettings';
 import { changeCurrentUserPassword } from '../../services/securityService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import SectionHeading from '../../components/ui/SectionHeading';
+import { useFeedback } from '../../hooks/useFeedback';
 
 const SettingsScreen = () => {
   const { user, isAdmin, refreshUserProfile } = useAuth();
   const { settings, updateSettings } = useAppSettings();
+  const { showSuccess, showError, showWarning } = useFeedback();
+  const netInfo = useNetInfo();
 
   const [nome, setNome] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
@@ -69,7 +72,7 @@ const SettingsScreen = () => {
   const handleSaveConta = async () => {
     if (!user?.uid) return;
     if (!nome.trim()) {
-      Alert.alert('Atenção', 'Informe um nome válido.');
+      showWarning('Informe um nome válido.');
       return;
     }
     setSavingProfile(true);
@@ -82,10 +85,14 @@ const SettingsScreen = () => {
         await updateProfile(auth.currentUser, { displayName: nome.trim() });
       }
       await refreshUserProfile();
-      Alert.alert('Sucesso', 'Dados da conta atualizados.');
+      if (netInfo.isConnected === false) {
+        showWarning('Sem internet: alterações salvas localmente. Sincronizando...');
+      } else {
+        showSuccess('Dados da conta atualizados.');
+      }
     } catch (error) {
       console.error(error);
-      Alert.alert('Erro', 'Não foi possível atualizar a conta.');
+      showError('Não foi possível atualizar a conta.');
     } finally {
       setSavingProfile(false);
     }
@@ -101,10 +108,14 @@ const SettingsScreen = () => {
         defaultCobertura: defaultCobertura.trim(),
         updatedAt: new Date(),
       });
-      Alert.alert('Sucesso', 'Configurações padrão de estufa atualizadas.');
+      if (netInfo.isConnected === false) {
+        showWarning('Sem internet: alterações salvas localmente. Sincronizando...');
+      } else {
+        showSuccess('Configurações padrão de estufa atualizadas.');
+      }
     } catch (error) {
       console.error(error);
-      Alert.alert('Erro', 'Não foi possível salvar as configurações de estufa.');
+      showError('Não foi possível salvar as configurações de estufa.');
     } finally {
       setSavingDefaults(false);
     }
@@ -112,19 +123,19 @@ const SettingsScreen = () => {
 
   const handleAlterarSenha = async () => {
     if (!isAdmin) {
-      Alert.alert('Permissão negada', 'Somente administradores podem alterar a senha crítica.');
+      showWarning('Somente administradores podem alterar a senha crítica.');
       return;
     }
     if (!senhaAtual || !senhaNova || !senhaConfirmacao) {
-      Alert.alert('Atenção', 'Preencha todos os campos de segurança.');
+      showWarning('Preencha todos os campos de segurança.');
       return;
     }
     if (senhaNova.length < 6) {
-      Alert.alert('Atenção', 'A nova senha deve ter no mínimo 6 caracteres.');
+      showWarning('A nova senha deve ter no mínimo 6 caracteres.');
       return;
     }
     if (senhaNova !== senhaConfirmacao) {
-      Alert.alert('Atenção', 'A confirmação não confere.');
+      showWarning('A confirmação não confere.');
       return;
     }
 
@@ -134,13 +145,17 @@ const SettingsScreen = () => {
       setSenhaAtual('');
       setSenhaNova('');
       setSenhaConfirmacao('');
-      Alert.alert('Senha atualizada', 'Sua senha de administrador foi alterada com sucesso.');
+      if (netInfo.isConnected === false) {
+        showWarning('Sem internet: alteração salva localmente. Sincronizando...');
+      } else {
+        showSuccess('Senha de administrador alterada com sucesso.');
+      }
     } catch (error: any) {
       console.error(error);
       if (error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential') {
-        Alert.alert('Erro', 'Senha atual inválida.');
+        showError('Senha atual inválida.');
       } else {
-        Alert.alert('Erro', 'Não foi possível alterar a senha.');
+        showError('Não foi possível alterar a senha.');
       }
     } finally {
       setSavingSecurity(false);

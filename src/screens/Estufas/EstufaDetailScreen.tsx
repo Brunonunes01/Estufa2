@@ -8,16 +8,16 @@ import {
   TouchableOpacity,
   RefreshControl,
   Share,
-  Alert,
   Modal,
   TextInput,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNetInfo } from '@react-native-community/netinfo';
 
 import { useAuth } from '../../hooks/useAuth';
-import { deleteEstufa, getEstufaById } from '../../services/estufaService';
-import { listPlantiosByEstufa } from '../../services/plantioService';
+import { deleteEstufa } from '../../services/estufaService';
 import { Estufa, Plantio } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import SectionHeading from '../../components/ui/SectionHeading';
@@ -25,61 +25,64 @@ import MetricCard from '../../components/ui/MetricCard';
 import { evaluateEstufaHealth } from '../../utils/estufaHealth';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { verifyCurrentUserPassword } from '../../services/securityService';
+import { useEstufaDetailData } from '../../hooks/queries/useEstufaDetailData';
+import { useFeedback } from '../../hooks/useFeedback';
+import { queryKeys } from '../../lib/queryClient';
 
 const EstufaDetailScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId, canDeleteEstufa } = useAuth();
   const { settings } = useAppSettings();
+  const { showError, showSuccess, showWarning } = useFeedback();
+  const netInfo = useNetInfo();
+  const queryClient = useQueryClient();
   const estufaId = route?.params?.estufaId;
   const isFocused = useIsFocused();
-
-  const [estufa, setEstufa] = useState<Estufa | null>(null);
-  const [plantios, setPlantios] = useState<Plantio[]>([]);
-  const [loading, setLoading] = useState(true);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
-  const [deleting, setDeleting] = useState(false);
+  const targetId = selectedTenantId || user?.uid;
+
+  const { data, isLoading, isFetching, isError, refetch } = useEstufaDetailData(estufaId, targetId);
+  const estufa: Estufa | null = data?.estufa || null;
+  const plantios: Plantio[] = data?.plantios || [];
+  const loading = isLoading || isFetching;
+
+  const deleteEstufaMutation = useMutation({
+    mutationFn: (id: string) => deleteEstufa(id),
+    onSuccess: async () => {
+      await Promise.all([
+        targetId ? queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(targetId) }) : Promise.resolve(),
+        targetId ? queryClient.invalidateQueries({ queryKey: queryKeys.estufasList(targetId) }) : Promise.resolve(),
+      ]);
+
+      setPasswordModalVisible(false);
+      setConfirmDeleteVisible(false);
+
+      if (netInfo.isConnected === false) {
+        showWarning('Sem internet: exclusão salva localmente. Sincronizando...');
+      } else {
+        showSuccess('Estufa excluída com sucesso.');
+      }
+
+      navigation.navigate('EstufasList');
+    },
+    onError: () => {
+      showError('Falha ao excluir a estufa.');
+    },
+  });
 
   const isOwner = estufa?.userId === user?.uid;
 
-  const loadData = async () => {
-    if (!estufaId) {
-      setLoading(false);
-      return;
-    }
-
-    const targetId = selectedTenantId || user?.uid;
-    if (!targetId) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const [estufaData, plantiosData] = await Promise.all([
-        getEstufaById(estufaId),
-        listPlantiosByEstufa(targetId, estufaId),
-      ]);
-
-      setEstufa(estufaData);
-
-      plantiosData.sort((a, b) => {
-        if (a.status === 'finalizado' && b.status !== 'finalizado') return 1;
-        if (a.status !== 'finalizado' && b.status === 'finalizado') return -1;
-        return b.dataPlantio.seconds - a.dataPlantio.seconds;
-      });
-      setPlantios(plantiosData);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    if (isFocused && targetId) refetch();
+  }, [isFocused, targetId, refetch]);
 
   useEffect(() => {
-    if (isFocused) loadData();
-  }, [estufaId, isFocused, selectedTenantId]);
+    if (isError) {
+      showError('Não foi possível carregar a estufa.');
+    }
+  }, [isError, showError]);
 
   const handleShareLocation = async () => {
     if (!estufa?.latitude || !estufa?.longitude) return;
@@ -98,7 +101,7 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
 
   const openDeleteFlow = () => {
     if (!canDeleteEstufa) {
-      Alert.alert('Permissão negada', 'Apenas administradores da conta principal podem excluir estufas.');
+      showWarning('Apenas administradores da conta principal podem excluir estufas.');
       return;
     }
     setConfirmDeleteVisible(true);
@@ -112,14 +115,13 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
   };
 
   const handleDeleteEstufa = async () => {
-    if (!estufa?.id || deleting) return;
+    if (!estufa?.id || deleteEstufaMutation.isPending) return;
 
     if (!adminPassword.trim()) {
       setPasswordError('Informe a senha de administrador.');
       return;
     }
 
-    setDeleting(true);
     setPasswordError('');
 
     try {
@@ -128,17 +130,13 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
         setPasswordError('Senha incorreta. Tente novamente.');
         return;
       }
-
-      await deleteEstufa(estufa.id);
-      setPasswordModalVisible(false);
-
-      Alert.alert('Sucesso', 'Estufa excluída com sucesso.', [
-        { text: 'OK', onPress: () => navigation.navigate('EstufasList') },
-      ]);
-    } catch (error) {
-      Alert.alert('Erro', 'Falha ao excluir a estufa.');
-    } finally {
-      setDeleting(false);
+      deleteEstufaMutation.mutate(estufa.id);
+    } catch (error: any) {
+      if (error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential') {
+        setPasswordError('Senha incorreta. Tente novamente.');
+      } else {
+        showError('Falha ao validar senha de administrador.');
+      }
     }
   };
 
@@ -218,7 +216,7 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
   return (
     <ScrollView
       style={[styles.container, settings.darkMode && styles.containerDark]}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} colors={[COLORS.primary]} />}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} colors={[COLORS.primary]} />}
     >
       <View style={styles.header}>
         <View style={styles.headerTop}>
@@ -352,7 +350,7 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
             <Text style={styles.deleteZoneText}>
               Exclua esta estufa somente quando tiver certeza. Essa ação é irreversível.
             </Text>
-            <TouchableOpacity style={styles.deleteBtn} onPress={openDeleteFlow} disabled={deleting}>
+            <TouchableOpacity style={styles.deleteBtn} onPress={openDeleteFlow} disabled={deleteEstufaMutation.isPending}>
               <MaterialCommunityIcons name="trash-can-outline" size={18} color={COLORS.textLight} />
               <Text style={styles.deleteBtnText}>Excluir Estufa</Text>
             </TouchableOpacity>
@@ -377,11 +375,11 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
               <TouchableOpacity
                 style={styles.modalBtnCancel}
                 onPress={() => setConfirmDeleteVisible(false)}
-                disabled={deleting}
+                disabled={deleteEstufaMutation.isPending}
               >
                 <Text style={styles.modalBtnCancelText}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalBtnDelete} onPress={proceedToPasswordValidation} disabled={deleting}>
+              <TouchableOpacity style={styles.modalBtnDelete} onPress={proceedToPasswordValidation} disabled={deleteEstufaMutation.isPending}>
                 <Text style={styles.modalBtnDeleteText}>Excluir</Text>
               </TouchableOpacity>
             </View>
@@ -409,19 +407,19 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
               placeholder="Senha de administrador"
               placeholderTextColor={COLORS.textPlaceholder}
               secureTextEntry
-              editable={!deleting}
+              editable={!deleteEstufaMutation.isPending}
             />
             {passwordError ? <Text style={styles.modalErrorText}>{passwordError}</Text> : null}
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.modalBtnCancel}
                 onPress={() => setPasswordModalVisible(false)}
-                disabled={deleting}
+                disabled={deleteEstufaMutation.isPending}
               >
                 <Text style={styles.modalBtnCancelText}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalBtnDelete} onPress={handleDeleteEstufa} disabled={deleting}>
-                {deleting ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.modalBtnDeleteText}>Excluir</Text>}
+              <TouchableOpacity style={styles.modalBtnDelete} onPress={handleDeleteEstufa} disabled={deleteEstufaMutation.isPending}>
+                {deleteEstufaMutation.isPending ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.modalBtnDeleteText}>Excluir</Text>}
               </TouchableOpacity>
             </View>
           </View>

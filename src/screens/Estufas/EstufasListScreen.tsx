@@ -1,44 +1,37 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, StatusBar, Alert } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { useAuth } from '../../hooks/useAuth';
-import { listEstufas } from '../../services/estufaService';
-import { listAllPlantios } from '../../services/plantioService';
 import { Estufa, Plantio } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import SectionHeading from '../../components/ui/SectionHeading';
 import { evaluateEstufaHealth } from '../../utils/estufaHealth';
 import { useAppSettings } from '../../hooks/useAppSettings';
+import { useEstufasListData } from '../../hooks/queries/useEstufasListData';
+import { useFeedback } from '../../hooks/useFeedback';
 
 const EstufasListScreen = ({ navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
   const { settings } = useAppSettings();
-  const [estufas, setEstufas] = useState<Estufa[]>([]);
-  const [plantios, setPlantios] = useState<Plantio[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { showError, showWarning } = useFeedback();
+  const targetId = selectedTenantId || user?.uid;
+  const { data, isLoading, isFetching, isError, refetch } = useEstufasListData(targetId);
+  const estufas: Estufa[] = data?.estufas || [];
+  const plantios: Plantio[] = data?.activePlantios || [];
+  const loading = isLoading || isFetching;
   const isFocused = useIsFocused();
 
-  const carregarDados = async () => {
-    const idBusca = selectedTenantId || user?.uid;
-    if (!idBusca) return;
-
-    setLoading(true);
-    try {
-      const [listaEstufas, listaPlantios] = await Promise.all([listEstufas(idBusca), listAllPlantios(idBusca)]);
-      setEstufas(listaEstufas);
-      setPlantios(listaPlantios);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    if (isFocused && targetId) refetch();
+  }, [isFocused, targetId, refetch]);
 
   useEffect(() => {
-    if (isFocused) carregarDados();
-  }, [isFocused, selectedTenantId]);
+    if (isError) {
+      showError('Não foi possível carregar a lista de estufas.');
+    }
+  }, [isError, showError]);
 
   const activePlantioByEstufa = useMemo(() => {
     const map: Record<string, Plantio | null> = {};
@@ -56,6 +49,7 @@ const EstufasListScreen = ({ navigation }: any) => {
         { text: 'Cancelar', style: 'cancel' },
         { text: 'Criar Ciclo', onPress: () => navigation.navigate('PlantioForm', { estufaId }) },
       ]);
+      showWarning('Sem ciclo ativo nesta estufa.');
       return;
     }
 
@@ -137,7 +131,7 @@ const EstufasListScreen = ({ navigation }: any) => {
         data={estufas}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={carregarDados} tintColor={COLORS.textLight} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={COLORS.textLight} />}
         ListEmptyComponent={
           !loading ? (
             <View style={styles.emptyContainer}>

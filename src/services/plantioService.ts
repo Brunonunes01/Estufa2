@@ -143,3 +143,24 @@ export const listAllPlantios = async (userId: string): Promise<Plantio[]> => {
     return []; 
   }
 };
+
+export const listActivePlantiosByUser = async (userId: string): Promise<Plantio[]> => {
+  const plantios: Plantio[] = [];
+  try {
+    const q = query(
+      collection(db, 'plantios'),
+      where("userId", "==", userId),
+      where("status", "in", ['em_desenvolvimento', 'em_colheita'])
+    );
+
+    const querySnapshot = await getDocs(q);
+    querySnapshot.forEach((itemDoc) => {
+      plantios.push({ id: itemDoc.id, ...itemDoc.data() } as Plantio);
+    });
+
+    return plantios;
+  } catch (error) {
+    console.error("Erro ao listar plantios ativos:", error);
+    return [];
+  }
+};

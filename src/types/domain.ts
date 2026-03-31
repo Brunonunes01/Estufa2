@@ -90,6 +90,7 @@ export interface Colheita extends BaseDoc {
   pesoBruto?: number;   
   pesoLiquido?: number; 
   dataVencimento?: Timestamp | null; 
+  valorTotal?: number;
 }
 
 export interface Insumo extends BaseDoc {

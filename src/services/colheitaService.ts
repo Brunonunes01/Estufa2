@@ -9,7 +9,9 @@ import {
   doc, 
   Timestamp, 
   getDoc, 
-  updateDoc 
+  updateDoc,
+  getAggregateFromServer,
+  sum,
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Colheita } from '../types/domain';
@@ -48,6 +50,7 @@ export const createColheita = async (
     dataPagamento: isPrazo ? null : dataFinal,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
+    valorTotal: (data.quantidade || 0) * (data.precoUnitario || 0),
   };
 
   // Remove o campo local Date antes de mandar pro Firestore
@@ -183,12 +186,34 @@ export const updateColheita = async (id: string, data: ColheitaFormData) => {
             updateData.statusPagamento = 'pago';
             updateData.dataPagamento = Timestamp.now();
         }
+        updateData.valorTotal = (data.quantidade || 0) * (data.precoUnitario || 0);
         updateData.updatedAt = Timestamp.now();
         await updateDoc(docRef, updateData);
     } catch (error) {
         console.error("Erro ao atualizar colheita:", error);
         throw new Error("Falha ao atualizar venda.");
     }
+};
+
+export const getTotalContasAReceber = async (userId: string): Promise<number> => {
+  try {
+    const q = query(
+      collection(db, 'colheitas'),
+      where("userId", "==", userId),
+      where("metodoPagamento", "==", "prazo"),
+      where("statusPagamento", "==", "pendente")
+    );
+
+    const snapshot = await getAggregateFromServer(q, {
+      total: sum('valorTotal'),
+    });
+
+    return snapshot.data().total || 0;
+  } catch (error) {
+    // fallback para documentos antigos sem valorTotal
+    const contas = await listContasAReceber(userId);
+    return contas.reduce((acc, item) => acc + item.quantidade * (item.precoUnitario || 0), 0);
+  }
 };
 
 export const deleteColheita = async (colheitaId: string) => {

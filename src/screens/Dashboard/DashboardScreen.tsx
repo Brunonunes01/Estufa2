@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,8 +6,8 @@ import {
   TouchableOpacity,
   ScrollView,
   StatusBar,
-  Alert,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
@@ -16,28 +16,37 @@ import { useIsFocused } from '@react-navigation/native';
 
 import { auth } from '../../services/firebaseConfig';
 import { useAuth } from '../../hooks/useAuth';
-import { listEstufas } from '../../services/estufaService';
-import { listAllPlantios } from '../../services/plantioService';
-import { listContasAReceber } from '../../services/colheitaService';
-import { listDespesas } from '../../services/despesaService';
 import { Estufa, Plantio } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import SectionHeading from '../../components/ui/SectionHeading';
 import MetricCard from '../../components/ui/MetricCard';
 import { evaluateEstufaHealth } from '../../utils/estufaHealth';
 import { useAppSettings } from '../../hooks/useAppSettings';
+import { useDashboardSummary } from '../../hooks/queries/useDashboardSummary';
+import { useFeedback } from '../../hooks/useFeedback';
 
 const DashboardScreen = ({ navigation }: any) => {
   const { user, selectedTenantId, changeTenant, availableTenants } = useAuth();
   const { settings } = useAppSettings();
+  const { showError, showWarning } = useFeedback();
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
 
-  const [estufas, setEstufas] = useState<Estufa[]>([]);
-  const [plantios, setPlantios] = useState<Plantio[]>([]);
-  const [totalReceber, setTotalReceber] = useState(0);
-  const [totalPagar, setTotalPagar] = useState(0);
-  const [loadingResumo, setLoadingResumo] = useState(true);
+  const targetId = selectedTenantId || user?.uid;
+
+  const {
+    data,
+    isLoading,
+    isFetching,
+    isError,
+    refetch,
+  } = useDashboardSummary(targetId);
+
+  const estufas: Estufa[] = data?.estufas || [];
+  const plantios: Plantio[] = data?.activePlantios || [];
+  const totalReceber = data?.totalReceber || 0;
+  const totalPagar = data?.totalPagar || 0;
+  const loadingResumo = isLoading || isFetching;
 
   const navigateTo = (screen: string, params?: Record<string, any>) => navigation.navigate(screen, params);
 
@@ -51,38 +60,15 @@ const DashboardScreen = ({ navigation }: any) => {
     return `Estufa: ${nomeAtual}`;
   };
 
-  const carregarResumo = async () => {
-    const targetId = selectedTenantId || user?.uid;
-    if (!targetId) return;
-
-    setLoadingResumo(true);
-    try {
-      const [estufasData, plantiosData, contasData, despesasData] = await Promise.all([
-        listEstufas(targetId),
-        listAllPlantios(targetId),
-        listContasAReceber(targetId),
-        listDespesas(targetId),
-      ]);
-
-      setEstufas(estufasData);
-      setPlantios(plantiosData);
-      setTotalReceber(contasData.reduce((acc, item) => acc + item.quantidade * (item.precoUnitario || 0), 0));
-      setTotalPagar(
-        despesasData
-          .filter((despesa) => despesa.status === 'pendente')
-          .reduce((acc, despesa) => acc + (despesa.valor || 0), 0)
-      );
-    } catch (error) {
-      console.error(error);
-      Alert.alert('Erro', 'Não foi possível carregar os indicadores do painel.');
-    } finally {
-      setLoadingResumo(false);
-    }
-  };
+  useEffect(() => {
+    if (isFocused && targetId) refetch();
+  }, [isFocused, targetId, refetch]);
 
   useEffect(() => {
-    if (isFocused) carregarResumo();
-  }, [isFocused, selectedTenantId]);
+    if (isError) {
+      showError('Não foi possível carregar os indicadores do painel.');
+    }
+  }, [isError, showError]);
 
   const activePlantioByEstufa = useMemo(() => {
     const map: Record<string, Plantio | null> = {};
@@ -93,10 +79,7 @@ const DashboardScreen = ({ navigation }: any) => {
     return map;
   }, [estufas, plantios]);
 
-  const totalCiclosAtivos = useMemo(
-    () => plantios.filter((plantio) => plantio.status !== 'finalizado').length,
-    [plantios]
-  );
+  const totalCiclosAtivos = plantios.length;
 
   const healthByEstufa = useMemo(() => {
     return estufas.reduce<Record<string, ReturnType<typeof evaluateEstufaHealth>>>((acc, estufa) => {
@@ -124,6 +107,7 @@ const DashboardScreen = ({ navigation }: any) => {
         { text: 'Cancelar', style: 'cancel' },
         { text: 'Criar Plantio', onPress: () => navigateTo('PlantioForm', { estufaId }) },
       ]);
+      showWarning('Sem ciclo ativo nesta estufa.');
       return;
     }
     navigateTo('ColheitaForm', { plantioId: plantioAtivo.id, estufaId });

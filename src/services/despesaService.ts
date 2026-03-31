@@ -8,7 +8,9 @@ import {
   deleteDoc, 
   doc, 
   Timestamp,
-  updateDoc
+  updateDoc,
+  getAggregateFromServer,
+  sum,
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Despesa } from '../types/domain';
@@ -83,4 +85,25 @@ export const deleteDespesa = async (despesaId: string) => {
         console.error("Erro ao deletar despesa:", error);
         throw new Error("Erro ao excluir registro.");
     }
+};
+
+export const getTotalDespesasPendentes = async (userId: string): Promise<number> => {
+  try {
+    const q = query(
+      collection(db, 'despesas'),
+      where("userId", "==", userId),
+      where("status", "==", "pendente")
+    );
+
+    const snapshot = await getAggregateFromServer(q, {
+      total: sum('valor'),
+    });
+
+    return snapshot.data().total || 0;
+  } catch (error) {
+    const despesas = await listDespesas(userId);
+    return despesas
+      .filter((despesa) => despesa.status === 'pendente')
+      .reduce((acc, despesa) => acc + (despesa.valor || 0), 0);
+  }
 };
