@@ -9,17 +9,18 @@ import {
   doc,
   getDoc,
   updateDoc,
-  deleteDoc // <-- IMPORTAÇÃO ADICIONADA
+  deleteDoc
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Plantio } from '../types/domain';
+import { assertTenantId } from './tenantGuard';
 
 // 1. CRIAR PLANTIO
-// Mudamos para Partial<Plantio> para aceitar dinamicamente todos os novos campos de rastreabilidade
 export const createPlantio = async (data: Partial<Plantio>, userId: string) => {
+  const tenantId = assertTenantId(userId);
   const novoPlantio = {
     ...data,
-    userId: userId,
+    userId: tenantId,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
     safraId: data.safraId || null,
@@ -27,7 +28,6 @@ export const createPlantio = async (data: Partial<Plantio>, userId: string) => {
 
   try {
     const docRef = await addDoc(collection(db, 'plantios'), novoPlantio);
-    console.log('Plantio/Lote criado com ID: ', docRef.id);
     return docRef.id;
   } catch (error) {
     console.error("Erro ao criar plantio: ", error);
@@ -37,8 +37,8 @@ export const createPlantio = async (data: Partial<Plantio>, userId: string) => {
 
 // 2. LISTAR PLANTIOS DE UMA ESTUFA
 export const listPlantiosByEstufa = async (userId: string, estufaId: string): Promise<Plantio[]> => {
+  const tenantId = assertTenantId(userId);
   if (!estufaId) {
-    console.warn("Aviso: listPlantiosByEstufa chamado sem estufaId.");
     return [];
   }
 
@@ -46,7 +46,7 @@ export const listPlantiosByEstufa = async (userId: string, estufaId: string): Pr
   try {
     const q = query(
       collection(db, 'plantios'), 
-      where("userId", "==", userId),
+      where("userId", "==", tenantId),
       where("estufaId", "==", estufaId)
     );
     
@@ -63,73 +63,86 @@ export const listPlantiosByEstufa = async (userId: string, estufaId: string): Pr
 };
 
 // 3. BUSCAR PLANTIO POR ID
-export const getPlantioById = async (plantioId: string): Promise<Plantio | null> => {
+export const getPlantioById = async (plantioId: string, userId: string): Promise<Plantio | null> => {
+  const tenantId = assertTenantId(userId);
   try {
     const docRef = doc(db, 'plantios', plantioId);
     const docSnap = await getDoc(docRef);
 
     if (docSnap.exists()) {
-      return { id: docSnap.id, ...docSnap.data() } as Plantio;
-    } else {
-      console.warn("Plantio não encontrado:", plantioId);
-      return null;
+      const data = docSnap.data() as Plantio;
+      if (data.userId !== tenantId) {
+        throw new Error("Acesso negado: este plantio não pertence ao seu tenant.");
+      }
+      return { id: docSnap.id, ...data };
     }
+    return null;
   } catch (error) {
     console.error("Erro ao buscar plantio por ID: ", error);
-    throw new Error('Não foi possível buscar o plantio.');
+    throw error;
   }
 };
 
-// 4. ATUALIZAR STATUS DO PLANTIO (Função específica)
+// 4. ATUALIZAR STATUS DO PLANTIO
 export const updatePlantioStatus = async (
   plantioId: string, 
-  status: "em_desenvolvimento" | "em_colheita" | "finalizado"
+  status: "em_desenvolvimento" | "em_colheita" | "finalizado",
+  userId: string
 ) => {
-  const plantioRef = doc(db, 'plantios', plantioId);
-  
+  const tenantId = assertTenantId(userId);
   try {
+    const plantio = await getPlantioById(plantioId, tenantId);
+    if (!plantio) throw new Error("Plantio não encontrado.");
+
+    const plantioRef = doc(db, 'plantios', plantioId);
     await updateDoc(plantioRef, {
       status: status,
       updatedAt: Timestamp.now()
     });
-    console.log('Status do plantio atualizado:', plantioId);
   } catch (error) {
     console.error("Erro ao atualizar status do plantio: ", error);
-    throw new Error('Não foi possível atualizar o status.');
+    throw error;
   }
 };
 
-// 5. ATUALIZAR PLANTIO COMPLETO (Função NOVA para a edição do formulário)
-export const updatePlantio = async (id: string, data: Partial<Plantio>) => {
+// 5. ATUALIZAR PLANTIO COMPLETO
+export const updatePlantio = async (id: string, data: Partial<Plantio>, userId: string) => {
+  const tenantId = assertTenantId(userId);
   try {
+    const plantio = await getPlantioById(id, tenantId);
+    if (!plantio) throw new Error("Plantio não encontrado.");
+
     const docRef = doc(db, 'plantios', id);
     await updateDoc(docRef, { ...data, updatedAt: Timestamp.now() });
-    console.log('Plantio atualizado:', id);
   } catch (error) {
     console.error("Erro ao atualizar plantio: ", error);
-    throw new Error("Erro ao atualizar plantio.");
+    throw error;
   }
 };
 
-// 6. DELETAR PLANTIO (Função NOVA para o formulário)
-export const deletePlantio = async (id: string) => {
+// 6. DELETAR PLANTIO
+export const deletePlantio = async (id: string, userId: string) => {
+  const tenantId = assertTenantId(userId);
   try {
+    const plantio = await getPlantioById(id, tenantId);
+    if (!plantio) throw new Error("Plantio não encontrado para exclusão.");
+
     const docRef = doc(db, 'plantios', id);
     await deleteDoc(docRef);
-    console.log('Plantio deletado:', id);
   } catch (error) {
     console.error("Erro ao eliminar plantio: ", error);
-    throw new Error("Não foi possível excluir o plantio.");
+    throw error;
   }
 };
 
 // 7. LISTAR TODOS OS PLANTIOS
 export const listAllPlantios = async (userId: string): Promise<Plantio[]> => {
+  const tenantId = assertTenantId(userId);
   const plantios: Plantio[] = [];
   try {
     const q = query(
       collection(db, 'plantios'), 
-      where("userId", "==", userId)
+      where("userId", "==", tenantId)
     );
     
     const querySnapshot = await getDocs(q);
@@ -140,16 +153,17 @@ export const listAllPlantios = async (userId: string): Promise<Plantio[]> => {
     return plantios;
   } catch (error) {
     console.error("Erro ao listar todos os plantios: ", error);
-    return []; 
+    throw new Error("Erro ao listar plantios.");
   }
 };
 
 export const listActivePlantiosByUser = async (userId: string): Promise<Plantio[]> => {
+  const tenantId = assertTenantId(userId);
   const plantios: Plantio[] = [];
   try {
     const q = query(
       collection(db, 'plantios'),
-      where("userId", "==", userId),
+      where("userId", "==", tenantId),
       where("status", "in", ['em_desenvolvimento', 'em_colheita'])
     );
 
@@ -161,6 +175,6 @@ export const listActivePlantiosByUser = async (userId: string): Promise<Plantio[
     return plantios;
   } catch (error) {
     console.error("Erro ao listar plantios ativos:", error);
-    return [];
+    throw new Error("Erro ao buscar plantios ativos.");
   }
 };

@@ -6,7 +6,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const FornecedorFormScreen = ({ route, navigation }: any) => {
-  const { user } = useAuth();
+  const { user, selectedTenantId } = useAuth();
   const fornecedorId = route.params?.fornecedorId;
   const isEditMode = !!fornecedorId;
   
@@ -15,19 +15,21 @@ const FornecedorFormScreen = ({ route, navigation }: any) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isEditMode && fornecedorId) {
-        getFornecedorById(fornecedorId).then(f => {
+    const targetId = selectedTenantId || user?.uid;
+    if (isEditMode && fornecedorId && targetId) {
+        getFornecedorById(fornecedorId, targetId).then(f => {
           if (f) { setNome(f.nome); setContato(f.contato || ''); setTelefone(f.telefone || ''); setEmail(f.email || ''); }
         });
     }
-  }, [fornecedorId]);
+  }, [fornecedorId, selectedTenantId]);
 
   const handleSave = async () => {
-    if (!user || !nome) return Alert.alert('Erro', 'Nome obrigatório.');
+    const targetId = selectedTenantId || user?.uid;
+    if (!targetId || !nome) return Alert.alert('Erro', 'Nome obrigatório.');
     setLoading(true);
     try {
       const formData: FornecedorFormData = { nome, contato: contato || null, telefone: telefone || null, email: email || null, endereco: null, observacoes: null };
-      if (isEditMode) await updateFornecedor(fornecedorId, formData); else await createFornecedor(formData, user.uid);
+      if (isEditMode) await updateFornecedor(fornecedorId, formData, targetId); else await createFornecedor(formData, targetId);
       navigation.goBack();
     } catch { Alert.alert('Erro', 'Falha ao salvar.'); } finally { setLoading(false); }
   };

@@ -1,5 +1,5 @@
 // src/navigation/RootNavigator.tsx
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationOptions } from '@react-navigation/native-stack';
 import { 
@@ -17,7 +17,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNetInfo } from '@react-native-community/netinfo';
 
 import { useAuth } from '../hooks/useAuth';
-import { useAppSettings } from '../hooks/useAppSettings';
+import { useThemeMode } from '../hooks/useThemeMode';
 import { COLORS, RADIUS } from '../constants/theme';
 
 // Importação dos ecrãs
@@ -54,18 +54,46 @@ const Stack = createNativeStackNavigator();
 // --- BANNER OFFLINE ---
 const OfflineBanner = () => {
   const netInfo = useNetInfo();
+  const [showReconnected, setShowReconnected] = useState(false);
+  const prevConnection = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    if (typeof netInfo.isConnected !== 'boolean') return;
+
+    if (prevConnection.current === false && netInfo.isConnected === true) {
+      setShowReconnected(true);
+      const timer = setTimeout(() => setShowReconnected(false), 2800);
+      prevConnection.current = netInfo.isConnected;
+      return () => clearTimeout(timer);
+    }
+
+    prevConnection.current = netInfo.isConnected;
+  }, [netInfo.isConnected]);
+
   if (netInfo.type !== 'unknown' && netInfo.isConnected === false) {
     return (
       <SafeAreaView style={{ backgroundColor: COLORS.warning }}>
         <View style={styles.offlineBannerContainer}>
           <MaterialCommunityIcons name="wifi-off" size={18} color={COLORS.textLight} style={{ marginRight: 8 }} />
           <Text style={styles.offlineBannerText}>
-            Modo Offline: Sincronização pendente
+            Sem conexão. Trabalhando offline. Os dados serão sincronizados quando a internet voltar.
           </Text>
         </View>
       </SafeAreaView>
     );
   }
+
+  if (showReconnected) {
+    return (
+      <SafeAreaView style={{ backgroundColor: COLORS.success }}>
+        <View style={[styles.offlineBannerContainer, styles.onlineBannerContainer]}>
+          <MaterialCommunityIcons name="wifi-check" size={18} color={COLORS.textLight} style={{ marginRight: 8 }} />
+          <Text style={styles.offlineBannerText}>Conexão restabelecida. Sincronizando dados...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return null;
 };
 
@@ -131,7 +159,7 @@ const AppStack = () => (
 
 export const RootNavigator = () => {
   const { user, loading } = useAuth();
-  const { settings } = useAppSettings();
+  const mode = useThemeMode();
   
   // Lógica para detetar se é Web e calcular largura
   const isWeb = Platform.OS === 'web';
@@ -150,7 +178,7 @@ export const RootNavigator = () => {
   }
 
   return (
-    <View style={[styles.outerContainer, { backgroundColor: isWideScreen ? COLORS.backgroundAlt : settings.darkMode ? COLORS.c1E293B : COLORS.background }]}>
+    <View style={[styles.outerContainer, { backgroundColor: isWideScreen ? COLORS.backgroundAlt : mode.pageBackground }]}>
       <View style={[
         styles.innerContainer, 
         {
@@ -158,7 +186,7 @@ export const RootNavigator = () => {
           elevation: isWideScreen ? 10 : 0,
           borderRadius: isWideScreen ? RADIUS.xl : 0,
           borderWidth: isWideScreen ? 1 : 0,
-          backgroundColor: settings.darkMode ? COLORS.c1E293B : COLORS.background,
+          backgroundColor: mode.pageBackground,
         }
       ]}>
         <OfflineBanner />
@@ -208,6 +236,9 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     justifyContent: 'center',
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ? StatusBar.currentHeight + 5 : 10 : 10
+  },
+  onlineBannerContainer: {
+    backgroundColor: COLORS.success,
   },
   offlineBannerText: {
     color: COLORS.textLight,

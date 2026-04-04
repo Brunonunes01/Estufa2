@@ -7,4 +7,8 @@ export const useDashboardSummary = (tenantId?: string) =>
     queryKey: queryKeys.dashboard(tenantId || 'none'),
     queryFn: () => getDashboardSummary(tenantId as string),
     enabled: !!tenantId,
+    staleTime: 1000 * 60 * 5,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
   });

@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { useThemeMode } from '../../hooks/useThemeMode';
 
 interface MetricCardProps {
   label: string;
@@ -8,25 +10,32 @@ interface MetricCardProps {
   hint?: string;
   style?: ViewStyle;
   tone?: 'default' | 'success' | 'warning' | 'danger';
+  icon?: string;
+  iconColor?: string;
 }
 
 const toneStyles = {
-  default: { bg: COLORS.surface, value: COLORS.textPrimary, border: COLORS.border },
-  success: { bg: COLORS.successSoft, value: COLORS.success, border: COLORS.c86EFAC },
-  warning: { bg: COLORS.warningSoft, value: COLORS.warning, border: COLORS.cFED7AA },
-  danger: { bg: COLORS.dangerBg, value: COLORS.danger, border: COLORS.cFECACA },
+  default: { bg: COLORS.surface, value: COLORS.textPrimary, border: COLORS.border, hint: COLORS.textSecondary },
+  success: { bg: COLORS.successSoft, value: COLORS.success, border: COLORS.c86EFAC, hint: COLORS.success },
+  warning: { bg: COLORS.warningSoft, value: COLORS.warning, border: COLORS.cFED7AA, hint: COLORS.warning },
+  danger: { bg: COLORS.dangerBg, value: COLORS.danger, border: COLORS.cFECACA, hint: COLORS.danger },
 };
 
-const MetricCard = ({ label, value, hint, style, tone = 'default' }: MetricCardProps) => {
+const MetricCard = ({ label, value, hint, style, tone = 'default', icon, iconColor }: MetricCardProps) => {
+  const mode = useThemeMode();
   const palette = toneStyles[tone];
+  const effectiveIconColor = iconColor || (tone === 'default' ? mode.textPrimary : palette.value);
 
   return (
-    <View style={[styles.card, { backgroundColor: palette.bg, borderColor: palette.border }, style]}>
-      <Text style={styles.label}>{label}</Text>
-      <Text style={[styles.value, { color: palette.value }]} numberOfLines={1}>
+    <View style={[styles.card, { backgroundColor: tone === 'default' ? mode.surfaceBackground : palette.bg, borderColor: tone === 'default' ? mode.border : palette.border }, style]}>
+      <View style={styles.topRow}>
+        <Text style={[styles.label, { color: mode.textSecondary }]}>{label}</Text>
+        {icon ? <MaterialCommunityIcons name={icon as any} size={18} color={effectiveIconColor} /> : null}
+      </View>
+      <Text style={[styles.value, { color: tone === 'default' ? mode.textPrimary : palette.value }]} numberOfLines={1}>
         {value}
       </Text>
-      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+      {hint ? <Text style={[styles.hint, { color: tone === 'default' ? mode.textSecondary : palette.hint || COLORS.textSecondary }]}>{hint}</Text> : null}
     </View>
   );
 };
@@ -40,6 +49,11 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     justifyContent: 'center',
     ...SHADOWS.card,
+  },
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   label: {
     fontSize: TYPOGRAPHY.caption,

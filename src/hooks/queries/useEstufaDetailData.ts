@@ -7,9 +7,13 @@ export const useEstufaDetailData = (estufaId?: string, tenantId?: string) =>
   useQuery({
     queryKey: queryKeys.estufaDetail(estufaId || 'none', tenantId || 'none'),
     enabled: !!estufaId && !!tenantId,
+    staleTime: 1000 * 45,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
     queryFn: async () => {
       const [estufa, plantios] = await Promise.all([
-        getEstufaById(estufaId as string),
+        getEstufaById(estufaId as string, tenantId as string),
         listPlantiosByEstufa(tenantId as string, estufaId as string),
       ]);
 

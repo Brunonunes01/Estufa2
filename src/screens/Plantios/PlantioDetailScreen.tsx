@@ -40,11 +40,11 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
 
     setLoading(true);
     try {
-      const p = await getPlantioById(plantioId);
+      const p = await getPlantioById(plantioId, targetId);
       if (p) {
         setPlantio(p);
         
-        const estufa = await getEstufaById(p.estufaId);
+        const estufa = await getEstufaById(p.estufaId, targetId);
         const area = estufa?.areaM2 || 0;
 
         const [listaColheitas, , rentabilidade] = await Promise.all([
@@ -68,10 +68,13 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
   }, [plantioId, isFocused, selectedTenantId]);
 
   const handleFinalizar = () => {
+    const targetId = selectedTenantId || user?.uid;
+    if (!targetId) return;
+
     Alert.alert("Finalizar", "Deseja encerrar este ciclo?", [
         { text: "Cancelar", style: "cancel" },
         { text: "Sim, Finalizar", onPress: async () => {
-            await updatePlantioStatus(plantioId, 'finalizado');
+            await updatePlantioStatus(plantioId, 'finalizado', targetId);
             navigation.goBack();
         }}
     ]);

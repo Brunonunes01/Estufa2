@@ -12,7 +12,6 @@ import {
   TextInput,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useIsFocused } from '@react-navigation/native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNetInfo } from '@react-native-community/netinfo';
 
@@ -36,7 +35,6 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
   const netInfo = useNetInfo();
   const queryClient = useQueryClient();
   const estufaId = route?.params?.estufaId;
-  const isFocused = useIsFocused();
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
@@ -49,7 +47,7 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
   const loading = isLoading || isFetching;
 
   const deleteEstufaMutation = useMutation({
-    mutationFn: (id: string) => deleteEstufa(id),
+    mutationFn: (id: string) => deleteEstufa(id, targetId as string),
     onSuccess: async () => {
       await Promise.all([
         targetId ? queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(targetId) }) : Promise.resolve(),
@@ -73,10 +71,6 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
   });
 
   const isOwner = estufa?.userId === user?.uid;
-
-  useEffect(() => {
-    if (isFocused && targetId) refetch();
-  }, [isFocused, targetId, refetch]);
 
   useEffect(() => {
     if (isError) {

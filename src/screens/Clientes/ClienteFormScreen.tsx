@@ -7,7 +7,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const ClienteFormScreen = ({ route, navigation }: any) => {
-  const { user } = useAuth();
+  const { user, selectedTenantId } = useAuth();
   const clienteId = route.params?.clienteId;
   const isEditMode = !!clienteId;
   
@@ -19,20 +19,22 @@ const ClienteFormScreen = ({ route, navigation }: any) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isEditMode && clienteId) {
-      getClienteById(clienteId).then(data => {
+    const targetId = selectedTenantId || user?.uid;
+    if (isEditMode && clienteId && targetId) {
+      getClienteById(clienteId, targetId).then(data => {
         if (data) { setNome(data.nome); setTelefone(data.telefone || ''); setCidade(data.cidade || ''); setTipo(data.tipo || 'varejo'); setObservacoes(data.observacoes || ''); }
       });
     }
-  }, [clienteId]);
+  }, [clienteId, selectedTenantId]);
 
   const handleSave = async () => {
-    if (!user) return;
+    const targetId = selectedTenantId || user?.uid;
+    if (!targetId) return;
     if (!nome.trim()) return Alert.alert('Atenção', 'Nome obrigatório.');
     setLoading(true);
     try {
       const formData: ClienteFormData = { nome, telefone: telefone || null, cidade: cidade || null, tipo, observacoes: observacoes || null };
-      if (isEditMode) await updateCliente(clienteId, formData); else await createCliente(formData, user.uid);
+      if (isEditMode) await updateCliente(clienteId, formData, targetId); else await createCliente(formData, targetId);
       navigation.goBack();
     } catch { Alert.alert('Erro', 'Falha ao salvar.'); } finally { setLoading(false); }
   };

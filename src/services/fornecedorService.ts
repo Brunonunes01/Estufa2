@@ -6,12 +6,14 @@ import {
   where, 
   getDocs, 
   Timestamp,
-  doc, // NOVO: para referenciar documentos
-  getDoc, // NOVO: para buscar por ID
-  updateDoc // NOVO: para atualizar dados
+  doc, 
+  getDoc, 
+  updateDoc,
+  deleteDoc
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Fornecedor } from '../types/domain';
+import { assertTenantId } from './tenantGuard';
 
 // Dados que vêm do formulário
 export type FornecedorFormData = {
@@ -25,19 +27,16 @@ export type FornecedorFormData = {
 
 // 1. CRIAR FORNECEDOR
 export const createFornecedor = async (data: FornecedorFormData, userId: string) => {
+  const tenantId = assertTenantId(userId);
   const novoFornecedor = {
     ...data,
-    userId: userId,
+    userId: tenantId,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   };
 
   try {
     const docRef = await addDoc(collection(db, 'fornecedores'), novoFornecedor);
-    
-    // AQUI ESTÁ A CORREÇÃO (console.g -> console.log)
-    console.log('Fornecedor criado com ID: ', docRef.id);
-    
     return docRef.id;
   } catch (error) {
     console.error("Erro ao criar fornecedor: ", error);
@@ -47,11 +46,12 @@ export const createFornecedor = async (data: FornecedorFormData, userId: string)
 
 // 2. LISTAR FORNECEDORES
 export const listFornecedores = async (userId: string): Promise<Fornecedor[]> => {
+  const tenantId = assertTenantId(userId);
   const fornecedores: Fornecedor[] = [];
   try {
     const q = query(
       collection(db, 'fornecedores'), 
-      where("userId", "==", userId)
+      where("userId", "==", tenantId)
     );
     
     const querySnapshot = await getDocs(q);
@@ -67,35 +67,54 @@ export const listFornecedores = async (userId: string): Promise<Fornecedor[]> =>
   }
 };
 
-// 3. BUSCAR FORNECEDOR POR ID (NOVO)
-export const getFornecedorById = async (fornecedorId: string): Promise<Fornecedor | null> => {
+// 3. BUSCAR FORNECEDOR POR ID
+export const getFornecedorById = async (fornecedorId: string, userId: string): Promise<Fornecedor | null> => {
+  const tenantId = assertTenantId(userId);
   try {
     const docRef = doc(db, 'fornecedores', fornecedorId);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      return { id: docSnap.id, ...docSnap.data() } as Fornecedor;
+      const data = docSnap.data() as Fornecedor;
+      if (data.userId !== tenantId) {
+        throw new Error("Acesso negado: este fornecedor não pertence ao seu tenant.");
+      }
+      return { id: docSnap.id, ...data };
     } else {
       return null;
     }
   } catch (error) {
     console.error("Erro ao buscar fornecedor por ID: ", error);
-    throw new Error('Não foi possível buscar o fornecedor.');
+    throw error;
   }
 };
 
-// 4. ATUALIZAR FORNECEDOR (NOVO)
-export const updateFornecedor = async (fornecedorId: string, data: FornecedorFormData) => {
-  const fornecedorRef = doc(db, 'fornecedores', fornecedorId);
-  const dadosAtualizados = {
-    ...data,
-    updatedAt: Timestamp.now(),
-  };
-
+// 4. ATUALIZAR FORNECEDOR
+export const updateFornecedor = async (fornecedorId: string, data: FornecedorFormData, userId: string) => {
+  const tenantId = assertTenantId(userId);
   try {
-    await updateDoc(fornecedorRef, dadosAtualizados);
-    console.log('Fornecedor atualizado com ID: ', fornecedorId);
+    const fornecedor = await getFornecedorById(fornecedorId, tenantId);
+    if (!fornecedor) throw new Error("Fornecedor não encontrado.");
+
+    const fornecedorRef = doc(db, 'fornecedores', fornecedorId);
+    await updateDoc(fornecedorRef, {
+      ...data,
+      updatedAt: Timestamp.now(),
+    });
   } catch (error) {
     console.error("Erro ao atualizar fornecedor: ", error);
-    throw new Error('Não foi possível atualizar o fornecedor.');
+    throw error;
+  }
+};
+
+export const deleteFornecedor = async (fornecedorId: string, userId: string) => {
+  const tenantId = assertTenantId(userId);
+  try {
+    const fornecedor = await getFornecedorById(fornecedorId, tenantId);
+    if (!fornecedor) throw new Error("Fornecedor não encontrado para exclusão.");
+
+    await deleteDoc(doc(db, 'fornecedores', fornecedorId));
+  } catch (error) {
+    console.error("Erro ao excluir fornecedor: ", error);
+    throw error;
   }
 };

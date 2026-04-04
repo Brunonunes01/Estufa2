@@ -1,136 +1,221 @@
-// src/screens/Insumos/InsumosListScreen.tsx
-import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
-import { useAuth } from '../../hooks/useAuth';
-import { listInsumos } from '../../services/insumoService';
-import { Insumo } from '../../types/domain';
-import { useIsFocused } from '@react-navigation/native';
+import React, { useEffect } from 'react';
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { Insumo } from '../../types/domain';
+import { COLORS, RADIUS, SHADOWS, SPACING } from '../../constants/theme';
+import { useThemeMode } from '../../hooks/useThemeMode';
+import { useFeedback } from '../../hooks/useFeedback';
+import { useInsumosList } from '../../hooks/useInsumosList';
+import EmptyState from '../../components/ui/EmptyState';
+import SkeletonBlock from '../../components/ui/SkeletonBlock';
+import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 
 const InsumosListScreen = ({ navigation }: any) => {
-  const { user, selectedTenantId } = useAuth(); 
-  const [insumos, setInsumos] = useState<Insumo[]>([]);
-  const [loading, setLoading] = useState(true);
-  const isFocused = useIsFocused();
-
-  const loadData = async () => {
-    const idBusca = selectedTenantId || user?.uid;
-    if (!idBusca) return;
-
-    setLoading(true);
-    try {
-        const data = await listInsumos(idBusca);
-        setInsumos(data);
-    } catch (e) {
-        console.error(e);
-    } finally {
-        setLoading(false);
-    }
-  };
+  const theme = useThemeMode();
+  const { showError } = useFeedback();
+  const { insumos, lowStockCount, loading, refreshing, isError, refetch } = useInsumosList();
 
   useEffect(() => {
-    if (isFocused) loadData();
-  }, [isFocused, selectedTenantId]);
+    if (isError) showError('Não foi possível carregar os insumos.');
+  }, [isError, showError]);
 
-  // Render Item
   const renderItem = ({ item }: { item: Insumo }) => {
-      // CORREÇÃO: Verificação segura para evitar que "0" vase para o JSX
-      const isLowStock = item.estoqueMinimo !== null && item.estoqueMinimo !== undefined && item.estoqueAtual <= item.estoqueMinimo;
-      
-      return (
-        <TouchableOpacity 
-            style={styles.card}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('InsumoForm', { insumoId: item.id })}
-        >
-            <View style={styles.cardHeader}>
-                <View style={styles.iconBox}>
-                    <MaterialCommunityIcons 
-                        name={item.tipo === 'defensivo' ? 'bottle-tonic-skull' : 'sack'} 
-                        size={24} 
-                        color={COLORS.primary} 
-                    />
-                </View>
-                <View style={{flex: 1, paddingLeft: 12}}>
-                    <Text style={styles.cardTitle}>{item.nome}</Text>
-                    <Text style={styles.cardType}>{item.tipo.toUpperCase()}</Text>
-                </View>
-                
-                {/* CORREÇÃO: Usando ternário para garantir que renderize a View ou anule com segurança */}
-                {isLowStock ? (
-                    <View style={styles.alertBadge}>
-                        <MaterialCommunityIcons name="alert-circle" size={16} color={COLORS.textLight} />
-                        <Text style={styles.alertText}>BAIXO</Text>
-                    </View>
-                ) : null}
-            </View>
+    const minimo = item.estoqueMinimo ?? 0;
+    const isLowStock = item.estoqueMinimo !== null && item.estoqueAtual <= minimo;
+    const ratio = minimo > 0 ? Math.min(item.estoqueAtual / minimo, 1.6) : 1;
+    const ratioPercent = `${Math.max(ratio * 100, 8)}%` as `${number}%`;
 
-            <View style={styles.divider} />
+    return (
+      <TouchableOpacity
+        style={[styles.card, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}
+        activeOpacity={0.9}
+        onPress={() => navigation.navigate('InsumoForm', { insumoId: item.id })}
+      >
+        <View style={styles.cardHeader}>
+          <View style={[styles.iconBox, { backgroundColor: `${COLORS.primary}1A` }]}>
+            <MaterialCommunityIcons
+              name={item.tipo === 'defensivo' ? 'bottle-tonic-skull' : 'sack'}
+              size={22}
+              color={COLORS.primary}
+            />
+          </View>
 
-            <View style={styles.cardFooter}>
-                <View>
-                    <Text style={styles.footerLabel}>Estoque Atual</Text>
-                    <Text style={[styles.footerValue, isLowStock ? {color: COLORS.danger} : {color: COLORS.textDark}]}>
-                        {item.estoqueAtual} {item.unidadePadrao}
-                    </Text>
-                </View>
-                <View style={{alignItems: 'flex-end'}}>
-                    <Text style={styles.footerLabel}>Mínimo</Text>
-                    <Text style={styles.footerValue}>{item.estoqueMinimo !== null ? item.estoqueMinimo : 0} {item.unidadePadrao}</Text>
-                </View>
-            </View>
-        </TouchableOpacity>
-      );
+          <View style={styles.cardMain}>
+            <Text style={[styles.cardTitle, { color: theme.textPrimary }]}>{item.nome}</Text>
+            <Text style={[styles.cardType, { color: theme.textSecondary }]}>{item.tipo.toUpperCase()}</Text>
+          </View>
+
+          <View
+            style={[
+              styles.stockFlag,
+              { backgroundColor: isLowStock ? theme.dangerBackground : theme.successBackground },
+            ]}
+          >
+            <Text style={[styles.stockFlagText, { color: isLowStock ? COLORS.danger : COLORS.success }]}>
+              {isLowStock ? 'BAIXO' : 'OK'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={[styles.stockPanel, { backgroundColor: theme.surfaceMuted }]}>
+          <View style={styles.stockTopLine}>
+            <Text style={[styles.stockLabel, { color: theme.textSecondary }]}>Estoque Atual</Text>
+            <Text style={[styles.stockValue, { color: isLowStock ? COLORS.danger : theme.textPrimary }]}>
+              {item.estoqueAtual} {item.unidadePadrao}
+            </Text>
+          </View>
+          <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  width: ratioPercent,
+                  backgroundColor: isLowStock ? COLORS.danger : COLORS.success,
+                },
+              ]}
+            />
+          </View>
+          <Text style={[styles.minimumText, { color: theme.textSecondary }]}>
+            Mínimo recomendado: {minimo} {item.unidadePadrao}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}>
+      <ScreenHeaderCard
+        title="Insumos e Estoque"
+        subtitle="Acompanhe níveis críticos e faça reposição com agilidade."
+        badgeLabel="Estoque"
+        actionLabel="Novo Item"
+        actionIcon="plus"
+        onPressAction={() => navigation.navigate('InsumoForm')}
+      >
+        <View style={styles.headerStats}>
+          <View style={styles.headerStatChip}>
+            <Text style={styles.headerStatValue}>{insumos.length}</Text>
+            <Text style={styles.headerStatLabel}>Itens ativos</Text>
+          </View>
+          <View style={styles.headerStatChip}>
+            <Text style={styles.headerStatValue}>{lowStockCount}</Text>
+            <Text style={styles.headerStatLabel}>Estoque baixo</Text>
+          </View>
+          <TouchableOpacity style={styles.entryChip} onPress={() => navigation.navigate('InsumoEntry')}>
+            <MaterialCommunityIcons name="arrow-down-bold-box" size={16} color={COLORS.textLight} />
+            <Text style={styles.entryChipText}>Entrada</Text>
+          </TouchableOpacity>
+        </View>
+      </ScreenHeaderCard>
+
+      {loading ? (
+        <View style={styles.skeletonWrapper}>
+          <SkeletonBlock style={styles.skeletonCard} />
+          <SkeletonBlock style={styles.skeletonCard} />
+          <SkeletonBlock style={styles.skeletonCard} />
+        </View>
+      ) : null}
+
       <FlatList
         data={insumos}
-        keyExtractor={item => item.id}
+        keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} colors={[COLORS.primary]} />}
-        ListEmptyComponent={!loading ? <Text style={styles.empty}>Nenhum insumo cadastrado.</Text> : null}
+        refreshing={refreshing && !loading}
+        onRefresh={refetch}
+        ListEmptyComponent={
+          !loading ? (
+            <EmptyState
+              icon="flask-outline"
+              title="Nenhum insumo cadastrado"
+              description="Cadastre seus insumos para controlar estoque e custo médio."
+              actionLabel="Adicionar insumo"
+              onAction={() => navigation.navigate('InsumoForm')}
+            />
+          ) : null
+        }
         renderItem={renderItem}
       />
-      
-      {/* Botão de Adicionar (Principal) */}
+
       <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('InsumoForm')}>
         <MaterialCommunityIcons name="plus" size={32} color={COLORS.textLight} />
-      </TouchableOpacity>
-      
-      {/* Botão de Entrada Rápida (Secundário) */}
-      <TouchableOpacity style={styles.fabSmall} onPress={() => navigation.navigate('InsumoEntry')}>
-        <MaterialCommunityIcons name="arrow-down-bold-box" size={24} color={COLORS.textLight} />
       </TouchableOpacity>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  listContent: { padding: SPACING.lg, paddingBottom: 100 },
-  
-  card: { backgroundColor: COLORS.card, borderRadius: RADIUS.lg, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.card },
+  container: { flex: 1 },
+  listContent: { padding: SPACING.lg, paddingBottom: 90, paddingTop: SPACING.md },
+  headerStats: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  headerStatChip: {
+    flex: 1,
+    backgroundColor: COLORS.whiteAlpha12,
+    borderWidth: 1,
+    borderColor: COLORS.whiteAlpha20,
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  headerStatValue: { color: COLORS.textLight, fontSize: 15, fontWeight: '900' },
+  headerStatLabel: { color: COLORS.whiteAlpha80, marginTop: 2, fontSize: 10, fontWeight: '700' },
+  entryChip: {
+    height: 42,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    backgroundColor: COLORS.secondary,
+    borderWidth: 1,
+    borderColor: COLORS.whiteAlpha20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  entryChipText: { color: COLORS.textLight, fontSize: 12, fontWeight: '700' },
+
+  skeletonWrapper: { paddingHorizontal: SPACING.lg, gap: 10, marginTop: SPACING.md, marginBottom: 8 },
+  skeletonCard: { width: '100%', height: 144, borderRadius: RADIUS.lg },
+
+  card: {
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    ...SHADOWS.card,
+  },
   cardHeader: { flexDirection: 'row', alignItems: 'center' },
-  iconBox: { width: 48, height: 48, borderRadius: RADIUS.md, backgroundColor: COLORS.primaryLight, justifyContent: 'center', alignItems: 'center' },
-  cardTitle: { fontSize: TYPOGRAPHY.body, fontWeight: '800', color: COLORS.textDark },
-  cardType: { fontSize: 11, fontWeight: '600', color: COLORS.textGray, marginTop: 2 },
-  
-  alertBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.danger, paddingHorizontal: 8, paddingVertical: 4, borderRadius: RADIUS.sm },
-  alertText: { color: COLORS.textLight, fontSize: 10, fontWeight: '700', marginLeft: 4 },
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cardMain: { flex: 1, paddingLeft: 10 },
+  cardTitle: { fontSize: 15, fontWeight: '900' },
+  cardType: { marginTop: 2, fontSize: 11, fontWeight: '700' },
+  stockFlag: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  stockFlagText: { fontSize: 10, fontWeight: '800' },
 
-  divider: { height: 1, backgroundColor: COLORS.divider, marginVertical: 12 },
+  stockPanel: { marginTop: 12, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12 },
+  stockTopLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  stockLabel: { fontSize: 11, fontWeight: '700' },
+  stockValue: { fontSize: 15, fontWeight: '900' },
+  progressTrack: { marginTop: 8, height: 7, borderRadius: 99, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 99 },
+  minimumText: { marginTop: 7, fontSize: 11, fontWeight: '600' },
 
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between' },
-  footerLabel: { fontSize: 11, color: COLORS.textGray, marginBottom: 2 },
-  footerValue: { fontSize: TYPOGRAPHY.body, fontWeight: '700', color: COLORS.textDark },
-
-  empty: { textAlign: 'center', marginTop: 50, color: COLORS.textGray, fontSize: 16 },
-  
-  fab: { position: 'absolute', right: 20, bottom: 20, width: 64, height: 64, borderRadius: 32, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', ...SHADOWS.floating },
-  fabSmall: { position: 'absolute', right: 28, bottom: 100, width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.secondary, alignItems: 'center', justifyContent: 'center', ...SHADOWS.card },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOWS.floating,
+  },
 });
 
 export default InsumosListScreen;

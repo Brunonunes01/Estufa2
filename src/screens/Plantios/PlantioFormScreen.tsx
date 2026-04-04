@@ -50,7 +50,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
     } else {
       gerarCodigoLote();
     }
-  }, [editingId]);
+  }, [editingId, selectedTenantId]);
 
   const gerarCodigoLote = () => {
     const dataAtual = new Date();
@@ -61,22 +61,33 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
   };
 
   const loadPlantio = async (id: string) => {
-    const data = await getPlantioById(id);
-    if (data) {
-      setCodigoLote(data.codigoLote || '');
-      setCultura(data.cultura || '');
-      setVariedade(data.variedade || '');
-      setOrigemSemente(data.origemSemente || '');
-      setQuantidadePlantada(data.quantidadePlantada?.toString() || '');
-      setUnidadeQuantidade(data.unidadeQuantidade || 'mudas');
-      // Carrega o preço se existir
-      setPrecoEstimadoUnidade(data.precoEstimadoUnidade?.toString() || '');
-      setCicloDias(data.cicloDias?.toString() || '');
-      setObservacoes(data.observacoes || '');
+    const targetId = selectedTenantId || user?.uid;
+    if (!targetId) return;
+
+    try {
+      const data = await getPlantioById(id, targetId);
+      if (data) {
+        setCodigoLote(data.codigoLote || '');
+        setCultura(data.cultura || '');
+        setVariedade(data.variedade || '');
+        setOrigemSemente(data.origemSemente || '');
+        setQuantidadePlantada(data.quantidadePlantada?.toString() || '');
+        setUnidadeQuantidade(data.unidadeQuantidade || 'mudas');
+        // Carrega o preço se existir
+        setPrecoEstimadoUnidade(data.precoEstimadoUnidade?.toString() || '');
+        setCicloDias(data.cicloDias?.toString() || '');
+        setObservacoes(data.observacoes || '');
+      }
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Erro", "Não foi possível carregar os dados do plantio.");
     }
   };
 
   const handleDelete = () => {
+    const targetId = selectedTenantId || user?.uid;
+    if (!targetId) return;
+
     Alert.alert(
       "Eliminar Lote",
       "Tem a certeza? Isso apagará este registro de plantio e afetará o histórico financeiro.",
@@ -87,7 +98,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
           style: "destructive", 
           onPress: async () => {
             try {
-              await deletePlantio(editingId as string);
+              await deletePlantio(editingId as string, targetId);
               navigation.goBack();
             } catch (e) {
               Alert.alert("Erro", "Falha ao eliminar.");
@@ -144,13 +155,13 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
 
     try {
       if (isEditMode && editingId) {
-        await updatePlantio(editingId as string, plantioData as any);
+        await updatePlantio(editingId as string, plantioData as any, targetId);
       } else {
         await createPlantio(plantioData as any, targetId);
       }
       navigation.goBack();
-    } catch (e) {
-      Alert.alert("Erro", "Falha ao salvar o lote.");
+    } catch (e: any) {
+      Alert.alert("Erro", e.message || "Falha ao salvar o lote.");
     } finally {
       setLoading(false);
     }

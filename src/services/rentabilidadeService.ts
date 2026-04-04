@@ -23,7 +23,7 @@ export const calculateRentabilidadeByPlantio = async (
 
     // 1. Coleta de Dados
     const [plantio, colheitas, aplicacoes] = await Promise.all([
-        getPlantioById(plantioId),
+        getPlantioById(plantioId, userId),
         listColheitasByPlantio(userId, plantioId),
         listAplicacoesByPlantio(userId, plantioId),
     ]);
@@ -62,7 +62,7 @@ export const calculateRentabilidadeByPlantio = async (
 
     const insumosMap = new Map<string, Insumo>();
     if (insumoIdsFaltantes.size > 0) {
-        const promisesInsumos = Array.from(insumoIdsFaltantes).map(id => getInsumoById(id));
+        const promisesInsumos = Array.from(insumoIdsFaltantes).map(id => getInsumoById(id, userId));
         const fetchedInsumos = await Promise.all(promisesInsumos);
         fetchedInsumos.forEach(insumo => {
             if (insumo) insumosMap.set(insumo.id, insumo);

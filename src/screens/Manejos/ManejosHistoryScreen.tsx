@@ -57,13 +57,16 @@ const ManejosHistoryScreen = ({ route, navigation }: any) => {
   }, [isFocused, selectedTenantId, plantioId]);
 
   const handleDelete = (id: string) => {
+    const targetId = selectedTenantId || user?.uid;
+    if (!targetId) return;
+
     Alert.alert(
       "Apagar Registo",
       "Deseja remover este evento do diário?",
       [
         { text: "Cancelar", style: "cancel" },
         { text: "Apagar", style: "destructive", onPress: async () => {
-            await deleteManejo(id);
+            await deleteManejo(id, targetId);
             fetchManejos();
         }}
       ]

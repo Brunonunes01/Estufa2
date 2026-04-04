@@ -7,10 +7,13 @@ import {
   getDocs, 
   Timestamp,
   runTransaction, 
-  doc 
+  doc,
+  getDoc,
+  deleteDoc
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Aplicacao, Insumo, AplicacaoItem } from '../types/domain';
+import { assertTenantId } from './tenantGuard';
 
 // 1. TIPO EXPORTADO PARA A TELA
 export interface AplicacaoItemData {
@@ -38,6 +41,7 @@ export const createAplicacao = async (
   data: AplicacaoFormData, 
   userId: string 
 ) => {
+  const tenantId = assertTenantId(userId);
 
   if (data.itens.length === 0) {
     throw new Error("A aplicação precisa ter pelo menos um insumo.");
@@ -89,6 +93,9 @@ export const createAplicacao = async (
         }
 
         const insumoData = insumoDoc.data() as Insumo;
+        if (insumoData.userId !== tenantId) {
+          throw new Error(`Acesso negado: o insumo "${item.nomeInsumo}" não pertence ao seu tenant.`);
+        }
 
         const estoqueAtual = insumoData.estoqueAtual || 0;
         const novoEstoque = estoqueAtual - (item.quantidadeAplicada || 0);
@@ -122,7 +129,7 @@ export const createAplicacao = async (
       const novaAplicacao = {
         plantioId: data.plantioId,
         estufaId: data.estufaId,
-        userId: userId,
+        userId: tenantId,
         dataAplicacao: data.dataAplicacao || Timestamp.now(),
         observacoes: data.observacoes || null,
         volumeTanque: data.volumeTanque || 0,
@@ -143,11 +150,12 @@ export const createAplicacao = async (
 
 // 4. LISTAR APLICAÇÕES
 export const listAplicacoesByPlantio = async (userId: string, plantioId: string): Promise<Aplicacao[]> => {
+  const tenantId = assertTenantId(userId);
   const aplicacoes: Aplicacao[] = [];
   try {
     const q = query(
       collection(db, 'aplicacoes'), 
-      where("userId", "==", userId),
+      where("userId", "==", tenantId),
       where("plantioId", "==", plantioId)
     );
     
@@ -160,6 +168,41 @@ export const listAplicacoesByPlantio = async (userId: string, plantioId: string)
     return aplicacoes;
   } catch (error) {
     console.error("Erro ao listar aplicações:", error);
-    return [];
+    throw new Error("Erro ao buscar registros de aplicação.");
+  }
+};
+
+export const getAplicacaoById = async (id: string, userId: string): Promise<Aplicacao | null> => {
+  const tenantId = assertTenantId(userId);
+  try {
+    const docRef = doc(db, 'aplicacoes', id);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data() as Aplicacao;
+      if (data.userId !== tenantId) {
+        throw new Error("Acesso negado: este registro de aplicação não pertence ao seu tenant.");
+      }
+      return { id: docSnap.id, ...data };
+    }
+    return null;
+  } catch (error) {
+    console.error("Erro ao buscar aplicação por ID:", error);
+    throw error;
+  }
+};
+
+export const deleteAplicacao = async (id: string, userId: string) => {
+  const tenantId = assertTenantId(userId);
+  try {
+    const aplicacao = await getAplicacaoById(id, tenantId);
+    if (!aplicacao) throw new Error("Registro de aplicação não encontrado para exclusão.");
+
+    // NOTA: Excluir uma aplicação pode exigir reverter o estoque dos insumos.
+    // Para simplificar e manter a segurança de dados, apenas excluímos aqui.
+    // Em um sistema real, isso deveria ser uma transação reversa.
+    await deleteDoc(doc(db, 'aplicacoes', id));
+  } catch (error) {
+    console.error("Erro ao eliminar aplicação:", error);
+    throw error;
   }
 };

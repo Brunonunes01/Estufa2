@@ -13,7 +13,7 @@ import { listFornecedores as listFornecedoresService } from '../../services/forn
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const InsumoEntryScreen = ({ navigation }: any) => {
-    const { user } = useAuth();
+    const { user, selectedTenantId } = useAuth();
 
     const [insumosList, setInsumosList] = useState<Insumo[]>([]);
     const [fornecedoresList, setFornecedoresList] = useState<Fornecedor[]>([]);
@@ -29,12 +29,13 @@ const InsumoEntryScreen = ({ navigation }: any) => {
 
     useEffect(() => {
         const loadInitialData = async () => {
-            if (!user) return;
+            const targetId = selectedTenantId || user?.uid;
+            if (!targetId) return;
             setLoadingData(true);
             try {
                 const [insumos, fornecedores] = await Promise.all([
-                    listInsumos(user.uid),
-                    listFornecedoresService(user.uid) 
+                    listInsumos(targetId),
+                    listFornecedoresService(targetId) 
                 ]);
 
                 setInsumosList(insumos);
@@ -63,7 +64,8 @@ const InsumoEntryScreen = ({ navigation }: any) => {
     }, [quantidadeComprada, custoUnitarioCompra]);
 
     const handleSaveEntry = async () => {
-        if (!user || !selectedInsumoId || !insumoSelecionado) {
+        const targetId = selectedTenantId || user?.uid;
+        if (!targetId || !selectedInsumoId || !insumoSelecionado) {
             Alert.alert('Erro', 'Selecione um insumo válido.');
             return;
         }
@@ -89,7 +91,7 @@ const InsumoEntryScreen = ({ navigation }: any) => {
 
         setLoadingForm(true);
         try {
-            await addEstoqueToInsumo(selectedInsumoId, entryData);
+            await addEstoqueToInsumo(selectedInsumoId, entryData, targetId);
             Alert.alert('Sucesso!', `Entrada de ${qtd} ${insumoSelecionado.unidadePadrao} registrada. O Custo Médio Ponderado foi atualizado.`);
             navigation.goBack(); 
         } catch (error) {

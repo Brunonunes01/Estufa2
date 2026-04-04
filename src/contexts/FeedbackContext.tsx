@@ -1,6 +1,6 @@
 import React, { createContext, ReactNode, useCallback, useMemo, useState } from 'react';
-import { Snackbar } from 'react-native-paper';
-import { COLORS } from '../constants/theme';
+import { Snackbar, useTheme } from 'react-native-paper';
+import { useThemeMode } from '../hooks/useThemeMode';
 
 type FeedbackType = 'success' | 'error' | 'warning';
 
@@ -26,6 +26,8 @@ export const FeedbackContext = createContext<FeedbackContextData>({} as Feedback
 
 export const FeedbackProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<SnackbarState>(initialState);
+  const paperTheme = useTheme();
+  const appTheme = useThemeMode();
 
   const hide = useCallback(() => {
     setState((prev) => ({ ...prev, visible: false }));
@@ -49,9 +51,9 @@ export const FeedbackProvider = ({ children }: { children: ReactNode }) => {
   );
 
   const backgroundByType = {
-    success: COLORS.success,
-    error: COLORS.danger,
-    warning: COLORS.warning,
+    success: appTheme.success,
+    error: appTheme.danger,
+    warning: appTheme.warning,
   } as const;
 
   return (
@@ -60,8 +62,9 @@ export const FeedbackProvider = ({ children }: { children: ReactNode }) => {
       <Snackbar
         visible={state.visible}
         onDismiss={hide}
-        duration={3000}
+        duration={3200}
         style={{ backgroundColor: backgroundByType[state.type], marginBottom: 16 }}
+        theme={{ colors: { inverseOnSurface: paperTheme.colors.onPrimary } }}
       >
         {state.message}
       </Snackbar>

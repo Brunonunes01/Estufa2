@@ -1,146 +1,206 @@
-// src/screens/Despesas/DespesasListScreen.tsx
-import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
-import { useAuth } from '../../hooks/useAuth';
-import { listDespesas, deleteDespesa, updateDespesaStatus } from '../../services/despesaService';
-import { Despesa } from '../../types/domain';
-import { useIsFocused } from '@react-navigation/native';
+import React, { useCallback, useEffect } from 'react';
+import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { useAuth } from '../../hooks/useAuth';
+import { Despesa } from '../../types/domain';
+import { COLORS, RADIUS, SHADOWS, SPACING } from '../../constants/theme';
+import { useThemeMode } from '../../hooks/useThemeMode';
+import { useFeedback } from '../../hooks/useFeedback';
+import { useDespesasList } from '../../hooks/useDespesasList';
+import EmptyState from '../../components/ui/EmptyState';
+import SkeletonBlock from '../../components/ui/SkeletonBlock';
+import LoadingButton from '../../components/ui/LoadingButton';
+import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 
 const DespesasListScreen = ({ navigation }: any) => {
-  const { user, selectedTenantId, isOwner } = useAuth();
-  const [despesas, setDespesas] = useState<Despesa[]>([]);
-  const [loading, setLoading] = useState(true);
-  const isFocused = useIsFocused();
+  const { isOwner } = useAuth();
+  const theme = useThemeMode();
+  const { showError, showSuccess } = useFeedback();
+  const {
+    despesas,
+    totalGasto,
+    totalPendente,
+    loading,
+    refreshing,
+    isError,
+    refetch,
+    deleteDespesa,
+    markDespesaAsPaid,
+    deletingId,
+    payingId,
+  } = useDespesasList();
 
-  const loadData = async () => {
-    const idBusca = selectedTenantId || user?.uid;
-    if (!idBusca) return;
-    
-    setLoading(true);
-    try {
-        const lista = await listDespesas(idBusca);
-        setDespesas(lista);
-    } catch (e) {
-        console.error(e);
-    } finally {
-        setLoading(false);
+  useEffect(() => {
+    if (isError) showError('Não foi possível carregar as despesas.');
+  }, [isError, showError]);
+
+  const handleDelete = useCallback(
+    (item: Despesa) => {
+      Alert.alert('Excluir', 'Remover esta despesa?', [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDespesa(item.id);
+              showSuccess('Despesa excluída.');
+            } catch {
+              showError('Não foi possível excluir a despesa.');
+            }
+          },
+        },
+      ]);
+    },
+    [deleteDespesa, showError, showSuccess]
+  );
+
+  const handleDarBaixa = useCallback(
+    (item: Despesa) => {
+      Alert.alert('Dar Baixa', 'Confirmar pagamento desta conta?', [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Confirmar',
+          onPress: async () => {
+            try {
+              await markDespesaAsPaid(item.id);
+              showSuccess('Pagamento registrado.');
+            } catch {
+              showError('Não foi possível atualizar a despesa.');
+            }
+          },
+        },
+      ]);
+    },
+    [markDespesaAsPaid, showError, showSuccess]
+  );
+
+  const getIcon = (cat: string) => {
+    switch (cat) {
+      case 'energia':
+        return 'lightning-bolt';
+      case 'agua':
+        return 'water';
+      case 'mao_de_obra':
+        return 'account-hard-hat';
+      case 'combustivel':
+        return 'gas-station';
+      case 'manutencao':
+        return 'tools';
+      default:
+        return 'cash-minus';
     }
   };
 
-  useEffect(() => {
-    if (isFocused) loadData();
-  }, [isFocused, selectedTenantId]);
-
-  const handleDelete = (item: Despesa) => {
-      Alert.alert("Excluir", "Remover esta despesa?", [
-          { text: "Cancelar", style: "cancel" },
-          { text: "Excluir", style: "destructive", onPress: async () => {
-              await deleteDespesa(item.id);
-              loadData();
-          }}
-      ]);
-  };
-
-  const handleDarBaixa = (item: Despesa) => {
-      Alert.alert("Dar Baixa", "Confirmar pagamento desta conta?", [
-          { text: "Cancelar", style: "cancel" },
-          { text: "Confirmar", onPress: async () => {
-              await updateDespesaStatus(item.id, 'pago');
-              loadData();
-          }}
-      ]);
-  };
-
-  const getIcon = (cat: string) => {
-      switch(cat) {
-          case 'energia': return 'lightning-bolt';
-          case 'agua': return 'water';
-          case 'mao_de_obra': return 'account-hard-hat';
-          case 'combustivel': return 'gas-station';
-          case 'manutencao': return 'tools';
-          default: return 'cash-minus';
-      }
-  };
-
-  const totalGasto = despesas.reduce((acc, curr) => acc + curr.valor, 0);
-  const totalPendente = despesas.filter(d => d.status === 'pendente').reduce((acc, curr) => acc + curr.valor, 0);
-
   return (
-    <View style={styles.container}>
-      <View style={styles.topInfo}>
-        <Text style={styles.topTitle}>Controle de Despesas</Text>
-        <Text style={styles.topSub}>Priorize o pagamento das contas pendentes.</Text>
-      </View>
-      <View style={styles.summaryContainer}>
-          <View style={styles.summaryBox}>
-              <Text style={styles.summaryLabel}>Total Geral</Text>
-              <Text style={[styles.summaryValue, styles.summaryDanger]}>R$ {totalGasto.toFixed(2)}</Text>
+    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}>
+      <ScreenHeaderCard
+        title="Financeiro de Saída"
+        subtitle="Gerencie vencimentos, pagamentos e custos operacionais."
+        badgeLabel="Despesas"
+        actionLabel="Nova Despesa"
+        actionIcon="plus"
+        onPressAction={() => navigation.navigate('DespesaForm')}
+      >
+        <View style={styles.headerStats}>
+          <View style={styles.headerStatChip}>
+            <Text style={styles.headerStatValue}>R$ {totalGasto.toFixed(0)}</Text>
+            <Text style={styles.headerStatLabel}>Total do período</Text>
           </View>
-          <View style={styles.summaryBox}>
-              <Text style={styles.summaryLabel}>A Pagar</Text>
-              <Text style={[styles.summaryValue, styles.summaryWarning]}>R$ {totalPendente.toFixed(2)}</Text>
+          <View style={styles.headerStatChip}>
+            <Text style={styles.headerStatValue}>R$ {totalPendente.toFixed(0)}</Text>
+            <Text style={styles.headerStatLabel}>A pagar</Text>
           </View>
-      </View>
+        </View>
+      </ScreenHeaderCard>
+
+      {loading ? (
+        <View style={styles.skeletonWrapper}>
+          <SkeletonBlock style={styles.skeletonCard} />
+          <SkeletonBlock style={styles.skeletonCard} />
+          <SkeletonBlock style={styles.skeletonCard} />
+        </View>
+      ) : null}
 
       <FlatList
         data={despesas}
-        keyExtractor={item => item.id}
+        keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
-        ListEmptyComponent={!loading ? (
-          <View style={styles.emptyState}>
-            <MaterialCommunityIcons name="receipt-text-outline" size={40} color={COLORS.textMuted} />
-            <Text style={styles.empty}>Nenhuma despesa registrada.</Text>
-          </View>
-        ) : null}
+        refreshing={refreshing && !loading}
+        onRefresh={refetch}
+        ListEmptyComponent={
+          !loading ? (
+            <EmptyState
+              icon="receipt-text-outline"
+              title="Nenhuma despesa registrada"
+              description="Registre sua primeira despesa para acompanhar contas pendentes."
+              actionLabel="Adicionar despesa"
+              onAction={() => navigation.navigate('DespesaForm')}
+            />
+          ) : null
+        }
         renderItem={({ item }) => {
-            const isPendente = item.status === 'pendente';
+          const isPendente = item.status === 'pendente';
+          const isDeleting = deletingId === item.id;
+          const isPaying = payingId === item.id;
 
-            return (
-              <View style={styles.card}>
-                <View style={styles.cardHeader}>
-                    <View style={styles.iconBox}>
-                        <MaterialCommunityIcons name={getIcon(item.categoria) as any} size={24} color={COLORS.danger} />
-                    </View>
-                    <View style={{flex: 1}}>
-                        <Text style={styles.title}>{item.descricao}</Text>
-                        <Text style={styles.date}>{item.dataDespesa.toDate().toLocaleDateString()}</Text>
-                        
-                        {isPendente && item.dataVencimento && (
-                            <Text style={styles.vencimento}>Vence em: {item.dataVencimento.toDate().toLocaleDateString()}</Text>
-                        )}
-                    </View>
-                    <View style={{alignItems: 'flex-end'}}>
-                        <Text style={styles.value}>R$ {item.valor.toFixed(2)}</Text>
-                        <View style={[styles.badge, { backgroundColor: isPendente ? COLORS.cFEF3C7 : COLORS.cD1FAE5 }]}>
-                            <Text style={[styles.badgeText, { color: isPendente ? COLORS.warning : COLORS.success }]}>
-                                {isPendente ? 'PENDENTE' : 'PAGO'}
-                            </Text>
-                        </View>
-                    </View>
+          return (
+            <View style={[styles.card, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
+              <View style={styles.cardTopRow}>
+                <View style={[styles.iconBox, { backgroundColor: `${COLORS.danger}1A` }]}>
+                  <MaterialCommunityIcons name={getIcon(item.categoria) as any} size={20} color={COLORS.danger} />
                 </View>
-
-                <View style={styles.actionsRow}>
-                    {isOwner && (
-                        <TouchableOpacity onPress={() => handleDelete(item)} style={{marginRight: 'auto'}}>
-                            <Text style={styles.deleteText}>Excluir</Text>
-                        </TouchableOpacity>
-                    )}
-
-                    {isPendente && (
-                        <TouchableOpacity style={styles.baixaBtn} onPress={() => handleDarBaixa(item)}>
-                            <MaterialCommunityIcons name="check-circle" size={16} color={COLORS.textLight} />
-                            <Text style={styles.baixaText}>Dar Baixa</Text>
-                        </TouchableOpacity>
-                    )}
+                <View style={styles.cardTitleArea}>
+                  <Text style={[styles.title, { color: theme.textPrimary }]}>{item.descricao}</Text>
+                  <Text style={[styles.date, { color: theme.textSecondary }]}>
+                    {item.dataDespesa.toDate().toLocaleDateString()}
+                  </Text>
+                </View>
+                <View style={[styles.statusPill, { backgroundColor: isPendente ? theme.warningBackground : theme.successBackground }]}>
+                  <Text style={[styles.statusPillText, { color: isPendente ? COLORS.warning : COLORS.success }]}>
+                    {isPendente ? 'PENDENTE' : 'PAGO'}
+                  </Text>
                 </View>
               </View>
-            );
+
+              <View style={[styles.moneyPanel, { backgroundColor: theme.surfaceMuted }]}>
+                <Text style={[styles.moneyLabel, { color: theme.textSecondary }]}>Valor</Text>
+                <Text style={[styles.moneyValue, { color: COLORS.danger }]}>R$ {item.valor.toFixed(2)}</Text>
+                {isPendente && item.dataVencimento ? (
+                  <Text style={[styles.dueText, { color: theme.textSecondary }]}>
+                    Vencimento: {item.dataVencimento.toDate().toLocaleDateString()}
+                  </Text>
+                ) : null}
+              </View>
+
+              <View style={[styles.actionsRow, { borderTopColor: theme.divider }]}>
+                {isOwner ? (
+                  <LoadingButton
+                    label="Excluir"
+                    variant="neutral"
+                    loading={isDeleting}
+                    onPress={() => handleDelete(item)}
+                    style={styles.deleteButton}
+                    textStyle={styles.deleteText}
+                  />
+                ) : (
+                  <View />
+                )}
+
+                {isPendente ? (
+                  <LoadingButton
+                    label="Dar baixa"
+                    loading={isPaying}
+                    onPress={() => handleDarBaixa(item)}
+                    style={styles.payButton}
+                  />
+                ) : null}
+              </View>
+            </View>
+          );
         }}
       />
-      {loading ? <ActivityIndicator size="small" color={COLORS.primary} style={styles.inlineLoader} /> : null}
-      
+
       <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('DespesaForm')}>
         <MaterialCommunityIcons name="plus" size={30} color={COLORS.textLight} />
       </TouchableOpacity>
@@ -149,37 +209,81 @@ const DespesasListScreen = ({ navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background, padding: SPACING.lg },
-  topInfo: { marginBottom: SPACING.md },
-  topTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.textPrimary },
-  topSub: { marginTop: 4, color: COLORS.textSecondary, fontSize: 13 },
-  summaryContainer: { flexDirection: 'row', gap: 10, marginBottom: SPACING.lg },
-  summaryBox: { flex: 1, padding: 15, borderRadius: RADIUS.md, alignItems: 'center', backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.card },
-  summaryLabel: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
-  summaryValue: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', marginTop: 5 },
-  summaryDanger: { color: COLORS.danger },
-  summaryWarning: { color: COLORS.warning },
-  listContent: { paddingBottom: 90 },
-  
-  card: { backgroundColor: COLORS.card, padding: SPACING.md, borderRadius: RADIUS.md, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.card },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  iconBox: { width: 44, height: 44, borderRadius: RADIUS.sm, backgroundColor: COLORS.dangerBg, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  title: { fontSize: TYPOGRAPHY.body, fontWeight: '800', color: COLORS.textDark },
-  date: { fontSize: 12, color: COLORS.textGray, marginTop: 2 },
-  vencimento: { fontSize: 11, color: COLORS.textPrimary, marginTop: 2, fontWeight: 'bold' },
-  value: { fontSize: TYPOGRAPHY.body, fontWeight: '800', color: COLORS.danger },
-  badge: { marginTop: 5, paddingHorizontal: 6, paddingVertical: 2, borderRadius: RADIUS.sm },
-  badgeText: { fontSize: 10, fontWeight: 'bold' },
-  
-  actionsRow: { flexDirection: 'row', justifyContent: 'flex-end', borderTopWidth: 1, borderTopColor: COLORS.divider, paddingTop: 10 },
-  deleteText: { fontSize: 13, color: COLORS.textGray, fontWeight: '600', paddingVertical: 5 },
-  baixaBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.success, paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.sm, gap: 5 },
-  baixaText: { color: COLORS.textLight, fontSize: 12, fontWeight: 'bold' },
-  
-  inlineLoader: { marginTop: 6 },
-  emptyState: { alignItems: 'center', marginTop: 50 },
-  empty: { textAlign: 'center', marginTop: 8, color: COLORS.textGray },
-  fab: { position: 'absolute', right: 20, bottom: 20, width: 62, height: 62, borderRadius: 31, backgroundColor: COLORS.modDespesas, alignItems: 'center', justifyContent: 'center', ...SHADOWS.floating }
+  container: { flex: 1 },
+  listContent: { paddingHorizontal: SPACING.lg, paddingBottom: 90, paddingTop: SPACING.md },
+  headerStats: { flexDirection: 'row', gap: 8 },
+  headerStatChip: {
+    flex: 1,
+    backgroundColor: COLORS.whiteAlpha12,
+    borderWidth: 1,
+    borderColor: COLORS.whiteAlpha20,
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  headerStatValue: { color: COLORS.textLight, fontSize: 15, fontWeight: '900' },
+  headerStatLabel: { color: COLORS.whiteAlpha80, marginTop: 2, fontSize: 10, fontWeight: '700' },
+
+  skeletonWrapper: { paddingHorizontal: SPACING.lg, marginTop: SPACING.md, marginBottom: 6, gap: 10 },
+  skeletonCard: { width: '100%', height: 150, borderRadius: RADIUS.lg },
+
+  card: {
+    borderRadius: 18,
+    marginBottom: 12,
+    borderWidth: 1,
+    padding: 14,
+    ...SHADOWS.card,
+  },
+  cardTopRow: { flexDirection: 'row', alignItems: 'center' },
+  iconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  cardTitleArea: { flex: 1 },
+  title: { fontSize: 15, fontWeight: '900' },
+  date: { marginTop: 2, fontSize: 12, fontWeight: '600' },
+  statusPill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  statusPillText: { fontSize: 10, fontWeight: '800' },
+
+  moneyPanel: {
+    marginTop: 12,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  moneyLabel: { fontSize: 11, fontWeight: '700' },
+  moneyValue: { marginTop: 3, fontSize: 22, fontWeight: '900' },
+  dueText: { marginTop: 4, fontSize: 11, fontWeight: '600' },
+
+  actionsRow: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    paddingTop: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+  },
+  deleteButton: { backgroundColor: 'transparent', minHeight: 34, borderWidth: 0, paddingHorizontal: 0 },
+  deleteText: { color: COLORS.textGray, fontWeight: '600' },
+  payButton: { minWidth: 120, minHeight: 34, backgroundColor: COLORS.success, borderWidth: 0 },
+
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    backgroundColor: COLORS.modDespesas,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOWS.floating,
+  },
 });
 
 export default DespesasListScreen;

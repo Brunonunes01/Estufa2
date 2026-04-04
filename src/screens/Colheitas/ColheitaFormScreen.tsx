@@ -84,7 +84,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
             }
 
             if (isEditMode) {
-                const venda = await getColheitaById(editingId);
+                const venda = await getColheitaById(editingId, targetId);
                 if (venda) {
                     setQuantidade(String(venda.quantidade));
                     setUnidade(venda.unidade as UnidadeColheita);
@@ -124,11 +124,14 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   }, [selectedPlantioId, plantiosDisponiveis]);
 
   const handleDelete = () => {
+    const targetId = selectedTenantId || user?.uid;
+    if (!targetId) return;
+
     Alert.alert("Excluir Venda", "Deseja remover este registro permanentemente?", [
       { text: "Cancelar", style: "cancel" },
       { text: "Excluir", style: "destructive", onPress: async () => {
           try {
-            await deleteColheita(editingId);
+            await deleteColheita(editingId, targetId);
             navigation.goBack();
           } catch (e) { Alert.alert("Erro", "Falha ao excluir."); }
       }}
@@ -142,7 +145,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
         const targetId = selectedTenantId || user?.uid;
         const docRef = await addDoc(collection(db, "clientes"), {
             nome: novoClienteNome.trim(),
-            uid: targetId,
+            userId: targetId, // CORRIGIDO: de 'uid' para 'userId' para manter padrão
             createdAt: serverTimestamp(),
             tipo: 'Consumidor'
         });
@@ -176,12 +179,12 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
           };
 
           if (isEditMode) {
-              await updateColheita(editingId, data);
+              await updateColheita(editingId, data, targetId);
           } else {
               await createColheita(data, targetId, selectedPlantioId, plantioObj!.estufaId);
           }
           navigation.goBack();
-      } catch (e) { Alert.alert("Erro", "Falha ao salvar."); } finally { setLoading(false); }
+      } catch (e: any) { Alert.alert("Erro", e.message || "Falha ao salvar."); } finally { setLoading(false); }
   };
 
   if (loadingData) return <ActivityIndicator size="large" color={COLORS.primary} style={{flex:1}} />;

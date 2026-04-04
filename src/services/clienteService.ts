@@ -8,10 +8,12 @@ import {
   Timestamp,
   doc, 
   getDoc, 
-  updateDoc 
+  updateDoc,
+  deleteDoc
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { Cliente } from '../types/domain';
+import { assertTenantId } from './tenantGuard';
 
 export type ClienteFormData = {
   nome: string;
@@ -23,16 +25,16 @@ export type ClienteFormData = {
 
 // 1. CRIAR
 export const createCliente = async (data: ClienteFormData, userId: string) => {
+  const tenantId = assertTenantId(userId);
   const novoCliente = {
     ...data,
-    userId: userId,
+    userId: tenantId,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   };
 
   try {
     const docRef = await addDoc(collection(db, 'clientes'), novoCliente);
-    console.log('Cliente criado com ID: ', docRef.id);
     return docRef.id;
   } catch (error) {
     console.error("Erro ao criar cliente: ", error);
@@ -42,11 +44,12 @@ export const createCliente = async (data: ClienteFormData, userId: string) => {
 
 // 2. LISTAR
 export const listClientes = async (userId: string): Promise<Cliente[]> => {
+  const tenantId = assertTenantId(userId);
   const clientes: Cliente[] = [];
   try {
     const q = query(
       collection(db, 'clientes'), 
-      where("userId", "==", userId)
+      where("userId", "==", tenantId)
     );
     
     const querySnapshot = await getDocs(q);
@@ -65,33 +68,53 @@ export const listClientes = async (userId: string): Promise<Cliente[]> => {
 };
 
 // 3. BUSCAR POR ID
-export const getClienteById = async (clienteId: string): Promise<Cliente | null> => {
+export const getClienteById = async (clienteId: string, userId: string): Promise<Cliente | null> => {
+  const tenantId = assertTenantId(userId);
   try {
     const docRef = doc(db, 'clientes', clienteId);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      return { id: docSnap.id, ...docSnap.data() } as Cliente;
+      const data = docSnap.data() as Cliente;
+      if (data.userId !== tenantId) {
+        throw new Error("Acesso negado: este cliente não pertence ao seu tenant.");
+      }
+      return { id: docSnap.id, ...data };
     } else {
       return null;
     }
   } catch (error) {
     console.error("Erro ao buscar cliente: ", error);
-    throw new Error('Erro ao buscar dados do cliente.');
+    throw error;
   }
 };
 
 // 4. ATUALIZAR
-export const updateCliente = async (clienteId: string, data: ClienteFormData) => {
-  const ref = doc(db, 'clientes', clienteId);
-  const dados = {
-    ...data,
-    updatedAt: Timestamp.now(),
-  };
-
+export const updateCliente = async (clienteId: string, data: ClienteFormData, userId: string) => {
+  const tenantId = assertTenantId(userId);
   try {
-    await updateDoc(ref, dados);
+    const cliente = await getClienteById(clienteId, tenantId);
+    if (!cliente) throw new Error("Cliente não encontrado.");
+
+    const ref = doc(db, 'clientes', clienteId);
+    await updateDoc(ref, {
+      ...data,
+      updatedAt: Timestamp.now(),
+    });
   } catch (error) {
     console.error("Erro ao atualizar cliente: ", error);
-    throw new Error('Não foi possível atualizar o cliente.');
+    throw error;
+  }
+};
+
+export const deleteCliente = async (clienteId: string, userId: string) => {
+  const tenantId = assertTenantId(userId);
+  try {
+    const cliente = await getClienteById(clienteId, tenantId);
+    if (!cliente) throw new Error("Cliente não encontrado para exclusão.");
+
+    await deleteDoc(doc(db, 'clientes', clienteId));
+  } catch (error) {
+    console.error("Erro ao excluir cliente: ", error);
+    throw error;
   }
 };

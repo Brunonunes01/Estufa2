@@ -16,6 +16,7 @@ import {
 import { db } from './firebaseConfig';
 import { Colheita } from '../types/domain';
 import { updatePlantioStatus } from './plantioService'; 
+import { assertTenantId } from './tenantGuard';
 
 export type ColheitaFormData = {
   quantidade: number;
@@ -37,12 +38,13 @@ export const createColheita = async (
   plantioId: string, 
   estufaId: string 
 ) => {
+  const tenantId = assertTenantId(userId);
   const dataFinal = data.dataVenda ? Timestamp.fromDate(data.dataVenda) : Timestamp.now();
   const isPrazo = data.metodoPagamento === 'prazo';
 
   const novaColheita = {
     ...data, 
-    userId,
+    userId: tenantId,
     plantioId,
     estufaId,
     dataColheita: dataFinal,
@@ -61,7 +63,7 @@ export const createColheita = async (
     
     // Atualiza o status do Lote/Plantio para "em_colheita" automaticamente
     if (plantioId) {
-        await updatePlantioStatus(plantioId, "em_colheita");
+        await updatePlantioStatus(plantioId, "em_colheita", tenantId);
     }
     return docRef.id;
   } catch (error) {
@@ -70,8 +72,12 @@ export const createColheita = async (
   }
 };
 
-export const receberConta = async (colheitaId: string, metodoRecebimento?: string) => {
+export const receberConta = async (colheitaId: string, userId: string, metodoRecebimento?: string) => {
+    const tenantId = assertTenantId(userId);
     try {
+        const colheita = await getColheitaById(colheitaId, tenantId);
+        if (!colheita) throw new Error("Registro não encontrado.");
+
         const docRef = doc(db, 'colheitas', colheitaId);
         const updateData: any = {
             statusPagamento: 'pago',
@@ -84,16 +90,17 @@ export const receberConta = async (colheitaId: string, metodoRecebimento?: strin
         await updateDoc(docRef, updateData);
     } catch (error) {
         console.error("Erro ao receber conta:", error);
-        throw new Error("Erro ao atualizar pagamento.");
+        throw error instanceof Error ? error : new Error("Erro ao atualizar pagamento.");
     }
 };
 
 export const listContasAReceber = async (userId: string): Promise<Colheita[]> => {
+    const tenantId = assertTenantId(userId);
     const colheitas: Colheita[] = [];
     try {
       const q = query(
         collection(db, 'colheitas'), 
-        where("userId", "==", userId),
+        where("userId", "==", tenantId),
         where("metodoPagamento", "==", "prazo")
       );
       const querySnapshot = await getDocs(q);
@@ -112,16 +119,17 @@ export const listContasAReceber = async (userId: string): Promise<Colheita[]> =>
       return colheitas;
     } catch (error) {
       console.error("Erro ao listar contas a receber: ", error);
-      return [];
+      throw new Error("Erro ao buscar contas a receber.");
     }
 };
 
 export const listColheitasByPlantio = async (userId: string, plantioId: string): Promise<Colheita[]> => {
+  const tenantId = assertTenantId(userId);
   const colheitas: Colheita[] = [];
   try {
     const q = query(
       collection(db, 'colheitas'), 
-      where("userId", "==", userId),
+      where("userId", "==", tenantId),
       where("plantioId", "==", plantioId)
     );
     const querySnapshot = await getDocs(q);
@@ -136,11 +144,12 @@ export const listColheitasByPlantio = async (userId: string, plantioId: string):
 };
 
 export const listAllColheitas = async (userId: string): Promise<Colheita[]> => {
+  const tenantId = assertTenantId(userId);
   const colheitas: Colheita[] = [];
   try {
     const q = query(
       collection(db, 'colheitas'), 
-      where("userId", "==", userId)
+      where("userId", "==", tenantId)
     );
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach((doc) => {
@@ -158,22 +167,31 @@ export const listAllColheitas = async (userId: string): Promise<Colheita[]> => {
   }
 };
 
-export const getColheitaById = async (id: string): Promise<Colheita | null> => {
+export const getColheitaById = async (id: string, userId: string): Promise<Colheita | null> => {
+    const tenantId = assertTenantId(userId);
     try {
         const docRef = doc(db, 'colheitas', id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-            return { id: docSnap.id, ...docSnap.data() } as Colheita;
+            const data = docSnap.data() as Colheita;
+            if (data.userId !== tenantId) {
+                throw new Error("Acesso negado: esta venda não pertence ao seu tenant.");
+            }
+            return { id: docSnap.id, ...data };
         }
         return null;
     } catch (error) {
         console.error("Erro ao buscar colheita:", error);
-        return null;
+        throw error;
     }
 };
 
-export const updateColheita = async (id: string, data: ColheitaFormData) => {
+export const updateColheita = async (id: string, data: ColheitaFormData, userId: string) => {
+    const tenantId = assertTenantId(userId);
     try {
+        const colheita = await getColheitaById(id, tenantId);
+        if (!colheita) throw new Error("Venda não encontrada.");
+
         const docRef = doc(db, 'colheitas', id);
         const updateData: any = { ...data };
         if (data.dataVenda) {
@@ -191,15 +209,16 @@ export const updateColheita = async (id: string, data: ColheitaFormData) => {
         await updateDoc(docRef, updateData);
     } catch (error) {
         console.error("Erro ao atualizar colheita:", error);
-        throw new Error("Falha ao atualizar venda.");
+        throw error instanceof Error ? error : new Error("Falha ao atualizar venda.");
     }
 };
 
 export const getTotalContasAReceber = async (userId: string): Promise<number> => {
+  const tenantId = assertTenantId(userId);
   try {
     const q = query(
       collection(db, 'colheitas'),
-      where("userId", "==", userId),
+      where("userId", "==", tenantId),
       where("metodoPagamento", "==", "prazo"),
       where("statusPagamento", "==", "pendente")
     );
@@ -211,17 +230,21 @@ export const getTotalContasAReceber = async (userId: string): Promise<number> =>
     return snapshot.data().total || 0;
   } catch (error) {
     // fallback para documentos antigos sem valorTotal
-    const contas = await listContasAReceber(userId);
+    const contas = await listContasAReceber(tenantId);
     return contas.reduce((acc, item) => acc + item.quantidade * (item.precoUnitario || 0), 0);
   }
 };
 
-export const deleteColheita = async (colheitaId: string) => {
+export const deleteColheita = async (colheitaId: string, userId: string) => {
+    const tenantId = assertTenantId(userId);
     try {
+        const colheita = await getColheitaById(colheitaId, tenantId);
+        if (!colheita) throw new Error("Venda não encontrada para exclusão.");
+
         const docRef = doc(db, 'colheitas', colheitaId);
         await deleteDoc(docRef);
     } catch (error) {
         console.error("Erro ao deletar colheita:", error);
-        throw new Error("Erro ao excluir registro.");
+        throw error instanceof Error ? error : new Error("Erro ao excluir registro.");
     }
 };

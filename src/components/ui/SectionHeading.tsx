@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import { COLORS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { useThemeMode } from '../../hooks/useThemeMode';
 
 interface SectionHeadingProps {
   title: string;
@@ -12,11 +13,13 @@ interface SectionHeadingProps {
 }
 
 const SectionHeading = ({ title, subtitle, right, style, titleStyle, subtitleStyle }: SectionHeadingProps) => {
+  const mode = useThemeMode();
+
   return (
     <View style={[styles.container, style]}>
       <View style={styles.left}>
-        <Text style={[styles.title, titleStyle]}>{title}</Text>
-        {subtitle ? <Text style={[styles.subtitle, subtitleStyle]}>{subtitle}</Text> : null}
+        <Text style={[styles.title, { color: mode.textPrimary }, titleStyle]}>{title}</Text>
+        {subtitle ? <Text style={[styles.subtitle, { color: mode.textSecondary }, subtitleStyle]}>{subtitle}</Text> : null}
       </View>
       {right ? <View>{right}</View> : null}
     </View>

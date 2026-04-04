@@ -1,13 +1,15 @@
 // src/services/manejoService.ts
-import { collection, addDoc, query, where, getDocs, Timestamp, doc, deleteDoc, orderBy } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, Timestamp, doc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { RegistroManejo } from '../types/domain';
+import { assertTenantId } from './tenantGuard';
 
 // 1. CRIAR REGISTRO DE MANEJO
 export const createManejo = async (data: Partial<RegistroManejo>, userId: string) => {
+  const tenantId = assertTenantId(userId);
   const novoManejo = {
     ...data,
-    userId: userId,
+    userId: tenantId,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   };
@@ -21,26 +23,24 @@ export const createManejo = async (data: Partial<RegistroManejo>, userId: string
   }
 };
 
-// 2. LISTAR MANEJOS DE UM LOTE ESPECÍFICO (Ordenado por data)
+// 2. LISTAR MANEJOS DE UM LOTE ESPECÍFICO
 export const listManejosByPlantio = async (userId: string, plantioId: string): Promise<RegistroManejo[]> => {
+  const tenantId = assertTenantId(userId);
   if (!plantioId) return [];
 
   const manejos: RegistroManejo[] = [];
   try {
     const q = query(
       collection(db, 'manejos'), 
-      where("userId", "==", userId),
+      where("userId", "==", tenantId),
       where("plantioId", "==", plantioId)
     );
     
-    // O Firestore pode pedir a criação de um índice no console por causa da ordenação no app.
-    // Se der erro de índice ao testar, o erro vai gerar um link direto para criar no painel do Firebase.
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach((doc) => {
       manejos.push({ id: doc.id, ...doc.data() } as RegistroManejo);
     });
     
-    // Ordena localmente por data de registro (mais recente primeiro) para evitar problemas de índice complexo agora
     return manejos.sort((a, b) => b.dataRegistro.toMillis() - a.dataRegistro.toMillis());
 
   } catch (error) {
@@ -49,13 +49,36 @@ export const listManejosByPlantio = async (userId: string, plantioId: string): P
   }
 };
 
-// 3. ELIMINAR REGISTRO
-export const deleteManejo = async (id: string) => {
+export const getManejoById = async (id: string, userId: string): Promise<RegistroManejo | null> => {
+  const tenantId = assertTenantId(userId);
   try {
+    const docRef = doc(db, 'manejos', id);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data() as RegistroManejo;
+      if (data.userId !== tenantId) {
+        throw new Error("Acesso negado: este registro de manejo não pertence ao seu tenant.");
+      }
+      return { id: docSnap.id, ...data };
+    }
+    return null;
+  } catch (error) {
+    console.error("Erro ao buscar manejo por ID:", error);
+    throw error;
+  }
+};
+
+// 3. ELIMINAR REGISTRO
+export const deleteManejo = async (id: string, userId: string) => {
+  const tenantId = assertTenantId(userId);
+  try {
+    const manejo = await getManejoById(id, tenantId);
+    if (!manejo) throw new Error("Registro de manejo não encontrado para exclusão.");
+
     const docRef = doc(db, 'manejos', id);
     await deleteDoc(docRef);
   } catch (error) {
     console.error("Erro ao eliminar manejo: ", error);
-    throw new Error("Não foi possível excluir o registro.");
+    throw error;
   }
 };

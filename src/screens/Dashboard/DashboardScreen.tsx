@@ -1,507 +1,535 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
+  Alert,
   ScrollView,
   StatusBar,
-  ActivityIndicator,
-  Alert,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useIsFocused } from '@react-navigation/native';
-
-import { auth } from '../../services/firebaseConfig';
-import { useAuth } from '../../hooks/useAuth';
-import { Estufa, Plantio } from '../../types/domain';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
-import SectionHeading from '../../components/ui/SectionHeading';
-import MetricCard from '../../components/ui/MetricCard';
-import { evaluateEstufaHealth } from '../../utils/estufaHealth';
-import { useAppSettings } from '../../hooks/useAppSettings';
-import { useDashboardSummary } from '../../hooks/queries/useDashboardSummary';
+import { COLORS, RADIUS, SHADOWS, SPACING } from '../../constants/theme';
+import { useThemeMode } from '../../hooks/useThemeMode';
 import { useFeedback } from '../../hooks/useFeedback';
+import { useDashboardMetrics } from '../../hooks/useDashboardMetrics';
+import { useDashboardActions } from '../../hooks/useDashboardActions';
+import DashboardLoadingSkeleton from '../../components/dashboard/DashboardLoadingSkeleton';
+import EmptyState from '../../components/ui/EmptyState';
+import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 
 const DashboardScreen = ({ navigation }: any) => {
-  const { user, selectedTenantId, changeTenant, availableTenants } = useAuth();
-  const { settings } = useAppSettings();
-  const { showError, showWarning } = useFeedback();
+  const theme = useThemeMode();
   const insets = useSafeAreaInsets();
-  const isFocused = useIsFocused();
-
-  const targetId = selectedTenantId || user?.uid;
+  const { showError, showWarning } = useFeedback();
+  const { signOut } = useDashboardActions();
 
   const {
-    data,
-    isLoading,
-    isFetching,
+    user,
+    selectedTenantId,
+    changeTenant,
+    availableTenants,
+    estufas,
+    totalReceber,
+    totalPagar,
+    totalCiclosAtivos,
+    summarySource,
+    summaryUpdatedAt,
+    loadingResumo,
     isError,
-    refetch,
-  } = useDashboardSummary(targetId);
-
-  const estufas: Estufa[] = data?.estufas || [];
-  const plantios: Plantio[] = data?.activePlantios || [];
-  const totalReceber = data?.totalReceber || 0;
-  const totalPagar = data?.totalPagar || 0;
-  const loadingResumo = isLoading || isFetching;
-
-  const navigateTo = (screen: string, params?: Record<string, any>) => navigation.navigate(screen, params);
-
-  const getFormattedLabel = (tenant: any) => {
-    const isMe = tenant.uid === user?.uid;
-    const nomesGenericos = ['Minha Estufa', 'Meu Grow', 'Estufa', 'Grow', 'Principal'];
-    const nomeAtual = tenant.name ? tenant.name.trim() : 'Estufa';
-
-    if (isMe) return `${nomeAtual} (Principal)`;
-    if (nomesGenericos.includes(nomeAtual)) return 'Estufa Compartilhada';
-    return `Estufa: ${nomeAtual}`;
-  };
+    activePlantioByEstufa,
+    criticalAlerts,
+    healthByEstufa,
+  } = useDashboardMetrics();
 
   useEffect(() => {
-    if (isFocused && targetId) refetch();
-  }, [isFocused, targetId, refetch]);
-
-  useEffect(() => {
-    if (isError) {
-      showError('Não foi possível carregar os indicadores do painel.');
-    }
+    if (isError) showError('Não foi possível carregar os indicadores do painel.');
   }, [isError, showError]);
 
-  const activePlantioByEstufa = useMemo(() => {
-    const map: Record<string, Plantio | null> = {};
-    estufas.forEach((estufa) => {
-      map[estufa.id] =
-        plantios.find((plantio) => plantio.estufaId === estufa.id && plantio.status !== 'finalizado') || null;
-    });
-    return map;
-  }, [estufas, plantios]);
+  const navigateTo = useCallback(
+    (screen: string, params?: Record<string, any>) => navigation.navigate(screen, params),
+    [navigation]
+  );
 
-  const totalCiclosAtivos = plantios.length;
-
-  const healthByEstufa = useMemo(() => {
-    return estufas.reduce<Record<string, ReturnType<typeof evaluateEstufaHealth>>>((acc, estufa) => {
-      acc[estufa.id] = evaluateEstufaHealth(estufa, plantios);
-      return acc;
-    }, {});
-  }, [estufas, plantios]);
-
-  const criticalAlerts = useMemo(() => {
-    if (!settings.notifyCritical) return [];
-
-    return estufas
-      .map((estufa) => ({
-        estufa,
-        health: healthByEstufa[estufa.id],
-      }))
-      .filter((item) => item.health && item.health.level !== 'ok')
-      .slice(0, 4);
-  }, [estufas, healthByEstufa, settings.notifyCritical]);
-
-  const irParaVendaRapida = (estufaId: string) => {
-    const plantioAtivo = activePlantioByEstufa[estufaId];
-    if (!plantioAtivo) {
-      Alert.alert('Sem ciclo ativo', 'Crie um plantio nesta estufa para registrar vendas.', [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Criar Plantio', onPress: () => navigateTo('PlantioForm', { estufaId }) },
-      ]);
-      showWarning('Sem ciclo ativo nesta estufa.');
-      return;
+  const summaryHint = useMemo(() => {
+    if (summarySource === 'summary_doc') {
+      const updatedAt = summaryUpdatedAt
+        ? `Atualizado em ${summaryUpdatedAt.toDate().toLocaleString('pt-BR')}`
+        : 'Atualização sem data registrada';
+      return `Resumo financeiro centralizado. ${updatedAt}.`;
     }
-    navigateTo('ColheitaForm', { plantioId: plantioAtivo.id, estufaId });
-  };
+    return 'Resumo em modo compatível por agregação direta.';
+  }, [summarySource, summaryUpdatedAt]);
 
-  const GridItem = ({ title, sub, icon, color, route }: any) => (
-    <TouchableOpacity style={styles.gridItem} onPress={() => navigateTo(route)} activeOpacity={0.85}>
-      <View style={[styles.iconBox, { backgroundColor: color + '14' }]}>
-        <MaterialCommunityIcons name={icon} size={24} color={color} />
-      </View>
-      <View style={styles.gridTexts}>
-        <Text style={styles.gridTitle}>{title}</Text>
-        <Text style={styles.gridSub}>{sub}</Text>
-      </View>
-    </TouchableOpacity>
+  const quickActions = useMemo(
+    () => [
+      {
+        label: 'Nova Venda',
+        subtitle: 'Registrar colheita e recebimento',
+        icon: 'basket-plus',
+        color: COLORS.success,
+        onPress: () => navigateTo('EstufasList'),
+      },
+      {
+        label: 'Nova Despesa',
+        subtitle: 'Lançar custo operacional',
+        icon: 'cash-minus',
+        color: COLORS.danger,
+        onPress: () => navigateTo('DespesaForm'),
+      },
+      {
+        label: 'Contas a Receber',
+        subtitle: 'Acompanhar pagamentos pendentes',
+        icon: 'hand-coin',
+        color: COLORS.info,
+        onPress: () => navigateTo('ContasReceber'),
+      },
+      {
+        label: 'Cadastrar Estufa',
+        subtitle: 'Expandir operação',
+        icon: 'greenhouse',
+        color: COLORS.primary,
+        onPress: () => navigateTo('EstufaForm'),
+      },
+    ],
+    [navigateTo]
+  );
+
+  const modules = useMemo(
+    () => [
+      { label: 'Relatórios', icon: 'chart-box-outline', route: 'VendasList', color: COLORS.info },
+      { label: 'Despesas', icon: 'wallet-outline', route: 'DespesasList', color: COLORS.modDespesas },
+      { label: 'Insumos', icon: 'flask-outline', route: 'InsumosList', color: COLORS.primaryDark },
+      { label: 'Clientes', icon: 'account-group', route: 'ClientesList', color: COLORS.modClientes },
+      { label: 'Fornecedores', icon: 'truck-delivery-outline', route: 'FornecedoresList', color: COLORS.orange },
+      { label: 'Compartilhar', icon: 'share-variant', route: 'ShareAccount', color: COLORS.textSecondary },
+      { label: 'Configurações', icon: 'cog-outline', route: 'Settings', color: COLORS.secondary },
+    ],
+    []
+  );
+
+  const handleQuickSale = useCallback(
+    (estufaId: string) => {
+      const plantioAtivo = activePlantioByEstufa[estufaId];
+      if (!plantioAtivo) {
+        Alert.alert('Sem ciclo ativo', 'Crie um plantio nesta estufa para registrar vendas.', [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Criar Plantio', onPress: () => navigateTo('PlantioForm', { estufaId }) },
+        ]);
+        showWarning('Sem ciclo ativo nesta estufa.');
+        return;
+      }
+
+      navigateTo('ColheitaForm', { plantioId: plantioAtivo.id, estufaId });
+    },
+    [activePlantioByEstufa, navigateTo, showWarning]
   );
 
   return (
-    <View style={[styles.mainWrapper, settings.darkMode && styles.mainWrapperDark]}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primaryDark} translucent />
+    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}>
+      <StatusBar barStyle="light-content" backgroundColor={theme.panelBackground} translucent />
 
-      <SafeAreaView edges={['top']} style={styles.container}>
-        <View style={styles.header}>
-          <View style={styles.topBar}>
-            <View>
-              <Text style={styles.welcomeSmall}>Olá, {user?.name?.split(' ')[0]}</Text>
-              <Text style={styles.welcomeBig}>Centro de Comando</Text>
+      <SafeAreaView edges={['top']} style={styles.safeArea}>
+        <ScreenHeaderCard
+          title="Centro de Comando"
+          subtitle={`Olá, ${user?.name?.split(' ')[0] || 'gestor'}. Veja operação, caixa e alertas em tempo real.`}
+          badgeLabel="Dashboard"
+          actionLabel="Sair"
+          actionIcon="logout"
+          onPressAction={signOut}
+        >
+          {availableTenants.length > 1 ? (
+            <View style={styles.tenantSelector}>
+              <MaterialCommunityIcons name="store-cog" size={18} color={COLORS.textLight} />
+              <Picker
+                selectedValue={selectedTenantId}
+                onValueChange={changeTenant}
+                style={styles.tenantPicker}
+                dropdownIconColor={COLORS.textLight}
+                mode="dropdown"
+              >
+                {availableTenants.map((tenant) => (
+                  <Picker.Item key={tenant.uid} label={tenant.name || 'Estufa'} value={tenant.uid} />
+                ))}
+              </Picker>
             </View>
-            <TouchableOpacity onPress={() => auth.signOut()} style={styles.logoutBtn}>
-              <MaterialCommunityIcons name="logout" size={22} color={COLORS.textLight} />
-            </TouchableOpacity>
+          ) : null}
+
+          <View style={styles.heroStatsRow}>
+            <View style={styles.heroStatChip}>
+              <Text style={styles.heroStatValue}>{estufas.length}</Text>
+              <Text style={styles.heroStatLabel}>Estufas</Text>
+            </View>
+            <View style={styles.heroStatChip}>
+              <Text style={styles.heroStatValue}>{totalCiclosAtivos}</Text>
+              <Text style={styles.heroStatLabel}>Ciclos Ativos</Text>
+            </View>
+            <View style={styles.heroStatChip}>
+              <Text style={styles.heroStatValue}>R$ {totalReceber.toFixed(0)}</Text>
+              <Text style={styles.heroStatLabel}>A Receber</Text>
+            </View>
+          </View>
+        </ScreenHeaderCard>
+
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 50 }]}
+        >
+          <View style={[styles.infoBanner, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
+            <MaterialCommunityIcons name="database-sync-outline" size={18} color={theme.textSecondary} />
+            <Text style={[styles.infoBannerText, { color: theme.textSecondary }]}>{summaryHint}</Text>
           </View>
 
-          {availableTenants.length > 1 && (
-            <View style={styles.tenantWrapper}>
-              <MaterialCommunityIcons name="store-cog" size={20} color={COLORS.onPrimary} style={styles.tenantIcon} />
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={selectedTenantId}
-                  onValueChange={changeTenant}
-                  style={styles.picker}
-                  dropdownIconColor={COLORS.textLight}
-                  mode="dropdown"
-                >
-                  {availableTenants.map((tenant) => (
-                    <Picker.Item
-                      key={tenant.uid}
-                      label={getFormattedLabel(tenant)}
-                      value={tenant.uid}
-                      style={{ fontSize: 14, color: COLORS.textDark }}
-                    />
-                  ))}
-                </Picker>
+          {loadingResumo ? (
+            <DashboardLoadingSkeleton />
+          ) : (
+            <View style={styles.moneyGrid}>
+              <View style={[styles.moneyCard, { backgroundColor: theme.successBackground }]}>
+                <Text style={styles.moneyTitle}>Entradas Previstas</Text>
+                <Text style={[styles.moneyValue, { color: COLORS.success }]}>R$ {totalReceber.toFixed(2)}</Text>
+                <Text style={styles.moneyHint}>Valores pendentes de recebimento</Text>
+              </View>
+              <View style={[styles.moneyCard, { backgroundColor: theme.dangerBackground }]}>
+                <Text style={styles.moneyTitle}>Saídas Previstas</Text>
+                <Text style={[styles.moneyValue, { color: COLORS.danger }]}>R$ {totalPagar.toFixed(2)}</Text>
+                <Text style={styles.moneyHint}>Despesas a liquidar</Text>
               </View>
             </View>
           )}
-        </View>
 
-        <View style={[styles.body, settings.darkMode && styles.bodyDark]}>
-          <ScrollView
-            contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 44 }]}
-            showsVerticalScrollIndicator={false}
-          >
-            <SectionHeading title="Ações Rápidas" subtitle="Chegue no que importa em 1 toque" />
-            <View style={styles.quickActionsRow}>
-              <TouchableOpacity style={[styles.quickBtn, styles.quickBtnSell]} onPress={() => navigateTo('EstufasList')}>
-                <MaterialCommunityIcons name="basket-plus" size={28} color={COLORS.success} />
-                <Text style={[styles.quickBtnText, { color: COLORS.success }]}>Nova Venda</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Prioridades Agora</Text>
+            <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>Ações de maior impacto</Text>
+          </View>
+
+          <View style={styles.quickGrid}>
+            {quickActions.map((action) => (
+              <TouchableOpacity
+                key={action.label}
+                style={[styles.quickCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}
+                activeOpacity={0.88}
+                onPress={action.onPress}
+              >
+                <View style={[styles.quickIcon, { backgroundColor: `${action.color}20` }]}>
+                  <MaterialCommunityIcons name={action.icon as any} size={22} color={action.color} />
+                </View>
+                <Text style={[styles.quickLabel, { color: theme.textPrimary }]}>{action.label}</Text>
+                <Text style={[styles.quickSubtitle, { color: theme.textSecondary }]}>{action.subtitle}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.quickBtn, styles.quickBtnPay]} onPress={() => navigateTo('DespesaForm')}>
-                <MaterialCommunityIcons name="cash-minus" size={28} color={COLORS.danger} />
-                <Text style={[styles.quickBtnText, { color: COLORS.danger }]}>Lançar Despesa</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.quickBtn, styles.quickBtnStock]} onPress={() => navigateTo('ContasReceber')}>
-                <MaterialCommunityIcons name="hand-coin" size={28} color={COLORS.info} />
-                <Text style={[styles.quickBtnText, { color: COLORS.info }]}>Recebimentos</Text>
-              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Alertas Críticos</Text>
+            <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>Riscos que exigem atenção</Text>
+          </View>
+
+          {criticalAlerts.length === 0 ? (
+            <View style={[styles.alertBoxOk, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
+              <MaterialCommunityIcons name="shield-check-outline" size={18} color={COLORS.success} />
+              <Text style={[styles.alertText, { color: theme.textPrimary }]}>Nenhum alerta crítico no momento.</Text>
             </View>
+          ) : (
+            criticalAlerts.map(({ estufa, health }) => (
+              <TouchableOpacity
+                key={estufa.id}
+                style={[
+                  styles.alertBox,
+                  {
+                    backgroundColor: health.level === 'critical' ? theme.dangerBackground : theme.warningBackground,
+                    borderColor: theme.border,
+                  },
+                ]}
+                onPress={() => navigateTo('EstufaDetail', { estufaId: estufa.id })}
+                activeOpacity={0.88}
+              >
+                <MaterialCommunityIcons
+                  name={health.level === 'critical' ? 'alert-circle' : 'alert-outline'}
+                  size={18}
+                  color={health.level === 'critical' ? COLORS.danger : COLORS.warning}
+                />
+                <Text style={[styles.alertText, { color: theme.textPrimary }]}>
+                  {estufa.nome}: {health.reasons[0] || 'Ação recomendada.'}
+                </Text>
+              </TouchableOpacity>
+            ))
+          )}
 
-            <SectionHeading title="Visão Geral" subtitle="Indicadores principais do negócio" />
-            {loadingResumo ? (
-              <View style={styles.loaderContainer}>
-                <ActivityIndicator color={COLORS.primary} />
-              </View>
-            ) : (
-              <>
-                <View style={styles.metricsRow}>
-                  <MetricCard label="Estufas" value={String(estufas.length)} hint="Operação cadastrada" />
-                  <MetricCard label="Ciclos ativos" value={String(totalCiclosAtivos)} tone="success" hint="Em andamento" />
-                </View>
-                <View style={styles.metricsRow}>
-                  <MetricCard label="A receber" value={`R$ ${totalReceber.toFixed(2)}`} tone="warning" />
-                  <MetricCard label="A pagar" value={`R$ ${totalPagar.toFixed(2)}`} tone="danger" />
-                </View>
-              </>
-            )}
+          <View style={styles.sectionHeaderRow}>
+            <View>
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Hubs de Estufa</Text>
+              <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>Atalhos por unidade</Text>
+            </View>
+            <TouchableOpacity onPress={() => navigateTo('EstufasList')}>
+              <Text style={styles.linkButton}>Ver todas</Text>
+            </TouchableOpacity>
+          </View>
 
-            <SectionHeading title="Alertas do Sistema" subtitle="Condições que exigem atenção imediata" />
-            {criticalAlerts.length === 0 ? (
-              <View style={[styles.alertCard, settings.darkMode && styles.alertCardDark]}>
-                <MaterialCommunityIcons name="shield-check-outline" size={18} color={COLORS.success} />
-                <Text style={[styles.alertText, settings.darkMode && styles.alertTextDark]}>Nenhum alerta crítico no momento.</Text>
-              </View>
-            ) : (
-              criticalAlerts.map(({ estufa, health }) => (
-                <TouchableOpacity
-                  key={estufa.id}
-                  style={[styles.alertCard, styles[`alertCard${health.level === 'critical' ? 'Critical' : 'Warning'}` as const], settings.darkMode && styles.alertCardDark]}
-                  onPress={() => navigateTo('EstufaDetail', { estufaId: estufa.id })}
-                >
-                  <MaterialCommunityIcons
-                    name={health.level === 'critical' ? 'alert-circle' : 'alert-outline'}
-                    size={18}
-                    color={health.level === 'critical' ? COLORS.danger : COLORS.warning}
-                  />
-                  <Text style={[styles.alertText, settings.darkMode && styles.alertTextDark]}>
-                    {estufa.nome}: {health.reasons[0] || 'Ação recomendada.'}
-                  </Text>
-                </TouchableOpacity>
-              ))
-            )}
-
-            <SectionHeading
-              title="Hubs de Estufa"
-              subtitle="Acesse cada estufa com atalhos para ciclo e venda"
-              right={
-                <TouchableOpacity onPress={() => navigateTo('EstufasList')}>
-                  <Text style={styles.linkText}>Ver todas</Text>
-                </TouchableOpacity>
-              }
+          {estufas.length === 0 ? (
+            <EmptyState
+              icon="greenhouse"
+              title="Nenhuma estufa cadastrada"
+              description="Cadastre sua primeira estufa para habilitar atalhos operacionais."
+              actionLabel="Cadastrar estufa"
+              onAction={() => navigateTo('EstufaForm')}
             />
+          ) : (
+            estufas.map((estufa) => {
+              const plantioAtivo = activePlantioByEstufa[estufa.id];
+              const health = healthByEstufa[estufa.id];
 
-            {estufas.length === 0 ? (
-              <View style={styles.emptyHub}>
-                <MaterialCommunityIcons name="greenhouse" size={42} color={COLORS.textMuted} />
-                <Text style={styles.emptyHubTitle}>Nenhuma estufa cadastrada</Text>
-                <Text style={styles.emptyHubSub}>Comece cadastrando sua primeira estufa para ativar os atalhos.</Text>
-                <TouchableOpacity style={styles.emptyHubBtn} onPress={() => navigateTo('EstufaForm')}>
-                  <Text style={styles.emptyHubBtnText}>Cadastrar Estufa</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hubScrollContent}>
-                {estufas.map((estufa) => {
-                  const plantioAtivo = activePlantioByEstufa[estufa.id];
-                  const health = healthByEstufa[estufa.id];
-                  return (
-                    <View key={estufa.id} style={styles.hubCard}>
-                      <View style={styles.hubHeader}>
-                        <Text style={styles.hubTitle} numberOfLines={1}>{estufa.nome}</Text>
-                        <View
-                          style={[
-                            styles.hubBadge,
-                            health?.level === 'critical'
-                              ? styles.hubBadgeCritical
-                              : health?.level === 'warning'
-                                ? styles.hubBadgeWarning
-                                : styles.hubBadgeActive,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.hubBadgeText,
-                              health?.level === 'critical'
-                                ? styles.hubBadgeTextCritical
-                                : health?.level === 'warning'
-                                  ? styles.hubBadgeTextWarning
-                                  : styles.hubBadgeTextActive,
-                            ]}
-                          >
-                            {health?.label || 'OK'}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <Text style={styles.hubInfo}>Área: {estufa.areaM2} m²</Text>
-                      <Text style={styles.hubInfo} numberOfLines={1}>
-                        {plantioAtivo ? `Ciclo ativo: ${plantioAtivo.cultura}` : 'Sem ciclo ativo'}
+              return (
+                <View
+                  key={estufa.id}
+                  style={[styles.hubCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}
+                >
+                  <View style={styles.hubTop}>
+                    <View>
+                      <Text style={[styles.hubName, { color: theme.textPrimary }]}>{estufa.nome}</Text>
+                      <Text style={[styles.hubMeta, { color: theme.textSecondary }]}>
+                        Área {estufa.areaM2} m²
                       </Text>
-
-                      <View style={styles.hubActionsRow}>
-                        <TouchableOpacity style={styles.hubActionBtn} onPress={() => navigateTo('EstufaDetail', { estufaId: estufa.id })}>
-                          <Text style={styles.hubActionBtnText}>Hub</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.hubActionBtn}
-                          onPress={() =>
-                            plantioAtivo
-                              ? navigateTo('PlantioDetail', { plantioId: plantioAtivo.id })
-                              : navigateTo('PlantioForm', { estufaId: estufa.id })
-                          }
-                        >
-                          <Text style={styles.hubActionBtnText}>{plantioAtivo ? 'Ciclo' : 'Novo Ciclo'}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.hubActionBtnPrimary} onPress={() => irParaVendaRapida(estufa.id)}>
-                          <Text style={styles.hubActionBtnPrimaryText}>Vender</Text>
-                        </TouchableOpacity>
-                      </View>
                     </View>
-                  );
-                })}
-              </ScrollView>
-            )}
+                    <View
+                      style={[
+                        styles.hubHealth,
+                        {
+                          backgroundColor:
+                            health?.level === 'critical'
+                              ? theme.dangerBackground
+                              : health?.level === 'warning'
+                                ? theme.warningBackground
+                                : theme.successBackground,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.hubHealthText,
+                          {
+                            color:
+                              health?.level === 'critical'
+                                ? COLORS.danger
+                                : health?.level === 'warning'
+                                  ? COLORS.warning
+                                  : COLORS.success,
+                          },
+                        ]}
+                      >
+                        {health?.label || 'OK'}
+                      </Text>
+                    </View>
+                  </View>
 
-            <SectionHeading title="Módulos do Sistema" subtitle="Acesse áreas de gestão e operação" />
-            <View style={styles.gridWrapper}>
-              <GridItem title="Relatórios" sub="Vendas e resultados" icon="chart-box-outline" color={COLORS.info} route="VendasList" />
-              <GridItem title="Despesas" sub="Contas e pagamentos" icon="wallet-outline" color={COLORS.modDespesas} route="DespesasList" />
-              <GridItem title="Insumos" sub="Estoque e consumo" icon="flask-outline" color={COLORS.primaryDark} route="InsumosList" />
-              <GridItem title="Clientes" sub="Carteira e histórico" icon="account-group" color={COLORS.modClientes} route="ClientesList" />
-              <GridItem title="Fornecedores" sub="Compras e contatos" icon="truck-delivery-outline" color={COLORS.orange} route="FornecedoresList" />
-              <GridItem title="Compartilhar" sub="Permissões" icon="share-variant" color={COLORS.textSecondary} route="ShareAccount" />
-              <GridItem title="Configurações" sub="Conta e segurança" icon="cog-outline" color={COLORS.secondary} route="Settings" />
-            </View>
-          </ScrollView>
-        </View>
+                  <Text style={[styles.hubCycle, { color: theme.textPrimary }]}>
+                    {plantioAtivo ? `Ciclo ativo: ${plantioAtivo.cultura}` : 'Sem ciclo ativo'}
+                  </Text>
+
+                  <View style={styles.hubActions}>
+                    <TouchableOpacity
+                      style={[styles.hubButtonNeutral, { borderColor: theme.border }]}
+                      onPress={() => navigateTo('EstufaDetail', { estufaId: estufa.id })}
+                    >
+                      <Text style={[styles.hubButtonNeutralText, { color: theme.textPrimary }]}>Abrir Hub</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.hubButtonNeutral, { borderColor: theme.border }]}
+                      onPress={() =>
+                        plantioAtivo
+                          ? navigateTo('PlantioDetail', { plantioId: plantioAtivo.id })
+                          : navigateTo('PlantioForm', { estufaId: estufa.id })
+                      }
+                    >
+                      <Text style={[styles.hubButtonNeutralText, { color: theme.textPrimary }]}>
+                        {plantioAtivo ? 'Ciclo' : 'Novo Ciclo'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.hubButtonPrimary} onPress={() => handleQuickSale(estufa.id)}>
+                      <Text style={styles.hubButtonPrimaryText}>Vender</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })
+          )}
+
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Módulos</Text>
+            <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>Acesso rápido por área</Text>
+          </View>
+          <View style={styles.modulesGrid}>
+            {modules.map((module) => (
+              <TouchableOpacity
+                key={module.label}
+                style={[styles.moduleChip, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}
+                onPress={() => navigateTo(module.route)}
+                activeOpacity={0.86}
+              >
+                <MaterialCommunityIcons name={module.icon as any} size={18} color={module.color} />
+                <Text style={[styles.moduleChipText, { color: theme.textPrimary }]}>{module.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
       </SafeAreaView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  mainWrapper: { flex: 1, backgroundColor: COLORS.secondary },
-  mainWrapperDark: { backgroundColor: COLORS.textDark },
   container: { flex: 1 },
-  header: { paddingHorizontal: SPACING.xl, paddingBottom: SPACING.lg, marginTop: SPACING.sm },
-  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
-  welcomeSmall: {
-    color: COLORS.onPrimary,
-    fontSize: TYPOGRAPHY.caption,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  welcomeBig: { color: COLORS.textLight, fontSize: TYPOGRAPHY.h2, fontWeight: '800' },
-  logoutBtn: {
-    backgroundColor: COLORS.whiteAlpha12,
-    padding: 10,
-    borderRadius: RADIUS.md,
+  safeArea: { flex: 1 },
+  content: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg },
+
+  tenantSelector: {
+    marginTop: 2,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.whiteAlpha15,
-  },
-  tenantWrapper: {
+    borderColor: COLORS.whiteAlpha20,
+    backgroundColor: COLORS.whiteAlpha12,
+    paddingHorizontal: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.whiteAlpha10,
-    borderRadius: RADIUS.md,
-    marginTop: SPACING.md,
-    marginBottom: 5,
+    height: 46,
+  },
+  tenantPicker: { color: COLORS.textLight, flex: 1 },
+  heroStatsRow: { marginTop: 10, flexDirection: 'row', gap: 8 },
+  heroStatChip: {
+    flex: 1,
+    backgroundColor: COLORS.whiteAlpha12,
+    borderWidth: 1,
+    borderColor: COLORS.whiteAlpha20,
+    borderRadius: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  heroStatValue: { color: COLORS.textLight, fontSize: 14, fontWeight: '800' },
+  heroStatLabel: { color: COLORS.whiteAlpha80, fontSize: 10, marginTop: 2, fontWeight: '600' },
+
+  infoBanner: {
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  infoBannerText: { flex: 1, fontSize: 12, lineHeight: 18 },
+
+  moneyGrid: { flexDirection: 'row', gap: 10, marginBottom: SPACING.lg },
+  moneyCard: {
+    flex: 1,
+    borderRadius: 16,
+    padding: 14,
     borderWidth: 1,
     borderColor: COLORS.whiteAlpha15,
-    height: 52,
-    paddingHorizontal: 12,
   },
-  tenantIcon: { marginRight: 5 },
-  pickerContainer: { flex: 1, justifyContent: 'center' },
-  picker: { color: COLORS.textLight },
-  body: { flex: 1, backgroundColor: COLORS.background, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
-  bodyDark: { backgroundColor: COLORS.c1E293B },
-  scrollContent: { padding: SPACING.xl, paddingTop: SPACING.xl },
+  moneyTitle: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary },
+  moneyValue: { marginTop: 8, fontSize: 22, fontWeight: '900' },
+  moneyHint: { marginTop: 4, fontSize: 11, color: COLORS.textSecondary, lineHeight: 15 },
 
-  quickActionsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.xl },
-  quickBtn: {
-    width: '31%',
-    minHeight: 92,
-    borderRadius: RADIUS.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
+  sectionHeader: { marginBottom: 10 },
+  sectionHeaderRow: {
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  sectionTitle: { fontSize: 20, fontWeight: '900' },
+  sectionSubtitle: { marginTop: 2, fontSize: 12, fontWeight: '600' },
+  linkButton: { color: COLORS.info, fontSize: 13, fontWeight: '700' },
+
+  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: SPACING.xl },
+  quickCard: {
+    width: '48%',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    padding: 12,
+    minHeight: 120,
     ...SHADOWS.card,
   },
-  quickBtnSell: { backgroundColor: COLORS.successSoft },
-  quickBtnPay: { backgroundColor: COLORS.dangerBg },
-  quickBtnStock: { backgroundColor: COLORS.infoSoft },
-  quickBtnText: { marginTop: 8, fontSize: 11, fontWeight: '700', textAlign: 'center', paddingHorizontal: 6 },
-
-  loaderContainer: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: SPACING.lg,
-    marginBottom: SPACING.lg,
+  quickIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  metricsRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  alertCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  quickLabel: { marginTop: 10, fontSize: 14, fontWeight: '800' },
+  quickSubtitle: { marginTop: 4, fontSize: 11, lineHeight: 15 },
+
+  alertBox: {
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.md,
     paddingVertical: 10,
     paddingHorizontal: 12,
     marginBottom: 8,
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  alertBoxOk: {
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: SPACING.xl,
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  alertText: { flex: 1, fontSize: 12, fontWeight: '600' },
+
+  hubCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 10,
+    ...SHADOWS.card,
+  },
+  hubTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  hubName: { fontSize: 16, fontWeight: '900' },
+  hubMeta: { marginTop: 3, fontSize: 12, fontWeight: '600' },
+  hubHealth: { borderRadius: RADIUS.pill, paddingHorizontal: 10, paddingVertical: 4 },
+  hubHealthText: { fontSize: 10, fontWeight: '800' },
+  hubCycle: { marginTop: 10, fontSize: 13, fontWeight: '600' },
+  hubActions: { marginTop: 12, flexDirection: 'row', gap: 8 },
+  hubButtonNeutral: {
+    flex: 1,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.whiteAlpha10,
+  },
+  hubButtonNeutralText: { fontSize: 12, fontWeight: '700' },
+  hubButtonPrimary: {
+    flex: 1,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  hubButtonPrimaryText: { color: COLORS.textLight, fontSize: 12, fontWeight: '700' },
+
+  modulesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: SPACING.md },
+  moduleChip: {
+    width: '48%',
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
     gap: 8,
   },
-  alertCardWarning: { borderColor: COLORS.cFED7AA, backgroundColor: COLORS.warningSoft },
-  alertCardCritical: { borderColor: COLORS.cFECACA, backgroundColor: COLORS.dangerBg },
-  alertCardDark: { backgroundColor: COLORS.c334155, borderColor: COLORS.c475569 },
-  alertText: { flex: 1, color: COLORS.textPrimary, fontSize: 12, fontWeight: '600' },
-  alertTextDark: { color: COLORS.textLight },
-
-  linkText: { color: COLORS.info, fontSize: 13, fontWeight: '700' },
-  hubScrollContent: { paddingBottom: SPACING.lg, gap: SPACING.md },
-  hubCard: {
-    width: 280,
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.lg,
-    ...SHADOWS.card,
-  },
-  hubHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 },
-  hubTitle: { flex: 1, color: COLORS.textPrimary, fontSize: TYPOGRAPHY.title, fontWeight: '800' },
-  hubBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: RADIUS.pill },
-  hubBadgeActive: { backgroundColor: COLORS.successSoft },
-  hubBadgeWarning: { backgroundColor: COLORS.warningSoft },
-  hubBadgeCritical: { backgroundColor: COLORS.dangerBg },
-  hubBadgeOff: { backgroundColor: COLORS.surfaceMuted },
-  hubBadgeText: { fontSize: 10, fontWeight: '800' },
-  hubBadgeTextActive: { color: COLORS.success },
-  hubBadgeTextWarning: { color: COLORS.warning },
-  hubBadgeTextCritical: { color: COLORS.danger },
-  hubBadgeTextOff: { color: COLORS.textMuted },
-  hubInfo: { color: COLORS.textSecondary, fontSize: 12, marginBottom: 2 },
-  hubActionsRow: { marginTop: SPACING.md, flexDirection: 'row', gap: 8 },
-  hubActionBtn: {
-    flex: 1,
-    height: 36,
-    borderRadius: RADIUS.sm,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surfaceMuted,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  hubActionBtnText: { color: COLORS.textPrimary, fontSize: 12, fontWeight: '700' },
-  hubActionBtnPrimary: {
-    flex: 1,
-    height: 36,
-    borderRadius: RADIUS.sm,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  hubActionBtnPrimaryText: { color: COLORS.textLight, fontSize: 12, fontWeight: '700' },
-
-  emptyHub: {
-    alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.xl,
-    marginBottom: SPACING.xl,
-  },
-  emptyHubTitle: { color: COLORS.textPrimary, fontSize: TYPOGRAPHY.title, fontWeight: '800', marginTop: SPACING.sm },
-  emptyHubSub: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4, textAlign: 'center' },
-  emptyHubBtn: {
-    marginTop: SPACING.md,
-    borderRadius: RADIUS.sm,
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: 10,
-  },
-  emptyHubBtnText: { color: COLORS.textLight, fontWeight: '700' },
-
-  gridWrapper: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12 },
-  gridItem: {
-    width: '48%',
-    backgroundColor: COLORS.surface,
-    padding: SPACING.lg,
-    borderRadius: RADIUS.lg,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOWS.card,
-  },
-  iconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  gridTexts: { flex: 1 },
-  gridTitle: { fontSize: TYPOGRAPHY.body, fontWeight: '800', color: COLORS.textPrimary },
-  gridSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  moduleChipText: { fontSize: 13, fontWeight: '700' },
 });
 
 export default DashboardScreen;

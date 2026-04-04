@@ -10,7 +10,7 @@ interface AuthContextData {
   loading: boolean;
   selectedTenantId: string;
   changeTenant: (uid: string) => void;
-  availableTenants: { uid: string; name: string }[];
+  availableTenants: { uid: string; name: string; type?: 'owner' | 'shared'; ownerName?: string }[];
   signIn: (email: string, password: string) => Promise<void>;
   refreshUserProfile: () => Promise<void>;
 }
@@ -21,7 +21,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
-  const [availableTenants, setAvailableTenants] = useState<{ uid: string; name: string }[]>([]);
+  const [availableTenants, setAvailableTenants] = useState<{ uid: string; name: string; type?: 'owner' | 'shared'; ownerName?: string }[]>([]);
+
+  const normalizeOwnerName = (value: unknown) => {
+    if (typeof value !== 'string') return 'Parceiro';
+    const clean = value.trim();
+    return clean || 'Parceiro';
+  };
 
   const loadUserProfile = async (uid: string) => {
     const userDocRef = doc(db, 'users', uid);
@@ -58,13 +64,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             if (!selectedTenantId) setSelectedTenantId(userData.uid);
 
             // 1. Sua conta principal (Sempre clara)
-            const myAccount = { uid: userData.uid, name: 'Minha Estufa (Principal)' };
+            const myAccount = { uid: userData.uid, name: 'Minha Estufa (Principal)', type: 'owner' as const, ownerName: userData.name };
             
             // 2. Acessos antigos (Fallback)
-            const legacyShares: { uid: string; name: string }[] = [];
+            const legacyShares: { uid: string; name: string; type: 'shared'; ownerName: string }[] = [];
             if (userData.sharedAccess && Array.isArray(userData.sharedAccess)) {
                 userData.sharedAccess.forEach((access: any) => {
-                    legacyShares.push({ uid: access.uid, name: `Estufa de ${access.name || 'Parceiro'}` });
+                    const ownerName = normalizeOwnerName(access?.ownerName || access?.sharedBy || access?.name);
+                    legacyShares.push({
+                      uid: access.uid,
+                      name: `Estufa de ${ownerName}`,
+                      type: 'shared',
+                      ownerName,
+                    });
                 });
             }
 
@@ -75,16 +87,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     
                     // A MÁGICA AQUI: Pegamos o nome exato de quem compartilhou (sharedBy)
                     // Se não tiver, usamos o nome salvo ou 'Parceiro' como plano B
-                    let nomeDono = data.sharedBy || data.name || 'Parceiro';
-                    
-                    // Limpa o nome caso ele já venha com "Estufa de " salvo do banco antigo
-                    if (nomeDono.startsWith('Estufa de ')) {
-                        nomeDono = nomeDono.replace('Estufa de ', '');
-                    }
+                    const ownerName = normalizeOwnerName(
+                      data.ownerName || data.sharedByName || data.sharedBy || data.name
+                    );
 
                     return {
                         uid: data.tenantId,
-                        name: `Estufa de ${nomeDono}` // Ex: "Estufa de Bruno"
+                        name: `Estufa de ${ownerName}`,
+                        type: 'shared' as const,
+                        ownerName,
                     };
                 });
 

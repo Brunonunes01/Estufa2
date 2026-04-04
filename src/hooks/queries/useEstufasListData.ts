@@ -7,6 +7,10 @@ export const useEstufasListData = (tenantId?: string) =>
   useQuery({
     queryKey: queryKeys.estufasList(tenantId || 'none'),
     enabled: !!tenantId,
+    staleTime: 1000 * 60 * 2,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
     queryFn: async () => {
       const [estufas, activePlantios] = await Promise.all([
         listEstufas(tenantId as string),

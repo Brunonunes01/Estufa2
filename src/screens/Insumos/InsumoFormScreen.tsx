@@ -20,15 +20,16 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isEditMode && insumoId) {
-        getInsumoById(insumoId).then(i => {
+    const targetId = selectedTenantId || user?.uid;
+    if (isEditMode && insumoId && targetId) {
+        getInsumoById(insumoId, targetId).then(i => {
             if (i) {
                 setNome(i.nome); setTipo(i.tipo); setUnidade(i.unidadePadrao);
                 setEstoque(String(i.estoqueAtual)); setMinimo(String(i.estoqueMinimo || '')); setCusto(String(i.custoUnitario || ''));
             }
         });
     }
-  }, [insumoId]);
+  }, [insumoId, selectedTenantId]);
 
   const handleSave = async () => {
     const targetId = selectedTenantId || user?.uid;
@@ -41,7 +42,7 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
             estoqueMinimo: parseFloat(minimo) || 0, custoUnitario: parseFloat(custo.replace(',', '.')) || 0,
             fornecedorId: null, tamanhoEmbalagem: null, observacoes: null
         };
-        if (isEditMode) await updateInsumo(insumoId, data); else await createInsumo(data, targetId);
+        if (isEditMode) await updateInsumo(insumoId, data, targetId); else await createInsumo(data, targetId);
         navigation.goBack();
     } catch { Alert.alert("Erro", "Falha ao salvar."); } finally { setLoading(false); }
   };

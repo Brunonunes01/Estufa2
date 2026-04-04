@@ -1,36 +1,38 @@
-import React, { useEffect, useMemo } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, StatusBar, Alert } from 'react-native';
-import { useIsFocused } from '@react-navigation/native';
+import React, { useCallback, useEffect, useMemo } from 'react';
+import {
+  Alert,
+  FlatList,
+  RefreshControl,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-
 import { useAuth } from '../../hooks/useAuth';
 import { Estufa, Plantio } from '../../types/domain';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
-import SectionHeading from '../../components/ui/SectionHeading';
+import { COLORS, RADIUS, SHADOWS, SPACING } from '../../constants/theme';
 import { evaluateEstufaHealth } from '../../utils/estufaHealth';
-import { useAppSettings } from '../../hooks/useAppSettings';
 import { useEstufasListData } from '../../hooks/queries/useEstufasListData';
 import { useFeedback } from '../../hooks/useFeedback';
+import { useThemeMode } from '../../hooks/useThemeMode';
+import EmptyState from '../../components/ui/EmptyState';
+import SkeletonBlock from '../../components/ui/SkeletonBlock';
+import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 
 const EstufasListScreen = ({ navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
-  const { settings } = useAppSettings();
+  const theme = useThemeMode();
   const { showError, showWarning } = useFeedback();
   const targetId = selectedTenantId || user?.uid;
   const { data, isLoading, isFetching, isError, refetch } = useEstufasListData(targetId);
   const estufas: Estufa[] = data?.estufas || [];
   const plantios: Plantio[] = data?.activePlantios || [];
   const loading = isLoading || isFetching;
-  const isFocused = useIsFocused();
 
   useEffect(() => {
-    if (isFocused && targetId) refetch();
-  }, [isFocused, targetId, refetch]);
-
-  useEffect(() => {
-    if (isError) {
-      showError('Não foi possível carregar a lista de estufas.');
-    }
+    if (isError) showError('Não foi possível carregar a lista de estufas.');
   }, [isError, showError]);
 
   const activePlantioByEstufa = useMemo(() => {
@@ -42,19 +44,32 @@ const EstufasListScreen = ({ navigation }: any) => {
     return map;
   }, [estufas, plantios]);
 
-  const irParaVenda = (estufaId: string) => {
-    const plantioAtivo = activePlantioByEstufa[estufaId];
-    if (!plantioAtivo) {
-      Alert.alert('Sem ciclo ativo', 'Crie um novo ciclo nesta estufa para registrar venda.', [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Criar Ciclo', onPress: () => navigation.navigate('PlantioForm', { estufaId }) },
-      ]);
-      showWarning('Sem ciclo ativo nesta estufa.');
-      return;
-    }
+  const criticalCount = useMemo(
+    () => estufas.filter((estufa) => evaluateEstufaHealth(estufa, plantios).level === 'critical').length,
+    [estufas, plantios]
+  );
 
-    navigation.navigate('ColheitaForm', { plantioId: plantioAtivo.id, estufaId });
-  };
+  const warningCount = useMemo(
+    () => estufas.filter((estufa) => evaluateEstufaHealth(estufa, plantios).level === 'warning').length,
+    [estufas, plantios]
+  );
+
+  const irParaVenda = useCallback(
+    (estufaId: string) => {
+      const plantioAtivo = activePlantioByEstufa[estufaId];
+      if (!plantioAtivo) {
+        Alert.alert('Sem ciclo ativo', 'Crie um novo ciclo nesta estufa para registrar venda.', [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Criar Ciclo', onPress: () => navigation.navigate('PlantioForm', { estufaId }) },
+        ]);
+        showWarning('Sem ciclo ativo nesta estufa.');
+        return;
+      }
+
+      navigation.navigate('ColheitaForm', { plantioId: plantioAtivo.id, estufaId });
+    },
+    [activePlantioByEstufa, navigation, showWarning]
+  );
 
   const renderItem = ({ item }: { item: Estufa }) => {
     const isAtiva = item.status === 'ativa';
@@ -62,169 +77,226 @@ const EstufasListScreen = ({ navigation }: any) => {
     const health = evaluateEstufaHealth(item, plantios);
 
     return (
-      <View style={styles.card}>
-        <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('EstufaDetail', { estufaId: item.id })}>
-          <View style={styles.cardHeader}>
-            <View style={styles.iconContainer}>
-              <MaterialCommunityIcons name="greenhouse" size={24} color={isAtiva ? COLORS.primary : COLORS.c9CA3AF} />
-            </View>
-            <View style={styles.textContainer}>
-              <Text style={styles.cardTitle}>{item.nome}</Text>
-              <Text style={styles.cardSubTitle}>Área: {item.areaM2} m²</Text>
-              <Text style={styles.cycleInfo} numberOfLines={1}>
-                {plantioAtivo ? `Ciclo ativo: ${plantioAtivo.cultura}` : 'Sem ciclo ativo'}
-              </Text>
-            </View>
-            <View style={[styles.badge, isAtiva ? styles.badgeActive : styles.badgeInactive]}>
-              <Text style={[styles.badgeText, isAtiva ? styles.textActive : styles.textInactive]}>
-                {item.status === 'ativa' ? 'ATIVA' : 'PARADA'}
-              </Text>
-            </View>
+      <TouchableOpacity
+        activeOpacity={0.92}
+        onPress={() => navigation.navigate('EstufaDetail', { estufaId: item.id })}
+        style={[styles.card, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}
+      >
+        <View style={styles.cardTop}>
+          <View style={[styles.iconContainer, { backgroundColor: `${COLORS.primary}20` }]}>
+            <MaterialCommunityIcons name="greenhouse" size={24} color={isAtiva ? COLORS.primary : COLORS.c9CA3AF} />
           </View>
-          <View style={[styles.healthBadge, styles[`health${health.level === 'critical' ? 'Critical' : health.level === 'warning' ? 'Warning' : 'Ok'}` as const]]}>
-            <Text style={styles.healthBadgeText}>{health.label}</Text>
+          <View style={styles.textContainer}>
+            <Text style={[styles.cardTitle, { color: theme.textPrimary }]}>{item.nome}</Text>
+            <Text style={[styles.cardSubTitle, { color: theme.textSecondary }]}>Área {item.areaM2} m²</Text>
           </View>
-        </TouchableOpacity>
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: isAtiva ? theme.successBackground : theme.warningBackground },
+            ]}
+          >
+            <Text style={[styles.statusBadgeText, { color: isAtiva ? COLORS.success : COLORS.warning }]}>
+              {item.status === 'ativa' ? 'ATIVA' : 'PARADA'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={[styles.healthRow, { borderColor: theme.border }]}>
+          <Text style={[styles.healthLabel, { color: theme.textSecondary }]}>Saúde operacional</Text>
+          <View
+            style={[
+              styles.healthBadge,
+              {
+                backgroundColor:
+                  health.level === 'critical'
+                    ? theme.dangerBackground
+                    : health.level === 'warning'
+                      ? theme.warningBackground
+                      : theme.successBackground,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.healthBadgeText,
+                {
+                  color:
+                    health.level === 'critical'
+                      ? COLORS.danger
+                      : health.level === 'warning'
+                        ? COLORS.warning
+                        : COLORS.success,
+                },
+              ]}
+            >
+              {health.label}
+            </Text>
+          </View>
+        </View>
+
+        <Text style={[styles.cycleInfo, { color: theme.textPrimary }]} numberOfLines={1}>
+          {plantioAtivo ? `Ciclo ativo: ${plantioAtivo.cultura}` : 'Sem ciclo ativo'}
+        </Text>
 
         <View style={styles.actionsRow}>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('EstufaDetail', { estufaId: item.id })}>
-            <MaterialCommunityIcons name="view-dashboard-outline" size={16} color={COLORS.textPrimary} />
-            <Text style={styles.actionBtnText}>Hub</Text>
+          <TouchableOpacity
+            style={[styles.actionBtn, { borderColor: theme.border }]}
+            onPress={() => navigation.navigate('EstufaDetail', { estufaId: item.id })}
+          >
+            <Text style={[styles.actionBtnText, { color: theme.textPrimary }]}>Hub</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.actionBtn}
+            style={[styles.actionBtn, { borderColor: theme.border }]}
             onPress={() =>
               plantioAtivo
                 ? navigation.navigate('PlantioDetail', { plantioId: plantioAtivo.id })
                 : navigation.navigate('PlantioForm', { estufaId: item.id })
             }
           >
-            <MaterialCommunityIcons name="sprout" size={16} color={COLORS.textPrimary} />
-            <Text style={styles.actionBtnText}>{plantioAtivo ? 'Ciclo' : 'Novo Ciclo'}</Text>
+            <Text style={[styles.actionBtnText, { color: theme.textPrimary }]}>
+              {plantioAtivo ? 'Ciclo' : 'Novo Ciclo'}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.actionBtnPrimary} onPress={() => irParaVenda(item.id)}>
-            <MaterialCommunityIcons name="basket-plus" size={16} color={COLORS.textLight} />
+            <MaterialCommunityIcons name="basket-plus" size={14} color={COLORS.textLight} />
             <Text style={styles.actionBtnPrimaryText}>Vender</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
   return (
-    <View style={[styles.container, settings.darkMode && styles.containerDark]}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.secondary} />
+    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}>
+      <StatusBar barStyle="light-content" backgroundColor={theme.panelBackground} />
 
-      <View style={[styles.topSection, settings.darkMode && styles.topSectionDark]}>
-        <SectionHeading
-          title="Hubs de Estufa"
-          subtitle="Acesse ciclo, venda e gestão sem navegação em cascata"
-          style={{ marginBottom: 0 }}
-          titleStyle={{ color: COLORS.textLight }}
-          subtitleStyle={{ color: COLORS.whiteAlpha80 }}
-        />
-      </View>
+      <ScreenHeaderCard
+        title="Hubs de Estufa"
+        subtitle="Monitore status, ciclo e venda por unidade com um toque."
+        badgeLabel="Operação"
+        actionLabel="Nova Estufa"
+        actionIcon="plus"
+        onPressAction={() => navigation.navigate('EstufaForm')}
+      >
+        <View style={styles.headerStats}>
+          <View style={styles.headerStatChip}>
+            <Text style={styles.headerStatValue}>{estufas.length}</Text>
+            <Text style={styles.headerStatLabel}>Total</Text>
+          </View>
+          <View style={styles.headerStatChip}>
+            <Text style={styles.headerStatValue}>{criticalCount}</Text>
+            <Text style={styles.headerStatLabel}>Críticas</Text>
+          </View>
+          <View style={styles.headerStatChip}>
+            <Text style={styles.headerStatValue}>{warningCount}</Text>
+            <Text style={styles.headerStatLabel}>Atenção</Text>
+          </View>
+        </View>
+      </ScreenHeaderCard>
 
       <FlatList
         data={estufas}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={COLORS.textLight} />}
+        ListHeaderComponent={
+          loading ? (
+            <View style={styles.skeletonWrapper}>
+              <SkeletonBlock style={styles.skeletonCard} />
+              <SkeletonBlock style={styles.skeletonCard} />
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           !loading ? (
-            <View style={styles.emptyContainer}>
-              <MaterialCommunityIcons name="greenhouse" size={60} color={COLORS.textMuted} />
-              <Text style={styles.emptyTitle}>Nenhuma estufa cadastrada</Text>
-              <Text style={styles.emptySub}>Cadastre sua primeira estufa para iniciar o monitoramento.</Text>
-            </View>
+            <EmptyState
+              icon="greenhouse"
+              title="Nenhuma estufa cadastrada"
+              description="Cadastre sua primeira estufa para iniciar o monitoramento."
+              actionLabel="Adicionar estufa"
+              onAction={() => navigation.navigate('EstufaForm')}
+            />
           ) : null
         }
         renderItem={renderItem}
       />
-
-      <TouchableOpacity style={styles.fab} activeOpacity={0.85} onPress={() => navigation.navigate('EstufaForm')}>
-        <MaterialCommunityIcons name="plus" size={32} color={COLORS.textLight} />
-      </TouchableOpacity>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  containerDark: { backgroundColor: COLORS.c1E293B },
-  topSection: {
-    backgroundColor: COLORS.secondary,
-    paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.lg,
-    borderBottomLeftRadius: RADIUS.xl,
-    borderBottomRightRadius: RADIUS.xl,
+  container: { flex: 1 },
+  listContent: { padding: SPACING.lg, paddingBottom: 60 },
+  headerStats: { flexDirection: 'row', gap: 8 },
+  headerStatChip: {
+    flex: 1,
+    backgroundColor: COLORS.whiteAlpha12,
+    borderWidth: 1,
+    borderColor: COLORS.whiteAlpha20,
+    borderRadius: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
   },
-  topSectionDark: { backgroundColor: COLORS.textDark },
-  listContent: { padding: SPACING.xl, paddingBottom: 100 },
+  headerStatValue: { color: COLORS.textLight, fontSize: 14, fontWeight: '900' },
+  headerStatLabel: { color: COLORS.whiteAlpha80, marginTop: 2, fontSize: 10, fontWeight: '700' },
+  skeletonWrapper: { marginBottom: 12, gap: 10 },
+  skeletonCard: { width: '100%', height: 170, borderRadius: RADIUS.lg },
 
   card: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
+    borderRadius: 18,
+    padding: 14,
     marginBottom: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
     ...SHADOWS.card,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
+  cardTop: { flexDirection: 'row', alignItems: 'center' },
   iconContainer: {
     width: 48,
     height: 48,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primaryLight,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
   textContainer: { flex: 1 },
-  cardTitle: { fontSize: TYPOGRAPHY.title, fontWeight: '800', color: COLORS.textPrimary },
-  cardSubTitle: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
-  cycleInfo: { fontSize: 12, color: COLORS.textPrimary, marginTop: 4, fontWeight: '600' },
-  healthBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: RADIUS.pill, marginBottom: 12 },
-  healthOk: { backgroundColor: COLORS.successSoft },
-  healthWarning: { backgroundColor: COLORS.warningSoft },
-  healthCritical: { backgroundColor: COLORS.dangerBg },
-  healthBadgeText: { fontSize: 10, fontWeight: '800', color: COLORS.textPrimary },
-
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS.pill },
-  badgeActive: { backgroundColor: COLORS.successSoft },
-  badgeInactive: { backgroundColor: COLORS.surfaceMuted },
-  badgeText: { fontSize: 10, fontWeight: '700' },
-  textActive: { color: COLORS.success },
-  textInactive: { color: COLORS.c6B7280 },
-
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.divider,
-    paddingTop: 12,
+  cardTitle: { fontSize: 16, fontWeight: '900' },
+  cardSubTitle: { fontSize: 12, marginTop: 3, fontWeight: '600' },
+  statusBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
+  statusBadgeText: { fontSize: 10, fontWeight: '800' },
+  healthRow: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  healthLabel: { fontSize: 11, fontWeight: '600' },
+  healthBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  healthBadgeText: { fontSize: 10, fontWeight: '800' },
+  cycleInfo: { marginTop: 10, fontSize: 13, fontWeight: '600' },
+  actionsRow: { marginTop: 12, flexDirection: 'row', gap: 8 },
   actionBtn: {
     flex: 1,
     height: 38,
-    borderRadius: RADIUS.sm,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
   },
-  actionBtnText: { fontSize: 12, fontWeight: '700', color: COLORS.textPrimary },
+  actionBtnText: { fontSize: 12, fontWeight: '700' },
   actionBtnPrimary: {
     flex: 1,
     height: 38,
-    borderRadius: RADIUS.sm,
+    borderRadius: 10,
     backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -232,23 +304,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   actionBtnPrimaryText: { fontSize: 12, fontWeight: '700', color: COLORS.textLight },
-
-  emptyContainer: { alignItems: 'center', marginTop: 60 },
-  emptyTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.textPrimary, marginTop: 10 },
-  emptySub: { fontSize: TYPOGRAPHY.body, color: COLORS.textSecondary, marginTop: 5, textAlign: 'center' },
-
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 30,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...SHADOWS.floating,
-  },
 });
 
 export default EstufasListScreen;

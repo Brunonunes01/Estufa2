@@ -58,23 +58,31 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
   }, [editingId]);
 
   const loadEstufa = async () => {
-    const data = await getEstufaById(editingId);
-    if (data) {
-      setNome(data.nome || '');
-      setCidade(data.cidade || '');
-      setPropriedade(data.propriedade || '');
-      setTipoCultivo(data.tipoCultivo || '');
-      setSistemaCultivo(data.sistemaCultivo || '');
-      setResponsavel(data.responsavel || '');
-      setLatitude(data.latitude || '');
-      setLongitude(data.longitude || '');
-      setComprimento(data.comprimentoM?.toString() || '');
-      setLargura(data.larguraM?.toString() || '');
-      setAltura(data.alturaM?.toString() || '');
-      setTipoCobertura(data.tipoCobertura || '');
-      setObservacoes(data.observacoes || '');
-      // Carrega o status (se não existir, cai no padrão 'ativa')
-      setStatus(data.status || 'ativa');
+    const targetId = selectedTenantId || user?.uid;
+    if (!targetId) return;
+
+    try {
+      const data = await getEstufaById(editingId, targetId);
+      if (data) {
+        setNome(data.nome || '');
+        setCidade(data.cidade || '');
+        setPropriedade(data.propriedade || '');
+        setTipoCultivo(data.tipoCultivo || '');
+        setSistemaCultivo(data.sistemaCultivo || '');
+        setResponsavel(data.responsavel || '');
+        setLatitude(data.latitude || '');
+        setLongitude(data.longitude || '');
+        setComprimento(data.comprimentoM?.toString() || '');
+        setLargura(data.larguraM?.toString() || '');
+        setAltura(data.alturaM?.toString() || '');
+        setTipoCobertura(data.tipoCobertura || '');
+        setObservacoes(data.observacoes || '');
+        // Carrega o status (se não existir, cai no padrão 'ativa')
+        setStatus(data.status || 'ativa');
+      }
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Erro", "Não foi possível carregar os dados da estufa.");
     }
   };
 
@@ -109,10 +117,13 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
   };
 
   const handleConfirmDelete = async () => {
+    const targetId = selectedTenantId || user?.uid;
     if (!adminPassword.trim()) {
       Alert.alert('Atenção', 'Informe a senha de administrador.');
       return;
     }
+    if (!targetId) return;
+
     setDeleting(true);
     try {
       const valid = await verifyCurrentUserPassword(adminPassword.trim());
@@ -120,7 +131,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
         Alert.alert('Senha inválida', 'A senha de administrador está incorreta.');
         return;
       }
-      await deleteEstufa(editingId);
+      await deleteEstufa(editingId, targetId);
       setDeleteModalVisible(false);
       navigation.goBack();
     } catch (e) {
@@ -162,13 +173,13 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
 
     try {
       if (isEditMode) {
-        await updateEstufa(editingId, estufaData as any);
+        await updateEstufa(editingId, estufaData as any, targetId);
       } else {
         await createEstufa(estufaData as any, targetId);
       }
       navigation.goBack();
-    } catch (e) {
-      Alert.alert("Erro", "Falha ao salvar.");
+    } catch (e: any) {
+      Alert.alert("Erro", e.message || "Falha ao salvar.");
     } finally {
       setLoading(false);
     }
