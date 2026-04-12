@@ -10,6 +10,9 @@ export const createManejo = async (data: Partial<RegistroManejo>, userId: string
   const novoManejo = {
     ...data,
     userId: tenantId,
+    tenantId,
+    createdBy: tenantId,
+    fotos: Array.isArray(data.fotos) ? data.fotos : [],
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   };
@@ -38,7 +41,7 @@ export const listManejosByPlantio = async (userId: string, plantioId: string): P
     
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach((doc) => {
-      manejos.push({ id: doc.id, ...doc.data() } as RegistroManejo);
+      manejos.push({ ...doc.data() , id: doc.id } as RegistroManejo);
     });
     
     return manejos.sort((a, b) => b.dataRegistro.toMillis() - a.dataRegistro.toMillis());
@@ -59,7 +62,7 @@ export const getManejoById = async (id: string, userId: string): Promise<Registr
       if (data.userId !== tenantId) {
         throw new Error("Acesso negado: este registro de manejo não pertence ao seu tenant.");
       }
-      return { id: docSnap.id, ...data };
+      return { ...data , id: docSnap.id };
     }
     return null;
   } catch (error) {

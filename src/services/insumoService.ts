@@ -64,7 +64,7 @@ export const listInsumos = async (userId: string): Promise<Insumo[]> => {
     const q = query(collection(db, 'insumos'), where("userId", "==", tenantId));
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach((doc) => {
-      insumos.push({ id: doc.id, ...doc.data() } as Insumo);
+      insumos.push({ ...doc.data() , id: doc.id } as Insumo);
     });
     return insumos;
   } catch (error) {
@@ -81,7 +81,7 @@ export const listInsumosEmAlerta = async (userId: string): Promise<Insumo[]> => 
     const querySnapshot = await getDocs(q);
     
     querySnapshot.forEach((doc) => {
-      const item = { id: doc.id, ...doc.data() } as Insumo;
+      const item = { ...doc.data() , id: doc.id } as Insumo;
       if (item.estoqueMinimo && item.estoqueAtual <= item.estoqueMinimo) {
         alertas.push(item);
       }
@@ -103,7 +103,7 @@ export const getInsumoById = async (insumoId: string, userId: string): Promise<I
         if (data.userId !== tenantId) {
           throw new Error("Acesso negado: este insumo não pertence ao seu tenant.");
         }
-        return { id: docSnap.id, ...data } as Insumo;
+        return { ...data , id: docSnap.id } as Insumo;
       }
       return null;
     } catch (error) {

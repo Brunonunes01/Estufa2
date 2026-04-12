@@ -1,6 +1,6 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { Colheita } from '../types/domain';
+import { Venda } from '../types/domain';
 import { COLORS } from '../constants/theme';
 
 export interface SalesReportTotals {
@@ -34,7 +34,7 @@ interface SalesReportPdfData {
 }
 
 interface ReceiptData {
-  venda: Colheita;
+  venda: Venda & Record<string, any>;
   nomeProdutor: string;
   nomeCliente: string;
   nomeProduto: string;
@@ -356,17 +356,16 @@ export const shareVendaReceipt = async (data: ReceiptData) => {
   if (!venda || !venda.id) {
     throw new Error('Venda inválida para geração do PDF individual.');
   }
-  const valor = venda.quantidade * (venda.precoUnitario || 0);
-  const status =
-    venda.statusPagamento === 'pendente' || (!venda.statusPagamento && venda.metodoPagamento === 'prazo')
-      ? 'PENDENTE'
-      : 'PAGO';
+  const quantidade = Number(venda.quantidade || venda.itens?.[0]?.quantidade || 0);
+  const precoUnitario = Number(venda.precoUnitario || venda.itens?.[0]?.valorUnitario || 0);
+  const valor = Number(venda.valorTotal || quantidade * precoUnitario);
+  const status = venda.statusPagamento === 'pendente' ? 'PENDENTE' : 'PAGO';
 
   await shareSalesReportPdf({
     nomeProdutor,
     nomeEstufa,
     tituloRelatorio: 'Relatório de Venda Individual',
-    periodo: venda.dataColheita.toDate().toLocaleDateString('pt-BR'),
+    periodo: (venda.dataVenda || venda.dataColheita).toDate().toLocaleDateString('pt-BR'),
     observacoes: venda.observacoes || `Produto: ${nomeProduto}`,
     totais: {
       totalReceber: status === 'PENDENTE' ? valor : 0,
@@ -382,7 +381,7 @@ export const shareVendaReceipt = async (data: ReceiptData) => {
         data: venda.dataColheita.toDate().toLocaleDateString('pt-BR'),
         cliente: nomeCliente,
         estufa: nomeEstufa,
-        metodoPagamento: venda.metodoPagamento ? venda.metodoPagamento.toUpperCase() : 'N/A',
+        metodoPagamento: (venda.metodoPagamento || venda.formaPagamento || 'N/A').toUpperCase(),
         status,
         valor,
         observacoes: venda.observacoes,

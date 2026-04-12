@@ -39,7 +39,9 @@ const EstufasListScreen = ({ navigation }: any) => {
     const map: Record<string, Plantio | null> = {};
     estufas.forEach((estufa) => {
       map[estufa.id] =
-        plantios.find((plantio) => plantio.estufaId === estufa.id && plantio.status !== 'finalizado') || null;
+        plantios.find(
+          (plantio) => plantio.estufaId === estufa.id && plantio.status !== 'finalizado' && plantio.status !== 'cancelado'
+        ) || null;
     });
     return map;
   }, [estufas, plantios]);

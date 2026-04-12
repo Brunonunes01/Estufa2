@@ -19,12 +19,13 @@ import { useIsFocused } from '@react-navigation/native';
 
 import { useAuth } from '../../hooks/useAuth';
 import { useThemeMode } from '../../hooks/useThemeMode';
-import { getColheitaById, listAllColheitas } from '../../services/colheitaService';
+import { listAllColheitas } from '../../services/colheitaService';
+import { getVendaById } from '../../services/vendaService';
 import { listClientes } from '../../services/clienteService';
 import { listEstufas } from '../../services/estufaService';
 import { getTotalDespesasPendentes } from '../../services/despesaService';
 import { shareSalesReportPdf, shareVendaReceipt } from '../../services/receiptService';
-import { Cliente, Colheita } from '../../types/domain';
+import { Cliente } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 import MetricCard from '../../components/ui/MetricCard';
@@ -35,7 +36,7 @@ const VendasListScreen = ({ navigation }: any) => {
   const theme = useThemeMode();
   const isFocused = useIsFocused();
 
-  const [allVendas, setAllVendas] = useState<Colheita[]>([]);
+  const [allVendas, setAllVendas] = useState<any[]>([]);
   const [clientesList, setClientesList] = useState<Cliente[]>([]);
   const [clientesMap, setClientesMap] = useState<Record<string, string>>({});
   const [estufasMap, setEstufasMap] = useState<Record<string, string>>({});
@@ -94,14 +95,14 @@ const VendasListScreen = ({ navigation }: any) => {
     if (isFocused) loadData();
   }, [isFocused, selectedTenantId]);
 
-  const getClienteNome = (id: string | null) => {
+  const getClienteNome = (id?: string | null) => {
     if (!id) return 'Cliente Avulso';
     if (clientesMap[id]) return clientesMap[id];
     if (loading && Object.keys(clientesMap).length === 0) return 'Carregando...';
     return 'Cliente Desconhecido';
   };
 
-  const isPendenteVenda = (venda: Colheita) =>
+  const isPendenteVenda = (venda: any) =>
     venda.statusPagamento === 'pendente' || (!venda.statusPagamento && venda.metodoPagamento === 'prazo');
 
   const filteredVendas = useMemo(() => {
@@ -308,7 +309,7 @@ const VendasListScreen = ({ navigation }: any) => {
     }
 
     try {
-      const venda = await getColheitaById(vendaId, targetId);
+      const venda = await getVendaById(vendaId, targetId);
       if (!venda) {
         Alert.alert('Erro', 'Registro da venda não encontrado.');
         return;
@@ -335,7 +336,7 @@ const VendasListScreen = ({ navigation }: any) => {
     }
   };
 
-  const renderItem = ({ item }: { item: Colheita }) => {
+  const renderItem = ({ item }: { item: any }) => {
     const total = item.quantidade * (item.precoUnitario || 0);
     const clienteNome = getClienteNome(item.clienteId);
     const isPendente = isPendenteVenda(item);

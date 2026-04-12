@@ -82,7 +82,7 @@ const ContasReceberScreen = ({ navigation }: any) => {
     return d.toLocaleDateString('pt-BR');
   };
 
-  const formatMetodo = (metodo: string | null) => {
+  const formatMetodo = (metodo?: string | null) => {
     if (!metodo) return 'Indefinido';
     switch (metodo) {
       case 'prazo':

@@ -15,7 +15,9 @@ const getMaxLevel = (current: HealthLevel, next: HealthLevel): HealthLevel => {
 
 export const evaluateEstufaHealth = (estufa: Estufa, plantios: Plantio[]): EstufaHealth => {
   const relatedPlantios = plantios.filter((plantio) => plantio.estufaId === estufa.id);
-  const activePlantio = relatedPlantios.find((plantio) => plantio.status !== 'finalizado');
+  const activeStatuses = new Set(['em_crescimento', 'colheita_iniciada', 'em_desenvolvimento', 'em_colheita']);
+  const activePlantios = relatedPlantios.filter((plantio) => activeStatuses.has(plantio.status));
+  const activePlantio = activePlantios[0];
 
   let level: HealthLevel = 'ok';
   const reasons: string[] = [];
@@ -30,7 +32,7 @@ export const evaluateEstufaHealth = (estufa: Estufa, plantios: Plantio[]): Estuf
     reasons.push('Estufa em manutenção.');
   }
 
-  if (estufa.status === 'ativa' && !activePlantio) {
+  if (estufa.status === 'ativa' && activePlantios.length === 0) {
     level = getMaxLevel(level, 'warning');
     reasons.push('Sem ciclo ativo.');
   }
@@ -38,14 +40,27 @@ export const evaluateEstufaHealth = (estufa: Estufa, plantios: Plantio[]): Estuf
   if (activePlantio?.previsaoColheita) {
     const previsao = activePlantio.previsaoColheita.toDate();
     const now = new Date();
-    const diffDays = Math.floor((now.getTime() - previsao.getTime()) / (1000 * 60 * 60 * 24));
+    
+    // Zera as horas para comparar apenas os dias
+    previsao.setHours(0, 0, 0, 0);
+    now.setHours(0, 0, 0, 0);
 
-    if (diffDays >= 7) {
+    // Calcula a diferença em dias
+    const diffTime = previsao.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+      // Passou da data prevista (Atrasado)
       level = getMaxLevel(level, 'critical');
-      reasons.push('Ciclo com colheita prevista em atraso.');
-    } else if (diffDays >= 2) {
+      reasons.push(`Atraso na colheita (${Math.abs(diffDays)} dias).`);
+    } else if (diffDays === 0) {
+      // É hoje
+      level = getMaxLevel(level, 'critical');
+      reasons.push('Ponto de colheita atingido (É hoje!).');
+    } else if (diffDays <= 3) {
+      // Faltam 3 dias ou menos (Alerta para preparação)
       level = getMaxLevel(level, 'warning');
-      reasons.push('Ciclo próximo ou ligeiramente atrasado.');
+      reasons.push(`Preparar colheita (em ${diffDays} dias).`);
     }
   }
 

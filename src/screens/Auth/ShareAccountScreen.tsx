@@ -71,9 +71,15 @@ export default function ShareAccountScreen({ navigation }: any) {
         }
     };
 
-    const formatDate = (isoString?: string) => {
-        if (!isoString) return 'Data desconhecida';
-        const date = new Date(isoString);
+    const formatDate = (value?: string | number | { toDate?: () => Date }) => {
+        if (!value) return 'Data desconhecida';
+        const date = typeof value === 'number'
+          ? new Date(value)
+          : typeof value === 'string'
+            ? new Date(value)
+            : value.toDate
+              ? value.toDate()
+              : new Date();
         return date.toLocaleDateString('pt-BR');
     };
 

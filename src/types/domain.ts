@@ -1,166 +1,281 @@
-// src/types/domain.ts
 import { Timestamp } from 'firebase/firestore';
 
-export interface User {
+export type UserRole = 'admin' | 'operator';
+
+export interface BaseDoc {
+  id: string;
+  tenantId?: string;
+  userId?: string;
+  createdBy?: string;
+  createdAt: Timestamp | number;
+  updatedAt: Timestamp | number;
+}
+
+export interface User extends BaseDoc {
   uid: string;
-  name: string;
+  name?: string;
+  displayName?: string;
   email: string;
-  role: "admin" | "operator";
-  createdAt: Timestamp;
-  sharedAccess?: { uid: string; name: string }[]; 
+  role?: UserRole;
+  photoURL?: string;
+  activeSafraId?: string;
+  sharedAccess?: Array<{ tenantId: string; ownerName?: string; tenantName?: string }>;
+}
+
+export interface UserProfile extends User {
+  role: UserRole;
 }
 
 export interface Tenant {
   uid: string;
-  name: string;
-  ownerId: string;
+  ownerName?: string;
+  name?: string;
   sharedBy?: string;
-  sharedAt?: string;
-  createdAt?: any;
+  sharedAt?: Timestamp | number | string;
 }
 
-export interface ShareCode {
-    code: string;
-    tenantId: string;
-    tenantName: string;
-    ownerName: string;
-    createdAt: number;
-    expiresAt: number;
-}
-
-interface BaseDoc {
-  id: string; 
-  userId: string;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
-
-export interface Estufa extends BaseDoc {
-  nome: string;
-  dataFabricacao: Timestamp | null;
-  comprimentoM: number;
-  larguraM: number;
-  alturaM: number;
-  areaM2: number; 
-  tipoCobertura: string | null;
-  responsavel: string | null;
-  status: "ativa" | "manutencao" | "desativada";
-  observacoes: string | null;
-  latitude?: string;
-  longitude?: string;
-  cidade?: string;
-  propriedade?: string;
-  tipoCultivo?: string; 
-  sistemaCultivo?: string; 
-  dataInicioOperacao?: Timestamp | null;
-}
-
-export interface Plantio extends BaseDoc {
-  estufaId: string;
-  safraId: string | null;
-  codigoLote?: string; 
-  origemSemente?: string; 
-  cultura: string;
-  variedade: string | null;
-  quantidadePlantada: number;
-  unidadeQuantidade: string;
-  precoEstimadoUnidade: number | null;
-  cicloDias: number | null;
-  dataPlantio: Timestamp;
-  previsaoColheita: Timestamp | null;
-  status: "em_desenvolvimento" | "em_colheita" | "finalizado";
-  observacoes: string | null;
-  fornecedorId: string | null;
-}
-
-export interface Colheita extends BaseDoc {
-  plantioId: string;
-  estufaId: string; 
-  dataColheita: Timestamp;
-  quantidade: number;
-  unidade: string; 
-  precoUnitario: number | null;
-  destino: string | null;
-  clienteId: string | null;
-  metodoPagamento: string | null;
-  registradoPor: string | null;
-  observacoes: string | null;
-  statusPagamento?: "pago" | "pendente" | "atrasado"; 
-  dataPagamento?: Timestamp | null;
-  pesoBruto?: number;   
-  pesoLiquido?: number; 
-  dataVencimento?: Timestamp | null; 
-  valorTotal?: number;
-}
-
-export interface Insumo extends BaseDoc {
-  nome: string;
-  tipo: "adubo" | "defensivo" | "semente" | "outro";
-  unidadePadrao: string; 
-  estoqueAtual: number; 
-  estoqueMinimo: number | null;
-  custoUnitario: number | null;
-  fornecedorId: string | null; 
-  observacoes: string | null; 
-  tamanhoEmbalagem: number | null; 
-}
-
-export interface Fornecedor extends BaseDoc {
-  nome: string;
-  contato: string | null;
-  telefone: string | null;
-  email: string | null;
-  endereco: string | null;
-  observacoes: string | null;
+export interface ShareCode extends BaseDoc {
+  code: string;
+  tenantId: string;
+  tenantName?: string;
+  ownerName?: string;
+  createdBy: string;
+  expiresAt: Timestamp | number | string;
+  usedBy?: string[];
 }
 
 export interface Cliente extends BaseDoc {
   nome: string;
-  telefone: string | null;
-  cidade: string | null;
-  tipo: "atacado" | "varejo" | "restaurante" | "outro";
-  observacoes: string | null;
+  cidade?: string;
+  telefone?: string;
+  email?: string;
+  documento?: string;
+  tipo?: string;
+  observacoes?: string;
+}
+
+export interface Fornecedor extends BaseDoc {
+  nome: string;
+  contato?: string;
+  telefone?: string;
+  email?: string;
+  categoria?: string;
+  observacoes?: string;
+}
+
+export interface Safra extends BaseDoc {
+  nome: string;
+  dataInicio: Timestamp;
+  dataFim?: Timestamp;
+  status: 'ativa' | 'encerrada';
+  observacoes?: string;
+}
+
+export interface SubdivisaoEstufa {
+  id: string;
+  nome: string;
+  areaOuCapacidade: number;
+  tipo?: 'canteiro' | 'setor' | 'lote' | 'bancada';
+}
+
+export interface Estufa extends BaseDoc {
+  nome: string;
+  tipo?: 'hidroponia' | 'solo' | 'semi-hidroponia';
+  capacidadeTotal?: number;
+  unidadeMedida?: 'm2' | 'plantas' | 'bancadas';
+  subdivisoes?: SubdivisaoEstufa[];
+  percentualOcupacao?: number;
+
+  // Compatibilidade com dados legados da base atual
+  cidade?: string;
+  propriedade?: string;
+  tipoCultivo?: string;
+  sistemaCultivo?: string;
+  responsavel?: string;
+  latitude?: string;
+  longitude?: string;
+  comprimentoM?: number;
+  larguraM?: number;
+  alturaM?: number;
+  areaM2?: number;
+  tipoCobertura?: string;
+  observacoes?: string;
+  dataInicioOperacao?: Timestamp;
+
+  status: 'ativa' | 'manutencao' | 'desativada';
+}
+
+export interface Plantio extends BaseDoc {
+  safraId?: string;
+  estufaId: string;
+  subdivisaoId?: string;
+  cultura: string;
+  variedade?: string;
+  dataInicio?: Timestamp;
+  dataPlantio?: Timestamp;
+  dataPrevisaoColheita?: Timestamp;
+  previsaoColheita?: Timestamp;
+  dataEncerramento?: Timestamp;
+  status:
+    | 'em_crescimento'
+    | 'colheita_iniciada'
+    | 'finalizado'
+    | 'abortado'
+    | 'em_desenvolvimento'
+    | 'em_colheita'
+    | 'cancelado';
+  ocupacaoEstimada?: number;
+  custoAcumulado?: number;
+  custoTotal?: number;
+  cicloDias?: number;
+
+  // Compatibilidade legada
+  codigoLote?: string;
+  origemSemente?: string;
+  quantidadePlantada?: number;
+  unidadeQuantidade?: string;
+  observacoes?: string;
+}
+
+export type UnidadeInsumo = 'kg' | 'L' | 'un' | 'g' | 'ml' | 'l';
+
+export interface Insumo extends BaseDoc {
+  nome: string;
+  fabricante?: string;
+  categoria?: 'fertilizante' | 'defensivo' | 'biologico' | 'substrato' | 'outro';
+  tipo?: string;
+  unidadeMedida?: UnidadeInsumo;
+  unidadePadrao?: string;
+  estoqueAtual: number;
+  estoqueMinimo?: number;
+  lote?: string;
+  dataValidade?: Timestamp;
+  diasCarencia?: number;
+  custoUnitario: number;
+  registroMAPA?: string;
 }
 
 export interface AplicacaoItem {
   insumoId: string;
-  nomeInsumo: string; 
-  quantidadeAplicada: number; 
+  nomeInsumo: string;
+  dosePorTanque?: number;
+  quantidadeAplicada: number;
   unidade: string;
-  dosePorTanque?: number | null; 
-  custoUnitarioNaAplicacao?: number; 
+  custoUnitarioNaAplicacao?: number;
 }
 
 export interface Aplicacao extends BaseDoc {
   plantioId: string;
-  estufaId: string;
+  estufaId?: string;
+  insumoId?: string;
   dataAplicacao: Timestamp;
-  observacoes: string | null;
-  volumeTanque: number | null; 
-  numeroTanques: number | null; 
-  itens: AplicacaoItem[]; 
+  quantidadeAplicada?: number;
+  custoCalculado?: number;
+  aplicadorId?: string;
+  dataFimCarencia?: Timestamp;
+  metodoAplicacao?: 'fertirrigacao' | 'pulverizacao' | 'manual';
+  statusSeguranca?: 'em_carencia' | 'liberado';
+
+  // Compatibilidade com telas existentes
+  tipoAplicacao?: 'defensivo' | 'fertilizacao';
+  volumeTanque?: number;
+  numeroTanques?: number;
+  observacoes?: string;
+  itens?: AplicacaoItem[];
+}
+
+export interface Colheita extends BaseDoc {
+  plantioId: string;
+  estufaId?: string;
+  safraId?: string;
+  dataColheita: Timestamp;
+  quantidade: number;
+  unidadeMedida?: 'kg' | 'maços' | 'caixas' | 'un';
+  unidade?: string;
+  qualidade?: 'premium' | 'padrao' | 'industrial';
+  loteColheita?: string;
+  destino: 'estoque' | 'venda_direta' | 'descarte';
+  observacoes?: string;
+  pesoBruto?: number;
+  pesoLiquido?: number;
+
+  // Compatibilidade legada (mantido opcional até migração completa para Venda)
+  precoUnitario?: number;
+  clienteId?: string | null;
+  metodoPagamento?: string | null;
+  statusPagamento?: 'pendente' | 'pago' | 'atrasado' | 'cancelado';
+  dataPagamento?: Timestamp | null;
+}
+
+export interface VendaItem {
+  colheitaId?: string;
+  descricao: string;
+  quantidade: number;
+  valorUnitario: number;
+}
+
+export interface Venda extends BaseDoc {
+  plantioId?: string;
+  estufaId?: string;
+  clienteId?: string | null;
+  dataVenda: Timestamp;
+  dataVencimento?: Timestamp | null;
+  itens: VendaItem[];
+  valorTotal: number;
+  statusPagamento: 'pendente' | 'pago' | 'atrasado' | 'cancelado';
+  formaPagamento?: 'pix' | 'boleto' | 'transferencia' | 'dinheiro' | 'cartao' | 'outro' | 'prazo';
+  observacoes?: string;
+
+  // Campos legados de relatório
+  metodoPagamento?: string | null;
 }
 
 export interface Despesa extends BaseDoc {
   descricao: string;
-  categoria: "energia" | "agua" | "mao_de_obra" | "manutencao" | "combustivel" | "imposto" | "outro";
+  categoria: 'energia' | 'agua' | 'manutencao' | 'mao_de_obra' | 'outro';
   valor: number;
-  dataDespesa: Timestamp;
-  observacoes: string | null;
-  registradoPor: string | null;
-  dataVencimento?: Timestamp | null; 
-  status: "pago" | "pendente"; 
+  dataVencimento?: Timestamp;
+  dataDespesa?: Timestamp;
+  statusPagamento?: 'pendente' | 'pago';
+  status?: 'pendente' | 'pago';
+  plantioId?: string;
+  estufaId?: string;
 }
 
-// --- INTERFACE DE MANEJO SIMPLIFICADA ---
 export interface RegistroManejo extends BaseDoc {
-  plantioId: string; 
-  estufaId: string;
+  plantioId: string;
+  estufaId?: string;
+  tipoManejo: 'clima' | 'praga_doenca' | 'outro';
+  descricao: string;
   dataRegistro: Timestamp;
-  tipoManejo: "clima" | "praga_doenca" | "outro"; // Apenas o essencial do diário
-  descricao: string; 
-  responsavel: string | null;
+  responsavel?: string;
+  severidade?: 'baixa' | 'media' | 'alta' | null;
   temperatura?: number | null;
   umidade?: number | null;
-  severidade?: "baixa" | "media" | "alta" | null;
+  fotos?: string[];
+}
+
+export interface TarefaAgricola extends BaseDoc {
+  plantioId: string;
+  estufaId?: string;
+  tipoTarefa: 'irrigacao' | 'adubacao' | 'manejo' | 'colheita' | 'inspecao' | 'outro';
+  dataPrevista: Timestamp;
+  status: 'pendente' | 'em_andamento' | 'concluida' | 'cancelada';
+  prioridade: 'baixa' | 'media' | 'alta' | 'critica';
+  observacoes?: string;
+}
+
+export interface DashboardSummary extends BaseDoc {
+  receitaTotal?: number;
+  contasAPagar?: number;
+  contasAReceber?: number;
+  custoProducaoMensal?: number;
+  alertasCarencia?: number;
+  totalPlantiosAtivos?: number;
+  ocupacaoGlobalMedia?: number;
+
+  // Novos indicadores operacionais
+  tarefasHojePendentes?: number;
+  irrigacoesPendentes?: number;
+  manejosPendentes?: number;
 }

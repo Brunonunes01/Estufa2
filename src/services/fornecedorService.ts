@@ -56,7 +56,7 @@ export const listFornecedores = async (userId: string): Promise<Fornecedor[]> =>
     
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach((doc) => {
-      fornecedores.push({ id: doc.id, ...doc.data() } as Fornecedor);
+      fornecedores.push({ ...doc.data() , id: doc.id } as Fornecedor);
     });
     
     return fornecedores;
@@ -78,7 +78,7 @@ export const getFornecedorById = async (fornecedorId: string, userId: string): P
       if (data.userId !== tenantId) {
         throw new Error("Acesso negado: este fornecedor não pertence ao seu tenant.");
       }
-      return { id: docSnap.id, ...data };
+      return { ...data , id: docSnap.id };
     } else {
       return null;
     }

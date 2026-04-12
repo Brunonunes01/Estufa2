@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect } from 'react';
 import { 
   View, Text, TextInput, ScrollView, Alert, StyleSheet,
-  TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Modal
+  TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Modal, Switch
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker'; 
 import DateTimePicker from '@react-native-community/datetimepicker'; 
@@ -40,6 +40,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const [selectedClienteId, setSelectedClienteId] = useState<string | null>(null); 
   const [metodoPagamento, setMetodoPagamento] = useState<MetodoPagamento>('pix');
   const [dataVenda, setDataVenda] = useState(new Date());
+  const [isFinalHarvest, setIsFinalHarvest] = useState(false);
   
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -76,7 +77,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
             estufas.forEach((e: any) => mapE[e.id] = e.nome);
             setEstufasMap(mapE);
 
-            const ativos = plantios.filter((p: any) => p.status !== 'finalizado' || isEditMode);
+            const ativos = plantios.filter((p: any) => isEditMode || (p.status !== 'finalizado' && p.status !== 'cancelado'));
             setPlantiosDisponiveis(ativos);
             
             if (!selectedPlantioId && ativos.length > 0 && !isEditMode) {
@@ -175,7 +176,8 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
               observacoes: `Produto rastreado referente ao Lote: ${plantioObj?.codigoLote || 'N/A'}`,
               dataVenda,
               pesoBruto: parseFloat(pesoBruto.replace(',', '.')) || 0,
-              pesoLiquido: parseFloat(pesoLiquido.replace(',', '.')) || 0
+              pesoLiquido: parseFloat(pesoLiquido.replace(',', '.')) || 0,
+              isFinalHarvest,
           };
 
           if (isEditMode) {
@@ -301,6 +303,23 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                     <Picker.Item label="Cartão" value="cartao" />
                 </Picker>
             </View>
+
+            {!isEditMode && (
+              <View style={styles.finalHarvestRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Esta é a colheita final (encerrar ciclo)?</Text>
+                  <Text style={styles.finalHarvestHint}>
+                    Se desligado, o plantio permanece em colheita para novos lançamentos.
+                  </Text>
+                </View>
+                <Switch
+                  value={isFinalHarvest}
+                  onValueChange={setIsFinalHarvest}
+                  trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                  thumbColor={COLORS.textLight}
+                />
+              </View>
+            )}
         </View>
 
         <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={loading}>
@@ -354,6 +373,8 @@ const styles = StyleSheet.create({
   totalContainer: { alignItems: 'center', borderTopWidth: 1, borderTopColor: COLORS.divider, paddingTop: 15 },
   totalLabel: { fontSize: 11, color: COLORS.textPrimary, fontWeight: 'bold' },
   totalValue: { fontSize: 24, fontWeight: 'bold', color: COLORS.primary },
+  finalHarvestRow: { marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: COLORS.border, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  finalHarvestHint: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
   saveBtn: { backgroundColor: COLORS.primary, padding: 18, borderRadius: 12, alignItems: 'center', marginBottom: 30 },
   saveText: { color: COLORS.textLight, fontWeight: 'bold', fontSize: 16 },
   modalOverlay: { flex: 1, backgroundColor: COLORS.rgba00005, justifyContent: 'center', padding: 30 },

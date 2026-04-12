@@ -22,7 +22,7 @@ const ClienteFormScreen = ({ route, navigation }: any) => {
     const targetId = selectedTenantId || user?.uid;
     if (isEditMode && clienteId && targetId) {
       getClienteById(clienteId, targetId).then(data => {
-        if (data) { setNome(data.nome); setTelefone(data.telefone || ''); setCidade(data.cidade || ''); setTipo(data.tipo || 'varejo'); setObservacoes(data.observacoes || ''); }
+        if (data) { setNome(data.nome); setTelefone(data.telefone || ''); setCidade(data.cidade || ''); setTipo((data.tipo as any) || 'varejo'); setObservacoes(data.observacoes || ''); }
       });
     }
   }, [clienteId, selectedTenantId]);
@@ -56,7 +56,7 @@ const ClienteFormScreen = ({ route, navigation }: any) => {
 
           <Text style={styles.label}>Tipo de Cliente</Text>
           <View style={styles.inputWrapper}>
-              <Picker selectedValue={tipo} onValueChange={(v) => setTipo(v)} style={{color: COLORS.textPrimary, fontWeight: 'bold'}}>
+              <Picker selectedValue={tipo} onValueChange={(v) => setTipo(v as any)} style={{color: COLORS.textPrimary, fontWeight: 'bold'}}>
                   <Picker.Item label="Varejo (Consumidor)" value="varejo" />
                   <Picker.Item label="Atacado (Revenda)" value="atacado" />
                   <Picker.Item label="Restaurante" value="restaurante" />

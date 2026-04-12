@@ -1,21 +1,29 @@
-// src/services/colheitaService.ts
-import { 
-  collection, 
-  addDoc, 
-  query, 
-  where, 
-  getDocs, 
-  deleteDoc, 
-  doc, 
-  Timestamp, 
-  getDoc, 
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  Timestamp,
   updateDoc,
-  getAggregateFromServer,
-  sum,
+  where,
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
-import { Colheita } from '../types/domain';
-import { updatePlantioStatus } from './plantioService'; 
+import { Colheita, Venda } from '../types/domain';
+import { updatePlantioStatus } from './plantioService';
+import {
+  createVenda,
+  deleteVenda,
+  getTotalContasAReceber as getTotalContasAReceberVendas,
+  getVendaById,
+  listAllVendas,
+  listContasAReceber as listContasAReceberVendas,
+  receberVenda,
+  updateVenda,
+  VendaFormData,
+} from './vendaService';
 import { assertTenantId } from './tenantGuard';
 
 export type ColheitaFormData = {
@@ -30,221 +38,177 @@ export type ColheitaFormData = {
   dataVenda?: Date;
   pesoBruto?: number;
   pesoLiquido?: number;
+  isFinalHarvest?: boolean;
+};
+
+const findVendaByColheitaId = async (tenantId: string, colheitaId: string): Promise<(Venda & Record<string, any>) | null> => {
+  const q = query(
+    collection(db, 'vendas'),
+    where('userId', '==', tenantId),
+    where('colheitaId', '==', colheitaId)
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const item = snap.docs[0];
+  return { ...(item.data() as Venda & Record<string, any>) , id: item.id };
 };
 
 export const createColheita = async (
-  data: ColheitaFormData, 
-  userId: string, 
-  plantioId: string, 
-  estufaId: string 
+  data: ColheitaFormData,
+  userId: string,
+  plantioId: string,
+  estufaId: string
 ) => {
   const tenantId = assertTenantId(userId);
-  const dataFinal = data.dataVenda ? Timestamp.fromDate(data.dataVenda) : Timestamp.now();
-  const isPrazo = data.metodoPagamento === 'prazo';
+  const dataOperacao = data.dataVenda ? Timestamp.fromDate(data.dataVenda) : Timestamp.now();
 
-  const novaColheita = {
-    ...data, 
+  const novaColheita: Omit<Colheita, 'id'> = {
     userId: tenantId,
+    tenantId,
+    createdBy: tenantId,
     plantioId,
     estufaId,
-    dataColheita: dataFinal,
-    statusPagamento: isPrazo ? 'pendente' : 'pago',
-    dataPagamento: isPrazo ? null : dataFinal,
+    dataColheita: dataOperacao,
+    quantidade: Number(data.quantidade || 0),
+    unidade: data.unidade,
+    unidadeMedida: data.unidade as Colheita['unidadeMedida'],
+    qualidade: 'padrao',
+    loteColheita: `COL-${plantioId.slice(0, 6)}-${dataOperacao.toMillis()}`,
+    destino: (data.destino as Colheita['destino']) || 'venda_direta',
+    observacoes: data.observacoes || '',
+    pesoBruto: Number(data.pesoBruto || 0),
+    pesoLiquido: Number(data.pesoLiquido || 0),
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
-    valorTotal: (data.quantidade || 0) * (data.precoUnitario || 0),
   };
 
-  // Remove o campo local Date antes de mandar pro Firestore
-  delete (novaColheita as any).dataVenda;
+  const colheitaRef = await addDoc(collection(db, 'colheitas'), novaColheita);
 
-  try {
-    const docRef = await addDoc(collection(db, 'colheitas'), novaColheita);
-    
-    // Atualiza o status do Lote/Plantio para "em_colheita" automaticamente
-    if (plantioId) {
-        await updatePlantioStatus(plantioId, "em_colheita", tenantId);
-    }
-    return docRef.id;
-  } catch (error) {
-    console.error("Erro ao criar colheita/venda: ", error);
-    throw new Error('Não foi possível registrar a colheita.');
+  const vendaData: VendaFormData = {
+    plantioId,
+    estufaId,
+    clienteId: data.clienteId || null,
+    quantidade: Number(data.quantidade || 0),
+    unidade: data.unidade,
+    precoUnitario: Number(data.precoUnitario || 0),
+    metodoPagamento: data.metodoPagamento,
+    dataVenda: data.dataVenda,
+    observacoes: data.observacoes,
+    colheitaId: colheitaRef.id,
+  };
+
+  await createVenda(vendaData, tenantId);
+
+  if (plantioId) {
+    const nextStatus = data.isFinalHarvest ? 'finalizado' : 'em_colheita';
+    await updatePlantioStatus(plantioId, nextStatus, tenantId);
   }
-};
 
-export const receberConta = async (colheitaId: string, userId: string, metodoRecebimento?: string) => {
-    const tenantId = assertTenantId(userId);
-    try {
-        const colheita = await getColheitaById(colheitaId, tenantId);
-        if (!colheita) throw new Error("Registro não encontrado.");
-
-        const docRef = doc(db, 'colheitas', colheitaId);
-        const updateData: any = {
-            statusPagamento: 'pago',
-            dataPagamento: Timestamp.now(),
-            updatedAt: Timestamp.now()
-        };
-        if (metodoRecebimento) {
-            updateData.metodoPagamento = metodoRecebimento;
-        }
-        await updateDoc(docRef, updateData);
-    } catch (error) {
-        console.error("Erro ao receber conta:", error);
-        throw error instanceof Error ? error : new Error("Erro ao atualizar pagamento.");
-    }
-};
-
-export const listContasAReceber = async (userId: string): Promise<Colheita[]> => {
-    const tenantId = assertTenantId(userId);
-    const colheitas: Colheita[] = [];
-    try {
-      const q = query(
-        collection(db, 'colheitas'), 
-        where("userId", "==", tenantId),
-        where("metodoPagamento", "==", "prazo")
-      );
-      const querySnapshot = await getDocs(q);
-      querySnapshot.forEach((doc) => {
-        const rawData = doc.data(); 
-        const venda = { id: doc.id, ...rawData } as Colheita;
-        if (venda.statusPagamento !== 'pago') {
-            colheitas.push(venda);
-        }
-      });
-      colheitas.sort((a, b) => {
-          const secA = a.dataColheita?.seconds || 0;
-          const secB = b.dataColheita?.seconds || 0;
-          return secA - secB;
-      });
-      return colheitas;
-    } catch (error) {
-      console.error("Erro ao listar contas a receber: ", error);
-      throw new Error("Erro ao buscar contas a receber.");
-    }
+  return colheitaRef.id;
 };
 
 export const listColheitasByPlantio = async (userId: string, plantioId: string): Promise<Colheita[]> => {
   const tenantId = assertTenantId(userId);
-  const colheitas: Colheita[] = [];
-  try {
-    const q = query(
-      collection(db, 'colheitas'), 
-      where("userId", "==", tenantId),
-      where("plantioId", "==", plantioId)
-    );
-    const querySnapshot = await getDocs(q);
-    querySnapshot.forEach((doc) => {
-      colheitas.push({ id: doc.id, ...doc.data() } as Colheita);
-    });
-    return colheitas;
-  } catch (error) {
-    console.error("Erro ao listar colheitas: ", error);
-    throw new Error('Não foi possível buscar as colheitas.');
-  }
+  const q = query(
+    collection(db, 'colheitas'),
+    where('userId', '==', tenantId),
+    where('plantioId', '==', plantioId)
+  );
+
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs
+    .map((item) => ({ ...(item.data() as Colheita) , id: item.id }))
+    .sort((a, b) => (b.dataColheita?.seconds || 0) - (a.dataColheita?.seconds || 0));
 };
 
-export const listAllColheitas = async (userId: string): Promise<Colheita[]> => {
+export const getColheitaById = async (id: string, userId: string): Promise<(Colheita & Record<string, any>) | null> => {
   const tenantId = assertTenantId(userId);
-  const colheitas: Colheita[] = [];
-  try {
-    const q = query(
-      collection(db, 'colheitas'), 
-      where("userId", "==", tenantId)
-    );
-    const querySnapshot = await getDocs(q);
-    querySnapshot.forEach((doc) => {
-      colheitas.push({ id: doc.id, ...doc.data() } as Colheita);
-    });
-    colheitas.sort((a, b) => {
-        const secA = a.dataColheita?.seconds || 0;
-        const secB = b.dataColheita?.seconds || 0;
-        return secB - secA;
-    });
-    return colheitas;
-  } catch (error) {
-    console.error("Erro ao listar todas as colheitas: ", error);
-    throw new Error('Não foi possível buscar o relatório de vendas.');
-  }
-};
+  const docRef = doc(db, 'colheitas', id);
+  const docSnap = await getDoc(docRef);
 
-export const getColheitaById = async (id: string, userId: string): Promise<Colheita | null> => {
-    const tenantId = assertTenantId(userId);
-    try {
-        const docRef = doc(db, 'colheitas', id);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-            const data = docSnap.data() as Colheita;
-            if (data.userId !== tenantId) {
-                throw new Error("Acesso negado: esta venda não pertence ao seu tenant.");
-            }
-            return { id: docSnap.id, ...data };
-        }
-        return null;
-    } catch (error) {
-        console.error("Erro ao buscar colheita:", error);
-        throw error;
-    }
+  if (!docSnap.exists()) {
+    const vendaFallback = await getVendaById(id, tenantId);
+    return vendaFallback as any;
+  }
+
+  const data = docSnap.data() as Colheita;
+  if (data.userId !== tenantId) {
+    throw new Error('Acesso negado: esta colheita não pertence ao tenant atual.');
+  }
+
+  const linkedVenda = await findVendaByColheitaId(tenantId, id);
+
+  return {
+    id: docSnap.id,
+    ...data,
+    precoUnitario: linkedVenda?.precoUnitario || linkedVenda?.itens?.[0]?.valorUnitario || 0,
+    clienteId: linkedVenda?.clienteId || null,
+    metodoPagamento: linkedVenda?.metodoPagamento || linkedVenda?.formaPagamento || 'pix',
+    statusPagamento: linkedVenda?.statusPagamento || 'pago',
+    dataPagamento:
+      typeof linkedVenda?.updatedAt === 'number'
+        ? Timestamp.fromMillis(linkedVenda.updatedAt)
+        : linkedVenda?.updatedAt || null,
+  };
 };
 
 export const updateColheita = async (id: string, data: ColheitaFormData, userId: string) => {
-    const tenantId = assertTenantId(userId);
-    try {
-        const colheita = await getColheitaById(id, tenantId);
-        if (!colheita) throw new Error("Venda não encontrada.");
-
-        const docRef = doc(db, 'colheitas', id);
-        const updateData: any = { ...data };
-        if (data.dataVenda) {
-            updateData.dataColheita = Timestamp.fromDate(data.dataVenda);
-            delete updateData.dataVenda;
-        }
-        if (data.metodoPagamento === 'prazo') {
-            updateData.statusPagamento = 'pendente';
-        } else {
-            updateData.statusPagamento = 'pago';
-            updateData.dataPagamento = Timestamp.now();
-        }
-        updateData.valorTotal = (data.quantidade || 0) * (data.precoUnitario || 0);
-        updateData.updatedAt = Timestamp.now();
-        await updateDoc(docRef, updateData);
-    } catch (error) {
-        console.error("Erro ao atualizar colheita:", error);
-        throw error instanceof Error ? error : new Error("Falha ao atualizar venda.");
-    }
-};
-
-export const getTotalContasAReceber = async (userId: string): Promise<number> => {
   const tenantId = assertTenantId(userId);
-  try {
-    const q = query(
-      collection(db, 'colheitas'),
-      where("userId", "==", tenantId),
-      where("metodoPagamento", "==", "prazo"),
-      where("statusPagamento", "==", "pendente")
+  const colheita = await getColheitaById(id, tenantId);
+  if (!colheita) throw new Error('Colheita não encontrada.');
+
+  await updateDoc(doc(db, 'colheitas', id), {
+    quantidade: Number(data.quantidade || 0),
+    unidade: data.unidade,
+    unidadeMedida: data.unidade,
+    observacoes: data.observacoes || '',
+    dataColheita: data.dataVenda
+      ? Timestamp.fromDate(data.dataVenda)
+      : typeof colheita.dataColheita === 'number'
+        ? Timestamp.fromMillis(colheita.dataColheita)
+        : colheita.dataColheita,
+    pesoBruto: Number(data.pesoBruto || 0),
+    pesoLiquido: Number(data.pesoLiquido || 0),
+    updatedAt: Timestamp.now(),
+  });
+
+  const linkedVenda = await findVendaByColheitaId(tenantId, id);
+  if (linkedVenda?.id) {
+    await updateVenda(
+      linkedVenda.id,
+      {
+        plantioId: colheita.plantioId,
+        estufaId: colheita.estufaId,
+        clienteId: data.clienteId,
+        quantidade: Number(data.quantidade || 0),
+        unidade: data.unidade,
+        precoUnitario: Number(data.precoUnitario || 0),
+        metodoPagamento: data.metodoPagamento,
+        dataVenda: data.dataVenda,
+        observacoes: data.observacoes,
+        colheitaId: id,
+      },
+      tenantId
     );
-
-    const snapshot = await getAggregateFromServer(q, {
-      total: sum('valorTotal'),
-    });
-
-    return snapshot.data().total || 0;
-  } catch (error) {
-    // fallback para documentos antigos sem valorTotal
-    const contas = await listContasAReceber(tenantId);
-    return contas.reduce((acc, item) => acc + item.quantidade * (item.precoUnitario || 0), 0);
   }
 };
 
 export const deleteColheita = async (colheitaId: string, userId: string) => {
-    const tenantId = assertTenantId(userId);
-    try {
-        const colheita = await getColheitaById(colheitaId, tenantId);
-        if (!colheita) throw new Error("Venda não encontrada para exclusão.");
+  const tenantId = assertTenantId(userId);
+  const colheita = await getColheitaById(colheitaId, tenantId);
+  if (!colheita) throw new Error('Colheita não encontrada para exclusão.');
 
-        const docRef = doc(db, 'colheitas', colheitaId);
-        await deleteDoc(docRef);
-    } catch (error) {
-        console.error("Erro ao deletar colheita:", error);
-        throw error instanceof Error ? error : new Error("Erro ao excluir registro.");
-    }
+  const linkedVenda = await findVendaByColheitaId(tenantId, colheitaId);
+  if (linkedVenda?.id) {
+    await deleteVenda(linkedVenda.id, tenantId);
+  }
+
+  await deleteDoc(doc(db, 'colheitas', colheitaId));
 };
+
+// Wrappers financeiros para compatibilidade das telas existentes
+export const listAllColheitas = async (userId: string) => listAllVendas(userId) as any;
+export const listContasAReceber = async (userId: string) => listContasAReceberVendas(userId) as any;
+export const receberConta = async (vendaId: string, userId: string, metodoRecebimento?: string) =>
+  receberVenda(vendaId, userId, metodoRecebimento);
+export const getTotalContasAReceber = async (userId: string) => getTotalContasAReceberVendas(userId);

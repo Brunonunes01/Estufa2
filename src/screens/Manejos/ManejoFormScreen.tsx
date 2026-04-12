@@ -24,6 +24,7 @@ const ManejoFormScreen = ({ route, navigation }: any) => {
   const [tipoManejo, setTipoManejo] = useState<any>('clima');
   const [descricao, setDescricao] = useState('');
   const [responsavel, setResponsavel] = useState(user?.name || '');
+  const [fotosRaw, setFotosRaw] = useState('');
   
   // Campos Dinâmicos Restantes
   const [temperatura, setTemperatura] = useState('');
@@ -61,6 +62,10 @@ const ManejoFormScreen = ({ route, navigation }: any) => {
           umidade: parseFloat(umidade) || null 
       } : {}),
       ...(tipoManejo === 'praga_doenca' ? { severidade } : {}),
+      fotos: fotosRaw
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean),
     };
 
     try {
@@ -110,6 +115,15 @@ const ManejoFormScreen = ({ route, navigation }: any) => {
           value={responsavel} 
           onChangeText={setResponsavel} 
           placeholderTextColor={COLORS.textPlaceholder} 
+        />
+
+        <Text style={styles.label}>Fotos (URLs separadas por vírgula)</Text>
+        <TextInput
+          style={styles.input}
+          value={fotosRaw}
+          onChangeText={setFotosRaw}
+          placeholder="https://...foto1.jpg, https://...foto2.jpg"
+          placeholderTextColor={COLORS.textPlaceholder}
         />
 
         {/* --- CAMPOS CONDICIONAIS --- */}

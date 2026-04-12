@@ -18,8 +18,10 @@ export const useEstufaDetailData = (estufaId?: string, tenantId?: string) =>
       ]);
 
       plantios.sort((a, b) => {
-        if (a.status === 'finalizado' && b.status !== 'finalizado') return 1;
-        if (a.status !== 'finalizado' && b.status === 'finalizado') return -1;
+        const aInactive = a.status === 'finalizado' || a.status === 'cancelado';
+        const bInactive = b.status === 'finalizado' || b.status === 'cancelado';
+        if (aInactive && !bInactive) return 1;
+        if (!aInactive && bInactive) return -1;
         return b.dataPlantio.seconds - a.dataPlantio.seconds;
       });
 

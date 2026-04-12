@@ -89,7 +89,10 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
     }
   };
 
-  const plantioAtivo = useMemo(() => plantios.find((plantio) => plantio.status !== 'finalizado'), [plantios]);
+  const plantioAtivo = useMemo(
+    () => plantios.find((plantio) => plantio.status !== 'finalizado' && plantio.status !== 'cancelado'),
+    [plantios]
+  );
   const totalFinalizados = useMemo(() => plantios.filter((plantio) => plantio.status === 'finalizado').length, [plantios]);
   const health = useMemo(() => (estufa ? evaluateEstufaHealth(estufa, plantios) : null), [estufa, plantios]);
 
@@ -324,7 +327,7 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
                 <MaterialCommunityIcons
                   name="sprout"
                   size={22}
-                  color={plantio.status === 'finalizado' ? COLORS.c9CA3AF : COLORS.primary}
+                  color={plantio.status === 'finalizado' || plantio.status === 'cancelado' ? COLORS.c9CA3AF : COLORS.primary}
                 />
               </View>
               <View style={{ flex: 1 }}>

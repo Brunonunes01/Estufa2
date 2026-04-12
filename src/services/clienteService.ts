@@ -54,7 +54,7 @@ export const listClientes = async (userId: string): Promise<Cliente[]> => {
     
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach((doc) => {
-      clientes.push({ id: doc.id, ...doc.data() } as Cliente);
+      clientes.push({ ...doc.data() , id: doc.id } as Cliente);
     });
     
     // Ordena alfabeticamente
@@ -78,7 +78,7 @@ export const getClienteById = async (clienteId: string, userId: string): Promise
       if (data.userId !== tenantId) {
         throw new Error("Acesso negado: este cliente não pertence ao seu tenant.");
       }
-      return { id: docSnap.id, ...data };
+      return { ...data , id: docSnap.id };
     } else {
       return null;
     }

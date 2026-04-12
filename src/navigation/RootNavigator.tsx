@@ -121,14 +121,14 @@ const defaultScreenOptions: NativeStackNavigationOptions = {
 };
 
 const AuthStack = () => (
-  <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
+  <Stack.Navigator id="auth-stack" screenOptions={{ headerShown: false, animation: 'fade' }}>
     <Stack.Screen name="Login" component={LoginScreen} />
     <Stack.Screen name="Register" component={RegisterScreen} />
   </Stack.Navigator>
 );
 
 const AppStack = () => (
-  <Stack.Navigator screenOptions={defaultScreenOptions}>
+  <Stack.Navigator id="app-stack" screenOptions={defaultScreenOptions}>
     <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false, animation: 'fade' }} />
     <Stack.Screen name="ShareAccount" component={ShareAccountScreen} options={{ title: 'Compartilhar Acesso' }} />
     <Stack.Screen name="Perfil" component={PerfilScreen} options={{ title: 'Minha Propriedade' }} />

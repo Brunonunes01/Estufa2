@@ -52,7 +52,7 @@ export const listPlantiosByEstufa = async (userId: string, estufaId: string): Pr
     
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach((doc) => {
-      plantios.push({ id: doc.id, ...doc.data() } as Plantio);
+      plantios.push({ ...doc.data() , id: doc.id } as Plantio);
     });
     
     return plantios;
@@ -74,7 +74,7 @@ export const getPlantioById = async (plantioId: string, userId: string): Promise
       if (data.userId !== tenantId) {
         throw new Error("Acesso negado: este plantio não pertence ao seu tenant.");
       }
-      return { id: docSnap.id, ...data };
+      return { ...data , id: docSnap.id };
     }
     return null;
   } catch (error) {
@@ -86,7 +86,7 @@ export const getPlantioById = async (plantioId: string, userId: string): Promise
 // 4. ATUALIZAR STATUS DO PLANTIO
 export const updatePlantioStatus = async (
   plantioId: string, 
-  status: "em_desenvolvimento" | "em_colheita" | "finalizado",
+  status: "em_desenvolvimento" | "em_colheita" | "em_crescimento" | "colheita_iniciada" | "finalizado",
   userId: string
 ) => {
   const tenantId = assertTenantId(userId);
@@ -147,7 +147,7 @@ export const listAllPlantios = async (userId: string): Promise<Plantio[]> => {
     
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach((doc) => {
-      plantios.push({ id: doc.id, ...doc.data() } as Plantio);
+      plantios.push({ ...doc.data() , id: doc.id } as Plantio);
     });
     
     return plantios;
@@ -164,12 +164,12 @@ export const listActivePlantiosByUser = async (userId: string): Promise<Plantio[
     const q = query(
       collection(db, 'plantios'),
       where("userId", "==", tenantId),
-      where("status", "in", ['em_desenvolvimento', 'em_colheita'])
+      where("status", "in", ['em_desenvolvimento', 'em_colheita', 'em_crescimento', 'colheita_iniciada'])
     );
 
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach((itemDoc) => {
-      plantios.push({ id: itemDoc.id, ...itemDoc.data() } as Plantio);
+      plantios.push({ ...itemDoc.data() , id: itemDoc.id } as Plantio);
     });
 
     return plantios;

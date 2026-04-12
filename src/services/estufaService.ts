@@ -20,6 +20,8 @@ export const createEstufa = async (data: Partial<Estufa>, userId: string) => {
     const novaEstufa = {
       ...data,
       userId: tenantId,
+      tenantId,
+      createdBy: tenantId,
       status: data.status || 'ativa',
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
@@ -35,13 +37,20 @@ export const createEstufa = async (data: Partial<Estufa>, userId: string) => {
 export const listEstufas = async (userId: string): Promise<Estufa[]> => {
   const tenantId = assertTenantId(userId);
   try {
-    const q = query(collection(db, 'estufas'), where("userId", "==", tenantId));
-    const querySnapshot = await getDocs(q);
-    const estufas: Estufa[] = [];
-    querySnapshot.forEach((doc) => {
-      estufas.push({ id: doc.id, ...doc.data() } as Estufa);
+    const [byUserId, byTenantId] = await Promise.all([
+      getDocs(query(collection(db, 'estufas'), where("userId", "==", tenantId))),
+      getDocs(query(collection(db, 'estufas'), where("tenantId", "==", tenantId))),
+    ]);
+
+    const estufasMap = new Map<string, Estufa>();
+    byUserId.forEach((item) => {
+      estufasMap.set(item.id, { ...(item.data() as Estufa), id: item.id });
     });
-    return estufas;
+    byTenantId.forEach((item) => {
+      estufasMap.set(item.id, { ...(item.data() as Estufa), id: item.id });
+    });
+
+    return Array.from(estufasMap.values());
   } catch (error) {
     console.error("Erro ao listar estufas:", error);
     throw new Error("Erro ao buscar lista de estufas.");
@@ -57,11 +66,11 @@ export const getEstufaById = async (id: string, userId: string): Promise<Estufa 
     if (!docSnap.exists()) return null;
     
     const data = docSnap.data() as Estufa;
-    if (data.userId !== tenantId) {
+    if (data.userId !== tenantId && data.tenantId !== tenantId) {
       throw new Error("Acesso negado: esta estufa não pertence ao seu tenant.");
     }
     
-    return { id: docSnap.id, ...data };
+    return { ...data , id: docSnap.id };
   } catch (error) {
     console.error("Erro ao buscar estufa por ID:", error);
     throw error;

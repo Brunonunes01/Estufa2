@@ -58,7 +58,7 @@ export const listDespesas = async (userId: string): Promise<Despesa[]> => {
     );
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach((doc) => {
-      despesas.push({ id: doc.id, ...doc.data() } as Despesa);
+      despesas.push({ ...doc.data() , id: doc.id } as Despesa);
     });
     
     despesas.sort((a, b) => b.dataDespesa.seconds - a.dataDespesa.seconds);
@@ -79,7 +79,7 @@ export const getDespesaById = async (id: string, userId: string): Promise<Despes
       if (data.userId !== tenantId) {
         throw new Error("Acesso negado: esta despesa não pertence ao seu tenant.");
       }
-      return { id: docSnap.id, ...data };
+      return { ...data , id: docSnap.id };
     }
     return null;
   } catch (error) {

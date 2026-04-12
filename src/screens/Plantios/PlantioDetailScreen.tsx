@@ -101,6 +101,9 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
       );
   }
 
+  const isPlantioInactive = plantio.status === 'finalizado' || plantio.status === 'cancelado';
+  const statusLabel = plantio.status === 'cancelado' ? 'Cancelado' : plantio.status === 'finalizado' ? 'Finalizado' : 'Em Andamento';
+
   return (
     <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} />}>
       
@@ -114,9 +117,9 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
               <Text style={styles.loteText}> LOTE: {plantio.codigoLote || 'Não gerado'}</Text>
             </View>
         </View>
-        <View style={[styles.badge, plantio.status === 'finalizado' ? {backgroundColor:COLORS.cE5E7EB} : {backgroundColor:COLORS.cD1FAE5}]}>
-            <Text style={[styles.badgeText, plantio.status === 'finalizado' ? {color:COLORS.c6B7280} : {color: COLORS.success}]}>
-                {plantio.status === 'finalizado' ? 'Finalizado' : 'Em Andamento'}
+        <View style={[styles.badge, isPlantioInactive ? {backgroundColor:COLORS.cE5E7EB} : {backgroundColor:COLORS.cD1FAE5}]}>
+            <Text style={[styles.badgeText, isPlantioInactive ? {color:COLORS.c6B7280} : {color: COLORS.success}]}>
+                {statusLabel}
             </Text>
         </View>
       </View>
@@ -206,7 +209,7 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
           ))
       )}
 
-      {isOwner && plantio.status !== 'finalizado' && (
+      {isOwner && !isPlantioInactive && (
           <TouchableOpacity style={styles.dangerBtn} onPress={handleFinalizar}>
               <Text style={styles.dangerText}>Finalizar este Ciclo</Text>
           </TouchableOpacity>

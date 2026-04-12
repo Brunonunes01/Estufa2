@@ -12,6 +12,7 @@ export const useDashboardMetrics = () => {
   const query = useDashboardSummary(targetId);
   const estufas = query.data?.estufas || [];
   const plantios = query.data?.activePlantios || [];
+  const todayTasks = query.data?.todayTasks || [];
 
   const activePlantioByEstufa = useMemo(() => {
     const map: Record<string, (typeof plantios)[number] | null> = {};
@@ -58,13 +59,16 @@ export const useDashboardMetrics = () => {
     targetId,
     estufas,
     plantios,
+    todayTasks,
     totalReceber: query.data?.totalReceber || 0,
     totalPagar: query.data?.totalPagar || 0,
+    tarefasHojePendentes: query.data?.tarefasHojePendentes || todayTasks.length,
     summarySource: query.data?.summarySource,
     summaryUpdatedAt: query.data?.summaryUpdatedAt,
     loadingResumo: query.isLoading || query.isFetching,
     isError: query.isError,
     activePlantioByEstufa,
+    plantiosByEstufa,
     totalCiclosAtivos: plantios.length,
     healthByEstufa,
     criticalAlerts,

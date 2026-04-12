@@ -6,18 +6,26 @@ import {
 } from 'firebase/firestore';
 import { ShareCode, Tenant } from '../types/domain';
 
+const toMillis = (value: ShareCode['expiresAt']) => {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') return new Date(value).getTime();
+    return value?.toMillis ? value.toMillis() : 0;
+};
+
 // Gera um código de compartilhamento (Exemplo simplificado)
 export const generateShareCode = async (tenantId: string, tenantName: string, ownerName: string) => {
     const code = Math.random().toString(36).substring(2, 8).toUpperCase(); // Gera código ex: "X7K9P2"
     const expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 horas
 
-    const shareData: ShareCode = {
+    const shareData = {
         code,
         tenantId,
         tenantName,
         ownerName, // Salvamos o nome do dono aqui
+        createdBy: tenantId,
         createdAt: Date.now(),
-        expiresAt
+        updatedAt: Date.now(),
+        expiresAt,
     };
 
     // Salva na coleção temporária de códigos
@@ -35,10 +43,10 @@ export const redeemShareCode = async (code: string, userId: string): Promise<boo
         if (snapshot.empty) throw new Error("Código inválido.");
 
         const shareDoc = snapshot.docs[0];
-        const shareData = shareDoc.data() as ShareCode;
+        const shareData = shareDoc.data() as ShareCode & { tenantName?: string; ownerName?: string };
 
         // 2. Verifica validade
-        if (Date.now() > shareData.expiresAt) throw new Error("Código expirado.");
+        if (Date.now() > toMillis(shareData.expiresAt)) throw new Error("Código expirado.");
 
         // 3. Adiciona o usuário à lista de membros do Tenant (opcional, dependendo da sua estrutura)
         // await updateDoc(doc(db, 'tenants', shareData.tenantId), {

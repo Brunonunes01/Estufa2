@@ -52,7 +52,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
             listAllPlantios(targetId),
             listInsumos(targetId)
         ]);
-        const ativos = listaPlantios.filter(p => p.status !== 'finalizado');
+        const ativos = listaPlantios.filter(p => p.status !== 'finalizado' && p.status !== 'cancelado');
         setPlantios(ativos);
         setInsumos(listaInsumos);
 
@@ -68,7 +68,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
     return insumos.find(i => i.id === tempInsumoId);
   }, [insumos, tempInsumoId]);
 
-  const unidadeAtual = selectedInsumo ? selectedInsumo.unidadePadrao : '';
+  const unidadeAtual = selectedInsumo ? (selectedInsumo.unidadePadrao || selectedInsumo.unidadeMedida || 'un') : '';
 
   const handleAddItem = () => {
       if (!tempInsumoId || !tempDose) return Alert.alert("Atenção", "Selecione o produto e informe a dose.");
@@ -81,7 +81,8 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
           insumoId: tempInsumoId,
           nomeInsumo: selectedInsumo.nome,
           dosePorTanque: dose,
-          unidade: selectedInsumo.unidadePadrao
+          quantidadeAplicada: dose,
+          unidade: unidadeAtual
       }]);
       setTempDose(''); 
   };
@@ -193,7 +194,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
                           <Picker.Item 
                             key={i.id} 
                             // Melhoria visual: Mostra a tag [ADUBO] ou [DEFENSIVO] antes do nome
-                            label={`[${i.tipo.toUpperCase()}] ${i.nome} (Est: ${i.estoqueAtual} ${i.unidadePadrao})`} 
+                            label={`[${(i.tipo || 'outro').toUpperCase()}] ${i.nome} (Est: ${i.estoqueAtual} ${i.unidadePadrao || i.unidadeMedida || 'un'})`} 
                             value={i.id} 
                           />
                         ))}

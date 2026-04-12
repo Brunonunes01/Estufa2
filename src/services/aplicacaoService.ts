@@ -1,208 +1,161 @@
-// src/services/aplicacaoService.ts
-import { 
-  collection, 
-  addDoc, 
-  query, 
-  where, 
-  getDocs, 
-  Timestamp,
-  runTransaction, 
+import {
+  collection,
   doc,
-  getDoc,
-  deleteDoc
+  getDocs,
+  query,
+  runTransaction,
+  Timestamp,
+  where,
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
-import { Aplicacao, Insumo, AplicacaoItem } from '../types/domain';
+import { Aplicacao, AplicacaoItem, Insumo, Plantio } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 
-// 1. TIPO EXPORTADO PARA A TELA
 export interface AplicacaoItemData {
   insumoId: string;
   nomeInsumo: string;
-  unidade: string;
   dosePorTanque: number;
   quantidadeAplicada?: number;
-  custoUnitarioNaAplicacao?: number; // NOVO
+  unidade: string;
 }
 
-// 2. TIPO DO FORMULÁRIO
-export type AplicacaoFormData = {
+export interface CreateAplicacaoData {
   plantioId: string;
-  estufaId: string;
-  dataAplicacao?: Timestamp;
-  observacoes: string | null;
-  volumeTanque: number | null;
-  numeroTanques: number | null; 
+  estufaId?: string;
+  tipoAplicacao?: 'defensivo' | 'fertilizacao';
+  volumeTanque?: number;
+  numeroTanques?: number;
+  observacoes?: string;
   itens: AplicacaoItemData[];
-};
+}
 
-// 3. CRIAR APLICAÇÃO (PERMITE ESTOQUE NEGATIVO E CONGELA CUSTO)
-export const createAplicacao = async (
-  data: AplicacaoFormData, 
-  userId: string 
-) => {
+export const createAplicacao = async (data: CreateAplicacaoData, userId: string) => {
   const tenantId = assertTenantId(userId);
+  const now = Timestamp.now();
 
-  if (data.itens.length === 0) {
-    throw new Error("A aplicação precisa ter pelo menos um insumo.");
+  if (!data.itens?.length) {
+    throw new Error('A aplicação precisa de ao menos um item de insumo.');
   }
 
-  // Consolida itens duplicados da tela (se o usuário add 2x o mesmo produto)
-  const itensConsolidados: AplicacaoItemData[] = data.itens.reduce((acc: AplicacaoItemData[], item) => {
-    const qtd = item.quantidadeAplicada || 0;
-    const existente = acc.find(i => i.insumoId === item.insumoId);
-    
-    if (existente) {
-      existente.quantidadeAplicada = (existente.quantidadeAplicada || 0) + qtd;
-    } else {
-      acc.push({
+  return runTransaction(db, async (transaction) => {
+    const plantioRef = doc(db, 'plantios', data.plantioId);
+    const plantioSnap = await transaction.get(plantioRef);
+    if (!plantioSnap.exists()) {
+      throw new Error('Plantio não encontrado.');
+    }
+
+    const plantio = plantioSnap.data() as Plantio;
+
+    const itensAplicacao: AplicacaoItem[] = [];
+    let custoCalculadoTotal = 0;
+
+    for (const item of data.itens) {
+      const quantidade = Number(item.quantidadeAplicada || 0);
+      if (quantidade <= 0) {
+        throw new Error(`Quantidade inválida para ${item.nomeInsumo}.`);
+      }
+
+      const insumoRef = doc(db, 'insumos', item.insumoId);
+      const insumoSnap = await transaction.get(insumoRef);
+
+      if (!insumoSnap.exists()) {
+        throw new Error(`Insumo não encontrado (${item.nomeInsumo}).`);
+      }
+
+      const insumo = insumoSnap.data() as Insumo;
+
+      if ((insumo.estoqueAtual || 0) < quantidade) {
+        throw new Error(
+          `Estoque insuficiente para ${item.nomeInsumo}. Disponível: ${insumo.estoqueAtual ?? 0} ${item.unidade}`
+        );
+      }
+
+      const custoUnitarioNaAplicacao = Number(insumo.custoUnitario || 0);
+      const custoItem = quantidade * custoUnitarioNaAplicacao;
+      custoCalculadoTotal += custoItem;
+
+      transaction.update(insumoRef, {
+        estoqueAtual: (insumo.estoqueAtual || 0) - quantidade,
+        updatedAt: now,
+      });
+
+      itensAplicacao.push({
         insumoId: item.insumoId,
         nomeInsumo: item.nomeInsumo,
+        dosePorTanque: item.dosePorTanque,
+        quantidadeAplicada: quantidade,
         unidade: item.unidade,
-        quantidadeAplicada: qtd,
-        dosePorTanque: item.dosePorTanque 
+        custoUnitarioNaAplicacao,
       });
     }
-    return acc;
-  }, []);
 
-  const novaAplicacaoRef = doc(collection(db, "aplicacoes"));
+    const aplicacaoRef = doc(collection(db, 'aplicacoes'));
+    const aplicacaoData: Omit<Aplicacao, 'id'> = {
+      userId: tenantId,
+      tenantId,
+      createdBy: tenantId,
+      plantioId: data.plantioId,
+      estufaId: data.estufaId,
+      dataAplicacao: now,
+      tipoAplicacao: data.tipoAplicacao,
+      volumeTanque: data.volumeTanque ?? 0,
+      numeroTanques: data.numeroTanques ?? 1,
+      observacoes: data.observacoes || '',
+      itens: itensAplicacao,
+      custoCalculado: custoCalculadoTotal,
+      createdAt: now,
+      updatedAt: now,
+    };
 
-  try {
-    await runTransaction(db, async (transaction) => {
-      
-      // FASE 1: LEITURA DOS INSUMOS
-      const leituras = [];
-      for (const item of itensConsolidados) {
-        const ref = doc(db, "insumos", item.insumoId);
-        leituras.push(transaction.get(ref));
-      }
-
-      const docsInsumos = await Promise.all(leituras);
-
-      // FASE 2: CÁLCULOS E CONGELAMENTO DE CUSTO
-      const updatesParaFazer = [];
-      const itensComCustoHistorico: AplicacaoItem[] = [];
-
-      for (let i = 0; i < itensConsolidados.length; i++) {
-        const item = itensConsolidados[i];
-        const insumoDoc = docsInsumos[i];
-
-        if (!insumoDoc.exists()) {
-          throw new Error(`Insumo "${item.nomeInsumo}" não encontrado! Cadastre-o primeiro.`);
-        }
-
-        const insumoData = insumoDoc.data() as Insumo;
-        if (insumoData.userId !== tenantId) {
-          throw new Error(`Acesso negado: o insumo "${item.nomeInsumo}" não pertence ao seu tenant.`);
-        }
-
-        const estoqueAtual = insumoData.estoqueAtual || 0;
-        const novoEstoque = estoqueAtual - (item.quantidadeAplicada || 0);
-        
-        // CONGELAMENTO: Pega o custo real no momento deste clique
-        const custoAtual = insumoData.custoUnitario || 0;
-
-        updatesParaFazer.push({
-          ref: insumoDoc.ref,
-          novoEstoque: novoEstoque
-        });
-
-        itensComCustoHistorico.push({
-            insumoId: item.insumoId,
-            nomeInsumo: item.nomeInsumo,
-            unidade: item.unidade,
-            quantidadeAplicada: item.quantidadeAplicada || 0,
-            dosePorTanque: item.dosePorTanque,
-            custoUnitarioNaAplicacao: custoAtual // Salva a "fotografia" do preço
-        });
-      }
-
-      // FASE 3: ESCRITA NO BANCO
-      for (const update of updatesParaFazer) {
-        transaction.update(update.ref, { 
-          estoqueAtual: update.novoEstoque,
-          updatedAt: Timestamp.now()
-        });
-      }
-
-      const novaAplicacao = {
-        plantioId: data.plantioId,
-        estufaId: data.estufaId,
-        userId: tenantId,
-        dataAplicacao: data.dataAplicacao || Timestamp.now(),
-        observacoes: data.observacoes || null,
-        volumeTanque: data.volumeTanque || 0,
-        numeroTanques: data.numeroTanques || 1,
-        itens: itensComCustoHistorico, // Passa a lista com os custos congelados
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-      };
-      
-      transaction.set(novaAplicacaoRef, novaAplicacao);
+    transaction.set(aplicacaoRef, {
+      id: aplicacaoRef.id,
+      ...aplicacaoData,
     });
 
-  } catch (error) {
-    console.error("Erro na transação de aplicação:", error);
-    throw error;
-  }
+    transaction.update(plantioRef, {
+      custoAcumulado: (plantio.custoAcumulado || 0) + custoCalculadoTotal,
+      updatedAt: now,
+    });
+
+    return aplicacaoRef.id;
+  });
 };
 
-// 4. LISTAR APLICAÇÕES
 export const listAplicacoesByPlantio = async (userId: string, plantioId: string): Promise<Aplicacao[]> => {
   const tenantId = assertTenantId(userId);
-  const aplicacoes: Aplicacao[] = [];
-  try {
-    const q = query(
-      collection(db, 'aplicacoes'), 
-      where("userId", "==", tenantId),
-      where("plantioId", "==", plantioId)
-    );
-    
-    const querySnapshot = await getDocs(q);
-    querySnapshot.forEach((doc) => {
-      aplicacoes.push({ id: doc.id, ...doc.data() } as Aplicacao);
-    });
-    
-    aplicacoes.sort((a, b) => b.dataAplicacao.seconds - a.dataAplicacao.seconds);
-    return aplicacoes;
-  } catch (error) {
-    console.error("Erro ao listar aplicações:", error);
-    throw new Error("Erro ao buscar registros de aplicação.");
-  }
+  const q = query(
+    collection(db, 'aplicacoes'),
+    where('userId', '==', tenantId),
+    where('plantioId', '==', plantioId)
+  );
+
+  const snap = await getDocs(q);
+  const rows = snap.docs.map((item) => ({ ...(item.data() as Aplicacao) , id: item.id }));
+
+  return rows.sort((a, b) => b.dataAplicacao.toMillis() - a.dataAplicacao.toMillis());
 };
 
-export const getAplicacaoById = async (id: string, userId: string): Promise<Aplicacao | null> => {
-  const tenantId = assertTenantId(userId);
-  try {
-    const docRef = doc(db, 'aplicacoes', id);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      const data = docSnap.data() as Aplicacao;
-      if (data.userId !== tenantId) {
-        throw new Error("Acesso negado: este registro de aplicação não pertence ao seu tenant.");
-      }
-      return { id: docSnap.id, ...data };
-    }
-    return null;
-  } catch (error) {
-    console.error("Erro ao buscar aplicação por ID:", error);
-    throw error;
-  }
-};
+// Compatibilidade com chamada antiga
+export const registrarAplicacaoInsumo = async (
+  userId: string,
+  data: Omit<Aplicacao, 'id' | 'createdAt' | 'updatedAt'>
+) => {
+  const item: AplicacaoItemData = {
+    insumoId: String(data.insumoId || ''),
+    nomeInsumo: String(data.insumoId || 'Insumo'),
+    dosePorTanque: Number(data.quantidadeAplicada || 0),
+    quantidadeAplicada: Number(data.quantidadeAplicada || 0),
+    unidade: 'un',
+  };
 
-export const deleteAplicacao = async (id: string, userId: string) => {
-  const tenantId = assertTenantId(userId);
-  try {
-    const aplicacao = await getAplicacaoById(id, tenantId);
-    if (!aplicacao) throw new Error("Registro de aplicação não encontrado para exclusão.");
-
-    // NOTA: Excluir uma aplicação pode exigir reverter o estoque dos insumos.
-    // Para simplificar e manter a segurança de dados, apenas excluímos aqui.
-    // Em um sistema real, isso deveria ser uma transação reversa.
-    await deleteDoc(doc(db, 'aplicacoes', id));
-  } catch (error) {
-    console.error("Erro ao eliminar aplicação:", error);
-    throw error;
-  }
+  return createAplicacao(
+    {
+      plantioId: data.plantioId,
+      estufaId: data.estufaId,
+      tipoAplicacao: data.tipoAplicacao,
+      observacoes: data.observacoes,
+      itens: [item],
+    },
+    userId
+  );
 };

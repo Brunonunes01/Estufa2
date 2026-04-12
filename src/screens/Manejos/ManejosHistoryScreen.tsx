@@ -106,6 +106,12 @@ const ManejosHistoryScreen = ({ route, navigation }: any) => {
           </View>
       )}
 
+      {item.fotos && item.fotos.length > 0 && (
+        <View style={styles.metaDataBox}>
+          <Text style={styles.metaDataText}>Registros visuais: {item.fotos.length} foto(s)</Text>
+        </View>
+      )}
+
       <Text style={styles.respText}>Registado por: {item.responsavel || 'Sistema'}</Text>
     </View>
   );

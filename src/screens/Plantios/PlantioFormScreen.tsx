@@ -4,11 +4,25 @@ import {
   View, Text, TextInput, ScrollView, StyleSheet, 
   TouchableOpacity, Alert, ActivityIndicator 
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
-import { createPlantio, updatePlantio, getPlantioById, deletePlantio } from '../../services/plantioService';
+import { createPlantio, updatePlantio, getPlantioById } from '../../services/plantioService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { Timestamp } from 'firebase/firestore'; 
+
+type UnidadeQuantidadePlantio = 'Mudas' | 'Sementes' | 'Bandejas' | 'Gramas' | 'Kg';
+
+const UNIDADE_QUANTIDADE_OPTIONS: UnidadeQuantidadePlantio[] = ['Mudas', 'Sementes', 'Bandejas', 'Gramas', 'Kg'];
+
+const normalizeUnidadeQuantidade = (value?: string | null): UnidadeQuantidadePlantio => {
+  const raw = (value || '').trim().toLowerCase();
+  if (raw === 'sementes') return 'Sementes';
+  if (raw === 'bandejas') return 'Bandejas';
+  if (raw === 'gramas') return 'Gramas';
+  if (raw === 'kg' || raw === 'quilo' || raw === 'quilos') return 'Kg';
+  return 'Mudas';
+};
 
 const PlantioFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
@@ -23,10 +37,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
   const [origemSemente, setOrigemSemente] = useState('');
   
   const [quantidadePlantada, setQuantidadePlantada] = useState('');
-  const [unidadeQuantidade, setUnidadeQuantidade] = useState('mudas');
-  
-  // --- NOVO: ESTADO PARA O CUSTO DA MUDA/SEMENTE ---
-  const [precoEstimadoUnidade, setPrecoEstimadoUnidade] = useState('');
+  const [unidadeQuantidade, setUnidadeQuantidade] = useState<UnidadeQuantidadePlantio>('Mudas');
   
   const [cicloDias, setCicloDias] = useState('');
   const [observacoes, setObservacoes] = useState('');
@@ -72,9 +83,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
         setVariedade(data.variedade || '');
         setOrigemSemente(data.origemSemente || '');
         setQuantidadePlantada(data.quantidadePlantada?.toString() || '');
-        setUnidadeQuantidade(data.unidadeQuantidade || 'mudas');
-        // Carrega o preço se existir
-        setPrecoEstimadoUnidade(data.precoEstimadoUnidade?.toString() || '');
+        setUnidadeQuantidade(normalizeUnidadeQuantidade(data.unidadeQuantidade));
         setCicloDias(data.cicloDias?.toString() || '');
         setObservacoes(data.observacoes || '');
       }
@@ -89,19 +98,19 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
     if (!targetId) return;
 
     Alert.alert(
-      "Eliminar Lote",
-      "Tem a certeza? Isso apagará este registro de plantio e afetará o histórico financeiro.",
+      "Cancelar Lote",
+      "Tem certeza? O lote será cancelado e mantido no histórico financeiro.",
       [
         { text: "Cancelar", style: "cancel" },
         { 
-          text: "Eliminar", 
+          text: "Cancelar Lote", 
           style: "destructive", 
           onPress: async () => {
             try {
-              await deletePlantio(editingId as string, targetId);
+              await updatePlantio(editingId as string, { status: 'cancelado' }, targetId);
               navigation.goBack();
             } catch (e) {
-              Alert.alert("Erro", "Falha ao eliminar.");
+              Alert.alert("Erro", "Falha ao cancelar o lote.");
             }
           } 
         }
@@ -122,8 +131,6 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
     setLoading(true);
 
     const qtdNum = parseFloat(quantidadePlantada.replace(',', '.')) || 0;
-    // --- NOVO: CONVERTE O CUSTO PARA NÚMERO ---
-    const precoNum = parseFloat(precoEstimadoUnidade.replace(',', '.')) || 0;
     const cicloNum = parseInt(cicloDias) || 0;
     
     let previsaoData = null;
@@ -143,13 +150,15 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
       origemSemente,
       quantidadePlantada: qtdNum,
       unidadeQuantidade,
-      precoEstimadoUnidade: precoNum > 0 ? precoNum : null, // Salva no banco de dados
+      custoAcumulado: 0,
       cicloDias: cicloNum > 0 ? cicloNum : null,
       observacoes,
       ...(!isEditMode && { 
-        dataPlantio: dataPlantioTimestamp, 
+        dataPlantio: dataPlantioTimestamp,
+        dataInicio: dataPlantioTimestamp,
         status: 'em_desenvolvimento',
-        previsaoColheita: previsaoData
+        previsaoColheita: previsaoData,
+        dataPrevisaoColheita: previsaoData,
       })
     };
 
@@ -231,30 +240,18 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
           </View>
           <View style={{flex: 1, marginLeft: 5}}>
             <Text style={styles.label}>Unidade</Text>
-            <TextInput 
-              style={styles.input} 
-              value={unidadeQuantidade} 
-              onChangeText={setUnidadeQuantidade} 
-              placeholder="Ex: mudas, kg" 
-              placeholderTextColor={COLORS.textPlaceholder} 
-            />
+            <View style={styles.pickerWrapper}>
+              <Picker selectedValue={unidadeQuantidade} onValueChange={(value) => setUnidadeQuantidade(value as UnidadeQuantidadePlantio)} style={styles.picker}>
+                {UNIDADE_QUANTIDADE_OPTIONS.map((option) => (
+                  <Picker.Item key={option} label={option} value={option} />
+                ))}
+              </Picker>
+            </View>
           </View>
         </View>
 
-        {/* --- NOVO: CAMPO DE CUSTO E CICLO LADO A LADO --- */}
         <View style={styles.row}>
-          <View style={{flex: 1, marginRight: 5}}>
-            <Text style={styles.label}>Custo Un. da Muda (R$)</Text>
-            <TextInput 
-              style={styles.input} 
-              value={precoEstimadoUnidade} 
-              onChangeText={setPrecoEstimadoUnidade} 
-              placeholder="Ex: 1.50" 
-              placeholderTextColor={COLORS.textPlaceholder} 
-              keyboardType="numeric" 
-            />
-          </View>
-          <View style={{flex: 1, marginLeft: 5}}>
+          <View style={{flex: 1}}>
             <Text style={styles.label}>Ciclo Est. (Dias)</Text>
             <TextInput 
               style={styles.input} 
@@ -266,7 +263,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
             />
           </View>
         </View>
-        <Text style={styles.hint}>O custo unitário compõe a "Despesa Inicial" na rentabilidade.</Text>
+        <Text style={styles.hint}>Custos financeiros do ciclo são lançados por aplicações e despesas vinculadas.</Text>
 
         <Text style={styles.sectionTitle}>Outros</Text>
 
@@ -304,6 +301,8 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.secondary, marginTop: 10, marginBottom: 15 },
   label: { fontWeight: 'bold', marginBottom: 5, color: COLORS.textSecondary, fontSize: 13 },
   input: { backgroundColor: COLORS.surfaceMuted, padding: 15, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, color: COLORS.textDark },
+  pickerWrapper: { backgroundColor: COLORS.surfaceMuted, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, height: 54, justifyContent: 'center' },
+  picker: { color: COLORS.textDark },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   hint: { fontSize: 12, color: COLORS.textPrimary, marginTop: -10, marginBottom: 15, fontStyle: 'italic' },
   
