@@ -3,6 +3,7 @@ import {
   Alert,
   FlatList,
   RefreshControl,
+  Share,
   StatusBar,
   StyleSheet,
   Text,
@@ -21,10 +22,11 @@ import EmptyState from '../../components/ui/EmptyState';
 import SkeletonBlock from '../../components/ui/SkeletonBlock';
 import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 
-const EstufasListScreen = ({ navigation }: any) => {
+const EstufasListScreen = ({ navigation, route }: any) => {
   const { user, selectedTenantId } = useAuth();
   const theme = useThemeMode();
   const { showError, showWarning } = useFeedback();
+  const mode = route?.params?.mode as 'colheita' | 'plantio' | 'manejo' | undefined;
   const targetId = selectedTenantId || user?.uid;
   const { data, isLoading, isFetching, isError, refetch } = useEstufasListData(targetId);
   const estufas: Estufa[] = data?.estufas || [];
@@ -73,6 +75,82 @@ const EstufasListScreen = ({ navigation }: any) => {
     [activePlantioByEstufa, navigation, showWarning]
   );
 
+  const compartilharLocalizacao = useCallback(async (estufa: Estufa) => {
+    const hasGps = !!estufa.latitude && !!estufa.longitude;
+    const hasAddress = !!estufa.propriedade || !!estufa.cidade;
+
+    if (!hasGps && !hasAddress) {
+      Alert.alert('Localização indisponível', 'Para compartilhar, primeiro edite a estufa e insira as coordenadas ou a cidade.');
+      return;
+    }
+
+    const mapsUrl = hasGps ? `https://maps.google.com/?q=${estufa.latitude},${estufa.longitude}` : '';
+    const addressParts = [
+      estufa.propriedade ? `Propriedade ${estufa.propriedade}` : '',
+      estufa.cidade ? `Cidade ${estufa.cidade}` : '',
+    ].filter(Boolean);
+
+    const message = hasGps
+      ? `Localização da Estufa ${estufa.nome}: ${mapsUrl}`
+      : `Localização da Estufa ${estufa.nome}: ${addressParts.join(', ')}`;
+
+    await Share.share({ message });
+  }, []);
+
+  const irParaManejo = useCallback(
+    (estufaId: string) => {
+      const plantioAtivo = activePlantioByEstufa[estufaId];
+      if (!plantioAtivo) {
+        Alert.alert('Sem ciclo ativo', 'Crie um novo ciclo nesta estufa para registrar manejo.', [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Criar Ciclo', onPress: () => navigation.navigate('PlantioForm', { estufaId }) },
+        ]);
+        showWarning('Sem ciclo ativo nesta estufa.');
+        return;
+      }
+
+      navigation.navigate('ManejoForm', { plantioId: plantioAtivo.id, estufaId });
+    },
+    [activePlantioByEstufa, navigation, showWarning]
+  );
+
+  const handleCardPress = useCallback(
+    (estufaId: string) => {
+      if (mode === 'colheita') {
+        irParaVenda(estufaId);
+        return;
+      }
+      if (mode === 'plantio') {
+        navigation.navigate('PlantioForm', { estufaId });
+        return;
+      }
+      if (mode === 'manejo') {
+        irParaManejo(estufaId);
+        return;
+      }
+      navigation.navigate('EstufaDetail', { estufaId });
+    },
+    [mode, irParaVenda, irParaManejo, navigation]
+  );
+
+  const headerTitle =
+    mode === 'colheita'
+      ? 'Onde será a colheita?'
+      : mode === 'plantio'
+        ? 'Escolha a estufa para o plantio'
+        : mode === 'manejo'
+          ? 'Onde registrar o manejo?'
+          : 'Hubs de Estufa';
+
+  const headerSubtitle =
+    mode === 'colheita'
+      ? 'Selecione a estufa para registrar a venda.'
+      : mode === 'plantio'
+        ? 'Selecione a estufa para iniciar um novo lote.'
+        : mode === 'manejo'
+          ? 'Selecione a estufa para abrir o diário de manejo.'
+          : 'Monitore status, ciclo e venda por unidade com um toque.';
+
   const renderItem = ({ item }: { item: Estufa }) => {
     const isAtiva = item.status === 'ativa';
     const plantioAtivo = activePlantioByEstufa[item.id];
@@ -81,7 +159,7 @@ const EstufasListScreen = ({ navigation }: any) => {
     return (
       <TouchableOpacity
         activeOpacity={0.92}
-        onPress={() => navigation.navigate('EstufaDetail', { estufaId: item.id })}
+        onPress={() => handleCardPress(item.id)}
         style={[styles.card, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}
       >
         <View style={styles.cardTop}>
@@ -141,32 +219,41 @@ const EstufasListScreen = ({ navigation }: any) => {
           {plantioAtivo ? `Ciclo ativo: ${plantioAtivo.cultura}` : 'Sem ciclo ativo'}
         </Text>
 
-        <View style={styles.actionsRow}>
-          <TouchableOpacity
-            style={[styles.actionBtn, { borderColor: theme.border }]}
-            onPress={() => navigation.navigate('EstufaDetail', { estufaId: item.id })}
-          >
-            <Text style={[styles.actionBtnText, { color: theme.textPrimary }]}>Hub</Text>
-          </TouchableOpacity>
+        {!mode && (
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={[styles.actionIconBtn, { borderColor: theme.border }]}
+              onPress={() => compartilharLocalizacao(item)}
+            >
+              <MaterialCommunityIcons name="share-variant-outline" size={16} color={theme.textPrimary} />
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.actionBtn, { borderColor: theme.border }]}
-            onPress={() =>
-              plantioAtivo
-                ? navigation.navigate('PlantioDetail', { plantioId: plantioAtivo.id })
-                : navigation.navigate('PlantioForm', { estufaId: item.id })
-            }
-          >
-            <Text style={[styles.actionBtnText, { color: theme.textPrimary }]}>
-              {plantioAtivo ? 'Ciclo' : 'Novo Ciclo'}
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtn, { borderColor: theme.border }]}
+              onPress={() => navigation.navigate('EstufaDetail', { estufaId: item.id })}
+            >
+              <Text style={[styles.actionBtnText, { color: theme.textPrimary }]}>Hub</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionBtnPrimary} onPress={() => irParaVenda(item.id)}>
-            <MaterialCommunityIcons name="basket-plus" size={14} color={COLORS.textLight} />
-            <Text style={styles.actionBtnPrimaryText}>Vender</Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={[styles.actionBtn, { borderColor: theme.border }]}
+              onPress={() =>
+                plantioAtivo
+                  ? navigation.navigate('PlantioDetail', { plantioId: plantioAtivo.id })
+                  : navigation.navigate('PlantioForm', { estufaId: item.id })
+              }
+            >
+              <Text style={[styles.actionBtnText, { color: theme.textPrimary }]}>
+                {plantioAtivo ? 'Ciclo' : 'Novo Ciclo'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionBtnPrimary} onPress={() => irParaVenda(item.id)}>
+              <MaterialCommunityIcons name="basket-plus" size={14} color={COLORS.textLight} />
+              <Text style={styles.actionBtnPrimaryText}>Vender</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </TouchableOpacity>
     );
   };
@@ -176,12 +263,12 @@ const EstufasListScreen = ({ navigation }: any) => {
       <StatusBar barStyle="light-content" backgroundColor={theme.panelBackground} />
 
       <ScreenHeaderCard
-        title="Hubs de Estufa"
-        subtitle="Monitore status, ciclo e venda por unidade com um toque."
-        badgeLabel="Operação"
-        actionLabel="Nova Estufa"
+        title={headerTitle}
+        subtitle={headerSubtitle}
+        badgeLabel={mode ? 'Seleção' : 'Operação'}
+        actionLabel={mode ? undefined : 'Nova Estufa'}
         actionIcon="plus"
-        onPressAction={() => navigation.navigate('EstufaForm')}
+        onPressAction={mode ? undefined : () => navigation.navigate('EstufaForm')}
       >
         <View style={styles.headerStats}>
           <View style={styles.headerStatChip}>
@@ -286,6 +373,14 @@ const styles = StyleSheet.create({
   healthBadgeText: { fontSize: 10, fontWeight: '800' },
   cycleInfo: { marginTop: 10, fontSize: 13, fontWeight: '600' },
   actionsRow: { marginTop: 12, flexDirection: 'row', gap: 8 },
+  actionIconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   actionBtn: {
     flex: 1,
     height: 38,

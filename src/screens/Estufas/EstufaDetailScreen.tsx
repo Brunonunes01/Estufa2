@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   Share,
+  Alert,
   Modal,
   TextInput,
 } from 'react-native';
@@ -79,9 +80,25 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
   }, [isError, showError]);
 
   const handleShareLocation = async () => {
-    if (!estufa?.latitude || !estufa?.longitude) return;
-    const url = `http://maps.google.com/maps?q=${estufa.latitude},${estufa.longitude}`;
-    const msg = `Localização da estufa ${estufa.nome}: ${url}`;
+    if (!estufa) return;
+    const hasGps = !!estufa.latitude && !!estufa.longitude;
+    const hasAddress = !!estufa.propriedade || !!estufa.cidade;
+
+    if (!hasGps && !hasAddress) {
+      Alert.alert('Localização indisponível', 'Para compartilhar, primeiro edite a estufa e insira as coordenadas ou a cidade.');
+      return;
+    }
+
+    const mapsUrl = hasGps ? `https://maps.google.com/?q=${estufa.latitude},${estufa.longitude}` : '';
+    const addressParts = [
+      estufa.propriedade ? `Propriedade ${estufa.propriedade}` : '',
+      estufa.cidade ? `Cidade ${estufa.cidade}` : '',
+    ].filter(Boolean);
+
+    const msg = hasGps
+      ? `Localização da Estufa ${estufa.nome}: ${mapsUrl}`
+      : `Localização da Estufa ${estufa.nome}: ${addressParts.join(', ')}`;
+
     try {
       await Share.share({ message: msg });
     } catch (error) {
@@ -238,12 +255,10 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
           <MetricCard label="Finalizados" value={String(totalFinalizados)} style={{ flex: 1 }} />
         </View>
 
-        {estufa.latitude && estufa.longitude ? (
-          <TouchableOpacity style={styles.shareBtn} onPress={handleShareLocation}>
-            <MaterialCommunityIcons name="map-marker-radius" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
-            <Text style={styles.shareBtnText}>Compartilhar localização da estufa</Text>
-          </TouchableOpacity>
-        ) : null}
+        <TouchableOpacity style={styles.shareBtn} onPress={handleShareLocation}>
+          <MaterialCommunityIcons name="map-marker-outline" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
+          <Text style={styles.shareBtnText}>Enviar localização</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.content}>

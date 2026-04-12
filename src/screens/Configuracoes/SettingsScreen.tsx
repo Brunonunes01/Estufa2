@@ -13,6 +13,7 @@ import { useNetInfo } from '@react-native-community/netinfo';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 
 import { auth, db } from '../../services/firebaseConfig';
 import { useAuth } from '../../hooks/useAuth';
@@ -21,9 +22,11 @@ import { changeCurrentUserPassword } from '../../services/securityService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import SectionHeading from '../../components/ui/SectionHeading';
 import { useFeedback } from '../../hooks/useFeedback';
+import { useDashboardActions } from '../../hooks/useDashboardActions';
 
 const SettingsScreen = () => {
   const { user, isAdmin, refreshUserProfile } = useAuth();
+  const { signOut } = useDashboardActions();
   const { settings, updateSettings } = useAppSettings();
   const { showSuccess, showError, showWarning } = useFeedback();
   const netInfo = useNetInfo();
@@ -33,17 +36,13 @@ const SettingsScreen = () => {
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
 
-  const [defaultCidade, setDefaultCidade] = useState('');
-  const [defaultTipoCultivo, setDefaultTipoCultivo] = useState('');
-  const [defaultCobertura, setDefaultCobertura] = useState('');
-  const [savingDefaults, setSavingDefaults] = useState(false);
-
   const [senhaAtual, setSenhaAtual] = useState('');
   const [senhaNova, setSenhaNova] = useState('');
   const [senhaConfirmacao, setSenhaConfirmacao] = useState('');
   const [savingSecurity, setSavingSecurity] = useState(false);
 
   const roleLabel = useMemo(() => (isAdmin ? 'Administrador' : 'Operador'), [isAdmin]);
+  const appVersion = Constants.expoConfig?.version || '1.0.0';
 
   useEffect(() => {
     const load = async () => {
@@ -55,9 +54,6 @@ const SettingsScreen = () => {
           const data = snap.data();
           setNome(data.name || user.name || '');
           setEmail(data.email || user.email || '');
-          setDefaultCidade(data.defaultCidade || '');
-          setDefaultTipoCultivo(data.defaultTipoCultivo || '');
-          setDefaultCobertura(data.defaultCobertura || '');
         }
       } catch (error) {
         console.error(error);
@@ -95,29 +91,6 @@ const SettingsScreen = () => {
       showError('Não foi possível atualizar a conta.');
     } finally {
       setSavingProfile(false);
-    }
-  };
-
-  const handleSaveDefaults = async () => {
-    if (!user?.uid) return;
-    setSavingDefaults(true);
-    try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        defaultCidade: defaultCidade.trim(),
-        defaultTipoCultivo: defaultTipoCultivo.trim(),
-        defaultCobertura: defaultCobertura.trim(),
-        updatedAt: new Date(),
-      });
-      if (netInfo.isConnected === false) {
-        showWarning('Sem internet: alterações salvas localmente. Sincronizando...');
-      } else {
-        showSuccess('Configurações padrão de estufa atualizadas.');
-      }
-    } catch (error) {
-      console.error(error);
-      showError('Não foi possível salvar as configurações de estufa.');
-    } finally {
-      setSavingDefaults(false);
     }
   };
 
@@ -212,20 +185,6 @@ const SettingsScreen = () => {
       </View>
 
       <View style={styles.card}>
-        <SectionHeading title="Estufa" subtitle="Configurações padrão para novos cadastros" />
-        <Text style={styles.label}>Cidade padrão</Text>
-        <TextInput style={styles.input} value={defaultCidade} onChangeText={setDefaultCidade} placeholder="Ex: Jales - SP" />
-        <Text style={styles.label}>Tipo de cultivo padrão</Text>
-        <TextInput style={styles.input} value={defaultTipoCultivo} onChangeText={setDefaultTipoCultivo} placeholder="Ex: Hidroponia" />
-        <Text style={styles.label}>Cobertura padrão</Text>
-        <TextInput style={styles.input} value={defaultCobertura} onChangeText={setDefaultCobertura} placeholder="Ex: Filme difusor" />
-
-        <TouchableOpacity style={styles.primaryBtn} onPress={handleSaveDefaults} disabled={savingDefaults}>
-          {savingDefaults ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.primaryBtnText}>Salvar Padrões</Text>}
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.card}>
         <SectionHeading title="Notificações" subtitle="Ajuste alertas do dia a dia" />
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Alertas críticos de estufa</Text>
@@ -260,6 +219,19 @@ const SettingsScreen = () => {
         </View>
         <Text style={styles.helpText}>O modo escuro já é aplicado nas telas principais de operação.</Text>
       </View>
+
+      <View style={styles.card}>
+        <SectionHeading title="Sistema" subtitle="Informações do aplicativo" />
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Versão do app</Text>
+          <Text style={styles.systemValue}>{appVersion}</Text>
+        </View>
+      </View>
+
+      <TouchableOpacity style={styles.logoutBtn} onPress={signOut}>
+        <MaterialCommunityIcons name="logout" size={18} color={COLORS.textLight} />
+        <Text style={styles.logoutBtnText}>Sair da Conta</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 };
@@ -317,7 +289,19 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   switchLabel: { color: COLORS.textPrimary, fontSize: TYPOGRAPHY.body, fontWeight: '600', flex: 1, marginRight: 10 },
+  systemValue: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   helpText: { marginTop: 8, color: COLORS.textSecondary, fontSize: 12 },
+  logoutBtn: {
+    height: 48,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  logoutBtnText: { color: COLORS.textLight, fontWeight: '800', fontSize: 14 },
 });
 
 export default SettingsScreen;

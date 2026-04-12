@@ -6,23 +6,19 @@ import { COLORS, SPACING } from '../../constants/theme';
 import { useThemeMode } from '../../hooks/useThemeMode';
 import { useFeedback } from '../../hooks/useFeedback';
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics';
-import { useDashboardActions } from '../../hooks/useDashboardActions';
 import { useAuth } from '../../hooks/useAuth';
 import DashboardLoadingSkeleton from '../../components/dashboard/DashboardLoadingSkeleton';
-import EmptyState from '../../components/ui/EmptyState';
 import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 import HeroStats from '../../components/dashboard/HeroStats';
 import MoneyGrid from '../../components/dashboard/MoneyGrid';
 import AlertsList from '../../components/dashboard/AlertsList';
 import TodayTasks from '../../components/dashboard/TodayTasks';
 import QuickActions from '../../components/dashboard/QuickActions';
-import EstufaHub from '../../components/dashboard/EstufaHub';
 
 const DashboardScreen = ({ navigation }: any) => {
   const theme = useThemeMode();
   const insets = useSafeAreaInsets();
   const { showError } = useFeedback();
-  const { signOut } = useDashboardActions();
   const { isAdmin } = useAuth();
 
   const {
@@ -69,53 +65,81 @@ const DashboardScreen = ({ navigation }: any) => {
     [activePlantioByEstufa, navigateTo]
   );
 
+  const handleManejoFlow = useCallback(
+    (estufaId: string) => {
+      const plantioAtivo = activePlantioByEstufa[estufaId];
+      if (!plantioAtivo) {
+        Alert.alert('Sem ciclo ativo', 'Crie um plantio nesta estufa para registrar manejo.', [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Criar Plantio', onPress: () => navigateTo('PlantioForm', { estufaId }) },
+        ]);
+        return;
+      }
+      navigateTo('ManejoForm', { plantioId: plantioAtivo.id, estufaId });
+    },
+    [activePlantioByEstufa, navigateTo]
+  );
+
+  const openQuickSaleFlow = useCallback(() => {
+    if (estufas.length === 1) {
+      handleQuickSale(estufas[0].id);
+      return;
+    }
+    navigateTo('EstufasList', { mode: 'colheita' });
+  }, [estufas, handleQuickSale, navigateTo]);
+
+  const openQuickManejoFlow = useCallback(() => {
+    if (estufas.length === 1) {
+      handleManejoFlow(estufas[0].id);
+      return;
+    }
+    navigateTo('EstufasList', { mode: 'manejo' });
+  }, [estufas, handleManejoFlow, navigateTo]);
+
   const quickActions = useMemo(
-    () =>
-      [
-        {
-          label: 'Nova Tarefa',
-          icon: 'calendar-plus',
-          color: COLORS.info,
-          onPress: () => navigateTo('EstufasList'),
-          adminOnly: false,
-        },
-        {
-          label: 'Nova Venda',
-          icon: 'basket-plus',
-          color: COLORS.success,
-          onPress: () => navigateTo('EstufasList'),
-          adminOnly: false,
-        },
-        {
-          label: 'Nova Despesa',
-          icon: 'cash-minus',
-          color: COLORS.danger,
-          onPress: () => navigateTo('DespesaForm'),
-          adminOnly: true,
-        },
-        {
-          label: 'Compartilhar Conta',
-          icon: 'account-multiple-plus',
-          color: COLORS.info,
-          onPress: () => navigateTo('ShareAccount'),
-          adminOnly: true,
-        },
-        {
-          label: 'Contas a Receber',
-          icon: 'hand-coin',
-          color: COLORS.primary,
-          onPress: () => navigateTo('ContasReceber'),
-          adminOnly: true,
-        },
-      ].filter((a) => !a.adminOnly || isAdmin),
-    [navigateTo, isAdmin]
+    () => [
+      {
+        label: 'Colher / Vender',
+        icon: 'basket',
+        color: COLORS.success,
+        onPress: openQuickSaleFlow,
+      },
+      {
+        label: 'Registrar Manejo',
+        icon: 'notebook-plus-outline',
+        color: COLORS.info,
+        onPress: openQuickManejoFlow,
+      },
+      {
+        label: 'Nova Despesa',
+        icon: 'cash-minus',
+        color: COLORS.danger,
+        onPress: () => navigateTo('DespesaForm'),
+      },
+      {
+        label: 'Contas a Receber',
+        icon: 'hand-coin',
+        color: COLORS.primary,
+        onPress: () => navigateTo('ContasReceber'),
+      },
+      {
+        label: 'Estufas',
+        icon: 'greenhouse',
+        color: COLORS.secondary,
+        onPress: () => navigateTo('EstufasList'),
+      },
+    ],
+    [navigateTo, openQuickManejoFlow, openQuickSaleFlow]
   );
 
   const modules = useMemo(
     () => [
-      { label: 'Operação', icon: 'sprout-outline', route: 'EstufasList', color: COLORS.success },
-      { label: 'Financeiro', icon: 'wallet-outline', route: 'ContasReceber', color: COLORS.modDespesas },
+      { label: 'Relatórios', icon: 'chart-box-outline', route: 'VendasList', color: COLORS.primary },
+      { label: 'Despesas', icon: 'cash-minus', route: 'DespesasList', color: COLORS.modDespesas },
       { label: 'Insumos', icon: 'flask-outline', route: 'InsumosList', color: COLORS.primaryDark },
+      { label: 'Clientes', icon: 'account-group-outline', route: 'ClientesList', color: COLORS.info },
+      { label: 'Fornecedores', icon: 'truck-delivery-outline', route: 'FornecedoresList', color: COLORS.orange },
+      { label: 'Compartilhar Acesso', icon: 'account-multiple-plus', route: 'ShareAccount', color: COLORS.success },
       { label: 'Configurações', icon: 'cog-outline', route: 'Settings', color: COLORS.secondary },
     ],
     []
@@ -189,12 +213,6 @@ const DashboardScreen = ({ navigation }: any) => {
 
       {isAdmin && (loadingResumo ? <DashboardLoadingSkeleton /> : <MoneyGrid totalReceber={totalReceber} totalPagar={totalPagar} textColor={theme.textSecondary} />)}
 
-      <View style={styles.sectionHeaderRow}>
-        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Hubs de Estufa</Text>
-        <TouchableOpacity onPress={() => navigateTo('EstufasList')}>
-          <Text style={styles.linkButton}>Ver todas</Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 
@@ -224,42 +242,21 @@ const DashboardScreen = ({ navigation }: any) => {
           title="Centro de Comando"
           subtitle={`Olá, ${user?.displayName?.split(' ')[0] || 'Gestor'}`}
           badgeLabel={isAdmin ? 'Administrador' : 'Operador'}
-          actionIcon="logout"
-          onPressAction={signOut}
+          actionLabel="Estufas"
+          actionIcon="greenhouse"
+          onPressAction={() => navigateTo('EstufasList')}
         >
           <HeroStats estufas={estufas.length} plantios={totalCiclosAtivos} tarefasHoje={tarefasHojePendentes} />
         </ScreenHeaderCard>
 
         <FlatList
-          data={estufas}
-          keyExtractor={(item) => item.id}
+          data={[]}
+          keyExtractor={(_, index) => String(index)}
           ListHeaderComponent={renderHeader}
           ListFooterComponent={renderFooter}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <EstufaHub
-              estufa={item}
-              plantiosAtivos={plantiosByEstufa[item.id] || []}
-              textPrimary={theme.textPrimary}
-              textSecondary={theme.textSecondary}
-              borderColor={theme.border}
-              surfaceBackground={theme.surfaceBackground}
-              onOpenHub={(id) => navigateTo('EstufaDetail', { estufaId: id })}
-              onCycleAction={(id, pid) =>
-                pid ? navigateTo('PlantioDetail', { plantioId: pid }) : navigateTo('PlantioForm', { estufaId: id })
-              }
-              onQuickSale={handleQuickSale}
-            />
-          )}
-          ListEmptyComponent={
-            <EmptyState
-              icon="greenhouse"
-              title="Sem estufas"
-              description="Cadastre sua primeira estufa."
-              onAction={() => navigateTo('EstufaForm')}
-            />
-          }
+          renderItem={() => null}
         />
       </SafeAreaView>
     </View>
@@ -293,14 +290,6 @@ const styles = StyleSheet.create({
   tenantChipText: { fontSize: 12, fontWeight: '700' },
 
   sectionTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 },
-  sectionHeaderRow: {
-    marginTop: SPACING.lg,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  linkButton: { color: COLORS.info, fontSize: 13, fontWeight: '700' },
-
   modulesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   moduleChip: {
     width: '48%',

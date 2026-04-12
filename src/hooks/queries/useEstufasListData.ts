@@ -8,7 +8,7 @@ export const useEstufasListData = (tenantId?: string) =>
     queryKey: queryKeys.estufasList(tenantId || 'none'),
     enabled: !!tenantId,
     staleTime: 1000 * 60 * 2,
-    refetchOnMount: false,
+    refetchOnMount: true,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     queryFn: async () => {

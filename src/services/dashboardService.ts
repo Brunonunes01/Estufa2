@@ -53,12 +53,17 @@ const getFinancialSummaryFromDoc = async (tenantId: string) => {
 export const getDashboardSummary = async (userId: string): Promise<DashboardSummary> => {
   const tenantId = assertTenantId(userId);
 
-  const [estufas, activePlantios, todayTasks, summaryDoc] = await Promise.all([
+  const [estufasRes, activePlantiosRes, todayTasksRes, summaryDocRes] = await Promise.allSettled([
     listEstufas(tenantId),
     listActivePlantiosByUser(tenantId),
     listTodayPendingTasks(tenantId),
     getFinancialSummaryFromDoc(tenantId),
   ]);
+
+  const estufas = estufasRes.status === 'fulfilled' ? estufasRes.value : [];
+  const activePlantios = activePlantiosRes.status === 'fulfilled' ? activePlantiosRes.value : [];
+  const todayTasks = todayTasksRes.status === 'fulfilled' ? todayTasksRes.value : [];
+  const summaryDoc = summaryDocRes.status === 'fulfilled' ? summaryDocRes.value : null;
 
   if (summaryDoc) {
     return {
@@ -73,10 +78,13 @@ export const getDashboardSummary = async (userId: string): Promise<DashboardSumm
     };
   }
 
-  const [totalReceber, totalPagar] = await Promise.all([
+  const [totalReceberRes, totalPagarRes] = await Promise.allSettled([
     getTotalContasAReceber(tenantId),
     getTotalDespesasPendentes(tenantId),
   ]);
+
+  const totalReceber = totalReceberRes.status === 'fulfilled' ? totalReceberRes.value : 0;
+  const totalPagar = totalPagarRes.status === 'fulfilled' ? totalPagarRes.value : 0;
 
   return {
     estufas,
