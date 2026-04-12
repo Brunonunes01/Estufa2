@@ -89,7 +89,9 @@ export interface Estufa extends BaseDoc {
   // Compatibilidade com dados legados da base atual
   cidade?: string;
   propriedade?: string;
+  /** @deprecated Campo legado. Definição de cultivo deve ficar no Plantio. */
   tipoCultivo?: string;
+  /** @deprecated Campo legado. Definição de cultivo deve ficar no Plantio. */
   sistemaCultivo?: string;
   responsavel?: string;
   latitude?: string;
@@ -133,6 +135,8 @@ export interface Plantio extends BaseDoc {
   codigoLote?: string;
   origemSemente?: string;
   quantidadePlantada?: number;
+  quantidadeBandejas?: number | null;
+  mudasPorBandeja?: number | null;
   unidadeQuantidade?: string;
   observacoes?: string;
 }

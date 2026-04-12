@@ -20,8 +20,6 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
   const [nome, setNome] = useState('');
   const [cidade, setCidade] = useState('');
   const [propriedade, setPropriedade] = useState('');
-  const [tipoCultivo, setTipoCultivo] = useState('');
-  const [sistemaCultivo, setSistemaCultivo] = useState('');
   const [responsavel, setResponsavel] = useState('');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
@@ -67,8 +65,6 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
         setNome(data.nome || '');
         setCidade(data.cidade || '');
         setPropriedade(data.propriedade || '');
-        setTipoCultivo(data.tipoCultivo || '');
-        setSistemaCultivo(data.sistemaCultivo || '');
         setResponsavel(data.responsavel || '');
         setLatitude(data.latitude || '');
         setLongitude(data.longitude || '');
@@ -156,8 +152,6 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
       nome,
       cidade,
       propriedade,
-      tipoCultivo,
-      sistemaCultivo,
       responsavel,
       latitude,
       longitude,
@@ -336,26 +330,6 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
           value={responsavel} 
           onChangeText={setResponsavel} 
           placeholder="Nome do responsável" 
-          placeholderTextColor={COLORS.textPlaceholder} 
-        />
-
-        <Text style={styles.sectionTitle}>Dados de Cultivo</Text>
-
-        <Text style={styles.label}>Tipo de Cultivo</Text>
-        <TextInput 
-          style={styles.input} 
-          value={tipoCultivo} 
-          onChangeText={setTipoCultivo} 
-          placeholder="Ex: Tomate Italiano" 
-          placeholderTextColor={COLORS.textPlaceholder} 
-        />
-
-        <Text style={styles.label}>Sistema de Cultivo</Text>
-        <TextInput 
-          style={styles.input} 
-          value={sistemaCultivo} 
-          onChangeText={setSistemaCultivo} 
-          placeholder="Ex: Solo, Hidroponia" 
           placeholderTextColor={COLORS.textPlaceholder} 
         />
 
