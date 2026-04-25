@@ -31,6 +31,13 @@ export interface Tenant {
   ownerName?: string;
   name?: string;
   sharedBy?: string;
+  role?: 'guest' | 'operator' | 'admin';
+  permissions?: {
+    canRead?: boolean;
+    canWrite?: boolean;
+    canDelete?: boolean;
+    canManageSharing?: boolean;
+  };
   sharedAt?: Timestamp | number | string;
 }
 
@@ -39,6 +46,13 @@ export interface ShareCode extends BaseDoc {
   tenantId: string;
   tenantName?: string;
   ownerName?: string;
+  grantRole?: 'guest' | 'operator';
+  permissions?: {
+    canRead: boolean;
+    canWrite: boolean;
+    canDelete: boolean;
+    canManageSharing: boolean;
+  };
   createdBy: string;
   expiresAt: Timestamp | number | string;
   usedBy?: string[];
@@ -50,6 +64,13 @@ export interface Cliente extends BaseDoc {
   telefone?: string;
   email?: string;
   documento?: string;
+  contatoResponsavel?: string;
+  cep?: string;
+  endereco?: string;
+  numero?: string;
+  bairro?: string;
+  estado?: string;
+  complemento?: string;
   tipo?: string;
   observacoes?: string;
 }
@@ -130,6 +151,11 @@ export interface Plantio extends BaseDoc {
   custoAcumulado?: number;
   custoTotal?: number;
   cicloDias?: number;
+  cicloDesbloqueadoPorAdmin?: boolean;
+  desbloqueioAdminByUid?: string | null;
+  desbloqueioAdminByName?: string | null;
+  desbloqueioAdminAt?: Timestamp | null;
+  desbloqueioAdminReason?: string | null;
 
   // Compatibilidade legada
   codigoLote?: string;
@@ -137,6 +163,9 @@ export interface Plantio extends BaseDoc {
   quantidadePlantada?: number;
   quantidadeBandejas?: number | null;
   mudasPorBandeja?: number | null;
+  precoEstimadoUnidade?: number | null;
+  unidadePrecoEstimado?: string | null;
+  custoEstimadoInicial?: number | null;
   unidadeQuantidade?: string;
   observacoes?: string;
 }
@@ -209,18 +238,25 @@ export interface Colheita extends BaseDoc {
   metodoPagamento?: string | null;
   statusPagamento?: 'pendente' | 'pago' | 'atrasado' | 'cancelado';
   dataPagamento?: Timestamp | null;
+  cicloDesbloqueadoPorAdmin?: boolean;
+  desbloqueioAdminByUid?: string | null;
+  desbloqueioAdminByName?: string | null;
+  desbloqueioAdminAt?: Timestamp | null;
+  desbloqueioAdminReason?: string | null;
 }
 
 export interface VendaItem {
   colheitaId?: string;
   descricao: string;
   quantidade: number;
+  unidade?: string;
   valorUnitario: number;
 }
 
 export interface Venda extends BaseDoc {
   plantioId?: string;
   estufaId?: string;
+  colheitaId?: string;
   clienteId?: string | null;
   dataVenda: Timestamp;
   dataVencimento?: Timestamp | null;
@@ -232,6 +268,11 @@ export interface Venda extends BaseDoc {
 
   // Campos legados de relatório
   metodoPagamento?: string | null;
+  cicloDesbloqueadoPorAdmin?: boolean;
+  desbloqueioAdminByUid?: string | null;
+  desbloqueioAdminByName?: string | null;
+  desbloqueioAdminAt?: Timestamp | null;
+  desbloqueioAdminReason?: string | null;
 }
 
 export interface Despesa extends BaseDoc {
@@ -267,12 +308,43 @@ export interface TarefaAgricola extends BaseDoc {
   status: 'pendente' | 'em_andamento' | 'concluida' | 'cancelada';
   prioridade: 'baixa' | 'media' | 'alta' | 'critica';
   observacoes?: string;
+  cancelReason?: string | null;
+  statusHistory?: Array<{
+    status: 'pendente' | 'em_andamento' | 'concluida' | 'cancelada';
+    changedAt: Timestamp;
+    changedBy: string;
+    reason?: string | null;
+  }>;
+}
+
+export interface RastreabilidadeEvento extends BaseDoc {
+  plantioId: string;
+  estufaId?: string | null;
+  entidade: 'plantio' | 'colheita' | 'venda' | 'aplicacao' | 'manejo' | 'tarefa' | 'estufa';
+  entidadeId: string;
+  acao:
+    | 'criado'
+    | 'atualizado'
+    | 'status_alterado'
+    | 'excluido'
+    | 'recebimento_registrado'
+    | 'desbloqueio_ciclo'
+    | 'cancelado';
+  descricao: string;
+  motivo?: string | null;
+  actorUid?: string | null;
+  actorName?: string | null;
+  metadata?: Record<string, unknown> | null;
+  eventAt: Timestamp;
 }
 
 export interface DashboardSummary extends BaseDoc {
   receitaTotal?: number;
   contasAPagar?: number;
   contasAReceber?: number;
+  totalRecebido?: number;
+  totalReceber?: number;
+  totalPagar?: number;
   custoProducaoMensal?: number;
   alertasCarencia?: number;
   totalPlantiosAtivos?: number;

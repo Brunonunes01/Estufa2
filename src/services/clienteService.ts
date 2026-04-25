@@ -17,20 +17,31 @@ import { assertTenantId } from './tenantGuard';
 
 export type ClienteFormData = {
   nome: string;
-  telefone: string | null;
-  cidade: string | null;
-  tipo: "atacado" | "varejo" | "restaurante" | "outro";
-  observacoes: string | null;
+  telefone?: string | null;
+  cidade?: string | null;
+  tipo?: string | null;
+  observacoes?: string | null;
+  email?: string | null;
+  documento?: string | null;
+  contatoResponsavel?: string | null;
+  cep?: string | null;
+  endereco?: string | null;
+  numero?: string | null;
+  bairro?: string | null;
+  estado?: string | null;
+  complemento?: string | null;
 };
 
 // 1. CRIAR
 export const createCliente = async (data: ClienteFormData, userId: string) => {
   const tenantId = assertTenantId(userId);
+  const now = Timestamp.now();
   const novoCliente = {
     ...data,
-    userId: tenantId,
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
+    tenantId,
+    userId: tenantId, // Compatibilidade
+    createdAt: now,
+    updatedAt: now,
   };
 
   try {
@@ -49,7 +60,7 @@ export const listClientes = async (userId: string): Promise<Cliente[]> => {
   try {
     const q = query(
       collection(db, 'clientes'), 
-      where("userId", "==", tenantId)
+      where("tenantId", "==", tenantId)
     );
     
     const querySnapshot = await getDocs(q);
@@ -75,8 +86,8 @@ export const getClienteById = async (clienteId: string, userId: string): Promise
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data() as Cliente;
-      if (data.userId !== tenantId) {
-        throw new Error("Acesso negado: este cliente não pertence ao seu tenant.");
+      if (data.tenantId !== tenantId && data.userId !== tenantId) {
+        throw new Error("Acesso negado.");
       }
       return { ...data , id: docSnap.id };
     } else {

@@ -1,7 +1,7 @@
 // src/contexts/AuthContext.tsx
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import { auth, db } from '../services/firebaseConfig';
-import { doc, getDoc, collection, onSnapshot, Unsubscribe } from 'firebase/firestore'; 
+import { doc, getDoc, collection, onSnapshot, Unsubscribe, setDoc, Timestamp } from 'firebase/firestore'; 
 import { signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth';
 import { User } from '../types/domain';
 
@@ -34,8 +34,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const userDoc = await getDoc(userDocRef);
 
     if (!userDoc.exists()) {
-      setUser(null);
-      return null;
+      const firebaseUser = auth.currentUser;
+      const fallbackName = firebaseUser?.displayName?.trim() || firebaseUser?.email?.split('@')[0] || 'Usuário';
+      const now = Timestamp.now();
+
+      await setDoc(userDocRef, {
+        name: fallbackName,
+        email: firebaseUser?.email || '',
+        role: 'admin',
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const createdDoc = await getDoc(userDocRef);
+      if (!createdDoc.exists()) {
+        setUser(null);
+        return null;
+      }
+
+      const createdRaw = createdDoc.data();
+      const createdUserData = {
+        uid,
+        ...createdRaw,
+        role: createdRaw.role || 'admin',
+      } as User;
+
+      setUser(createdUserData);
+      if (!selectedTenantId) setSelectedTenantId(createdUserData.uid);
+      return createdUserData;
     }
 
     const raw = userDoc.data();
@@ -71,8 +97,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             if (userData.sharedAccess && Array.isArray(userData.sharedAccess)) {
                 userData.sharedAccess.forEach((access: any) => {
                     const ownerName = normalizeOwnerName(access?.ownerName || access?.sharedBy || access?.name);
+                    const legacyTenantId = access?.tenantId || access?.uid;
+                    if (!legacyTenantId) return;
                     legacyShares.push({
-                      uid: access.uid,
+                      uid: legacyTenantId,
                       name: `Estufa de ${ownerName}`,
                       type: 'shared',
                       ownerName,

@@ -6,6 +6,7 @@ import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { auth, db } from '../../services/firebaseConfig';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import useGoogleAuth from '../../hooks/useGoogleAuth';
 
 const RegisterScreen = ({ navigation }: any) => {
   const [name, setName] = useState('');
@@ -13,6 +14,12 @@ const RegisterScreen = ({ navigation }: any) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const { signInWithGoogle, loadingGoogle, googleDisabled } = useGoogleAuth({
+    onError: (message) => {
+      setError(message);
+      Alert.alert('Erro', message);
+    },
+  });
 
   const handleRegister = async () => {
     setError(''); setLoading(true);
@@ -75,6 +82,27 @@ const RegisterScreen = ({ navigation }: any) => {
                     {loading ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.registerBtnText}>Criar Conta</Text>}
                 </TouchableOpacity>
 
+                <View style={styles.dividerRow}>
+                    <View style={styles.dividerLine} />
+                    <Text style={styles.dividerText}>ou</Text>
+                    <View style={styles.dividerLine} />
+                </View>
+
+                <TouchableOpacity
+                  style={styles.googleBtn}
+                  onPress={signInWithGoogle}
+                  disabled={loading || loadingGoogle || googleDisabled}
+                >
+                  {loadingGoogle ? (
+                    <ActivityIndicator color={COLORS.textPrimary} />
+                  ) : (
+                    <>
+                      <MaterialCommunityIcons name="google" size={20} color={COLORS.textPrimary} />
+                      <Text style={styles.googleBtnText}>Entrar com Google</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>Já tem uma conta?</Text>
                     <TouchableOpacity onPress={() => navigation.navigate('Login')}><Text style={styles.loginLink}>Fazer Login</Text></TouchableOpacity>
@@ -99,6 +127,22 @@ const styles = StyleSheet.create({
     input: { flex: 1, color: COLORS.textDark, fontSize: TYPOGRAPHY.body, fontWeight: '700', height: '100%' },
     registerBtn: { backgroundColor: COLORS.primary, height: 56, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginTop: 10, ...SHADOWS.card },
     registerBtnText: { color: COLORS.textLight, fontWeight: '800', fontSize: TYPOGRAPHY.title },
+    dividerRow: { marginTop: SPACING.lg, flexDirection: 'row', alignItems: 'center', gap: 10 },
+    dividerLine: { flex: 1, height: 1, backgroundColor: COLORS.border },
+    dividerText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+    googleBtn: {
+      marginTop: SPACING.md,
+      height: 56,
+      borderRadius: RADIUS.md,
+      borderWidth: 1.5,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 10,
+    },
+    googleBtnText: { color: COLORS.textPrimary, fontWeight: '800', fontSize: TYPOGRAPHY.body },
     footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 24, gap: 5 },
     footerText: { color: COLORS.textSecondary },
     loginLink: { color: COLORS.primary, fontWeight: 'bold' },

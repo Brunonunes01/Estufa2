@@ -15,6 +15,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNetInfo } from '@react-native-community/netinfo';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { useAuth } from '../../hooks/useAuth';
 import { deleteEstufa } from '../../services/estufaService';
@@ -78,6 +79,12 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
       showError('Não foi possível carregar a estufa.');
     }
   }, [isError, showError]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
 
   const handleShareLocation = async () => {
     if (!estufa) return;
@@ -317,44 +324,17 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
           </View>
         )}
 
-        <SectionHeading
-          title="Histórico de Ciclos"
-          subtitle="Ciclos recentes desta estufa"
-          right={
-            <TouchableOpacity onPress={() => navigation.navigate('PlantioForm', { estufaId: estufa.id })}>
-              <Text style={styles.linkText}>+ Novo</Text>
-            </TouchableOpacity>
-          }
-        />
-
-        {plantios.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Nenhum plantio registrado ainda.</Text>
+        <SectionHeading title="Histórico de Ciclos" subtitle="Abra a linha do tempo completa em tela dedicada" />
+        <TouchableOpacity style={styles.historyShortcut} onPress={() => navigation.navigate('EstufaHistory', { estufaId: estufa.id })}>
+          <View style={styles.historyShortcutIcon}>
+            <MaterialCommunityIcons name="history" size={22} color={COLORS.info} />
           </View>
-        ) : (
-          plantios.map((plantio) => (
-            <TouchableOpacity
-              key={plantio.id}
-              style={styles.plantioItem}
-              onPress={() => navigation.navigate('PlantioDetail', { plantioId: plantio.id })}
-            >
-              <View style={styles.plantioIcon}>
-                <MaterialCommunityIcons
-                  name="sprout"
-                  size={22}
-                  color={plantio.status === 'finalizado' || plantio.status === 'cancelado' ? COLORS.c9CA3AF : COLORS.primary}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.plantioName}>{plantio.cultura}</Text>
-                <Text style={styles.plantioDetail}>
-                  {plantio.quantidadePlantada} {plantio.unidadeQuantidade} • {plantio.dataPlantio.toDate().toLocaleDateString('pt-BR')}
-                </Text>
-              </View>
-              <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-          ))
-        )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.historyShortcutTitle}>Ver histórico completo</Text>
+            <Text style={styles.historyShortcutSub}>{plantios.length} ciclo(s) registrado(s) nesta estufa</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.textSecondary} />
+        </TouchableOpacity>
 
         {canDeleteEstufa ? (
           <View style={styles.deleteZone}>
@@ -552,38 +532,28 @@ const styles = StyleSheet.create({
 
   linkText: { color: COLORS.info, fontWeight: '700', fontSize: 13 },
 
-  plantioItem: {
+  historyShortcut: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.surface,
-    padding: 16,
     borderRadius: RADIUS.md,
-    marginBottom: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
+    padding: SPACING.md,
+    marginBottom: SPACING.xl,
     ...SHADOWS.card,
   },
-  plantioIcon: {
+  historyShortcutIcon: {
     width: 40,
     height: 40,
     borderRadius: RADIUS.sm,
-    backgroundColor: COLORS.backgroundAlt,
+    backgroundColor: COLORS.infoSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
-  plantioName: { fontSize: TYPOGRAPHY.body, fontWeight: '800', color: COLORS.textPrimary },
-  plantioDetail: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
-
-  emptyState: {
-    padding: 20,
-    alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  emptyText: { color: COLORS.textSecondary },
+  historyShortcutTitle: { fontSize: TYPOGRAPHY.body, fontWeight: '800', color: COLORS.textPrimary },
+  historyShortcutSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
   deleteZone: {
     marginTop: SPACING.md,
     borderWidth: 1,

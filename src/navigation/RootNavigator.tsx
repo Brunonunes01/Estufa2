@@ -1,7 +1,7 @@
 // src/navigation/RootNavigator.tsx
 import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
-import { createNativeStackNavigator, NativeStackNavigationOptions } from '@react-navigation/native-stack';
+import { createNativeStackNavigator, NativeStackNavigationOptions, NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { 
   View, 
   ActivityIndicator, 
@@ -30,8 +30,10 @@ import SettingsScreen from '../screens/Configuracoes/SettingsScreen';
 import EstufasListScreen from '../screens/Estufas/EstufasListScreen';
 import EstufaFormScreen from '../screens/Estufas/EstufaFormScreen';
 import EstufaDetailScreen from '../screens/Estufas/EstufaDetailScreen';
+import EstufaHistoryScreen from '../screens/Estufas/EstufaHistoryScreen';
 import PlantioFormScreen from '../screens/Plantios/PlantioFormScreen';
 import PlantioDetailScreen from '../screens/Plantios/PlantioDetailScreen';
+import PlantioHistoryScreen from '../screens/Plantios/PlantioHistoryScreen';
 import ColheitaFormScreen from '../screens/Colheitas/ColheitaFormScreen';
 import VendasListScreen from '../screens/Vendas/VendasListScreen';
 import ContasReceberScreen from '../screens/Financeiro/ContasReceberScreen';
@@ -48,8 +50,12 @@ import DespesasListScreen from '../screens/Despesas/DespesasListScreen';
 import DespesaFormScreen from '../screens/Despesas/DespesaFormScreen';
 import ManejoFormScreen from '../screens/Manejos/ManejoFormScreen';
 import ManejosHistoryScreen from '../screens/Manejos/ManejosHistoryScreen';
+import RelatoriosScreen from '../screens/Financeiro/RelatoriosScreen';
+import RelatorioOperacionalScreen from '../screens/Financeiro/RelatorioOperacionalScreen';
+import TarefasScreen from '../screens/Tarefas/TarefasScreen';
+import { RootStackParamList } from './types';
 
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 // --- BANNER OFFLINE ---
 const OfflineBanner = () => {
@@ -98,7 +104,7 @@ const OfflineBanner = () => {
 };
 
 const HomeButton = () => {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   return (
     <TouchableOpacity 
       onPress={() => navigation.navigate('Dashboard')} 
@@ -136,8 +142,10 @@ const AppStack = () => (
     <Stack.Screen name="EstufasList" component={EstufasListScreen} options={{ title: 'Hubs de Estufa' }} />
     <Stack.Screen name="EstufaForm" component={EstufaFormScreen} options={{ title: 'Cadastro da Estufa' }} />
     <Stack.Screen name="EstufaDetail" component={EstufaDetailScreen} options={{ title: 'Detalhes da Estufa' }} />
+    <Stack.Screen name="EstufaHistory" component={EstufaHistoryScreen} options={{ title: 'Histórico da Estufa' }} />
     <Stack.Screen name="PlantioForm" component={PlantioFormScreen} options={{ title: 'Novo Plantio' }} />
     <Stack.Screen name="PlantioDetail" component={PlantioDetailScreen} options={{ title: 'Painel do Ciclo' }} />
+    <Stack.Screen name="PlantioHistory" component={PlantioHistoryScreen} options={{ title: 'Histórico do Ciclo' }} />
     <Stack.Screen name="ManejoForm" component={ManejoFormScreen} options={{ title: 'Registro de Manejo' }} />
     <Stack.Screen name="ManejosHistory" component={ManejosHistoryScreen} options={{ title: 'Diário de Manejo' }} />
     <Stack.Screen name="ColheitaForm" component={ColheitaFormScreen} options={{ title: 'Registrar Venda' }} />
@@ -154,6 +162,9 @@ const AppStack = () => (
     <Stack.Screen name="ClienteForm" component={ClienteFormScreen} options={{ title: 'Cadastro de Cliente' }} />
     <Stack.Screen name="DespesasList" component={DespesasListScreen} options={{ title: 'Despesas' }} />
     <Stack.Screen name="DespesaForm" component={DespesaFormScreen} options={{ title: 'Lançar Despesa' }} />
+    <Stack.Screen name="Relatorios" component={RelatoriosScreen} options={{ title: 'BI & Relatórios' }} />
+    <Stack.Screen name="RelatorioOperacional" component={RelatorioOperacionalScreen} options={{ title: 'Relatório Operacional' }} />
+    <Stack.Screen name="Tarefas" component={TarefasScreen} options={{ title: 'Tarefas Agrícolas' }} />
   </Stack.Navigator>
 );
 

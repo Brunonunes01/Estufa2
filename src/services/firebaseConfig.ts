@@ -23,7 +23,8 @@ export const auth = initializeAuth(app, {
 });
 
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({})
+  // Habilitando a persistência para funcionamento offline, alinhado com a web.
+  localCache: persistentLocalCache({ })
 });
 
 export default app;

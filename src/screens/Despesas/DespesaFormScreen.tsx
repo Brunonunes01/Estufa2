@@ -7,9 +7,11 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { createDespesa } from '../../services/despesaService';
 import { useAuth } from '../../hooks/useAuth';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { queryClient, queryKeys } from '../../lib/queryClient';
 
 const DespesaFormScreen = ({ navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const targetId = selectedTenantId || user?.uid;
   
   const [descricao, setDescricao] = useState('');
   const [valor, setValor] = useState('');
@@ -23,26 +25,35 @@ const DespesaFormScreen = ({ navigation }: any) => {
   const [showPicker, setShowPicker] = useState<'despesa' | 'vencimento' | null>(null);
 
   const handleSave = async () => {
-    if (!user) return;
-    const targetId = selectedTenantId || user.uid;
-    if (!descricao || !valor) return Alert.alert("Erro", "Preencha a descrição e o valor.");
+    if (!targetId) return Alert.alert("Atenção", "Sua sessão expirou. Entre novamente.");
+    if (!descricao.trim()) return Alert.alert("Atenção", "Digite a descrição da despesa.");
+    const valorNum = parseFloat(valor.replace(',', '.')) || 0;
+    if (valorNum <= 0) return Alert.alert("Atenção", "Digite um valor maior que zero.");
 
     setLoading(true);
     try {
         await createDespesa({
-            descricao, 
-            valor: parseFloat(valor.replace(',', '.')) || 0, 
-            categoria,
-            status,
+            descricao: descricao.trim(), 
+            valor: valorNum, 
+            categoria: categoria as any,
+            statusPagamento: status,
             dataDespesa,
             dataVencimento: status === 'pendente' ? dataVencimento : null,
             observacoes: observacoes || null, 
-            registradoPor: user.name || 'App',
         }, targetId);
-        Alert.alert("Sucesso", "Despesa registada.");
-        navigation.goBack();
+        
+        if (targetId) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(targetId) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.despesasList(targetId) });
+        }
+        
+        Alert.alert(
+          "Despesa registrada",
+          `${descricao.trim()}\nValor: R$ ${valorNum.toFixed(2)}\nStatus: ${status === 'pago' ? 'Pago' : 'Pendente'}`,
+          [{ text: "OK", onPress: () => navigation.goBack() }]
+        );
     } catch { 
-        Alert.alert("Erro", "Não foi possível salvar."); 
+        Alert.alert("Erro", "Não consegui salvar a despesa. Tente novamente."); 
     } finally { 
         setLoading(false); 
     }
@@ -138,8 +149,8 @@ const styles = StyleSheet.create({
   input: { paddingHorizontal: 15, fontSize: TYPOGRAPHY.body, color: COLORS.textDark, height: '100%', fontWeight: '700' },
   dateBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surfaceMuted, paddingHorizontal: 15, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: COLORS.border, height: 56, marginBottom: SPACING.md },
   dateText: { marginLeft: 10, fontSize: TYPOGRAPHY.body, fontWeight: '700', color: COLORS.textDark },
-  saveBtn: { backgroundColor: COLORS.modDespesas, height: 56, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginBottom: 30, ...SHADOWS.card },
-  saveText: { fontSize: TYPOGRAPHY.title, fontWeight: '800', color: COLORS.textLight },
+  saveBtn: { backgroundColor: COLORS.modDespesas, height: 60, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginBottom: 30, ...SHADOWS.card },
+  saveText: { fontSize: 19, fontWeight: '800', color: COLORS.textLight },
 });
 
 export default DespesaFormScreen;

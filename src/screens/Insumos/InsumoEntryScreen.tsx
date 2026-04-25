@@ -12,8 +12,9 @@ import { Fornecedor, Insumo } from '../../types/domain';
 import { listFornecedores as listFornecedoresService } from '../../services/fornecedorService'; 
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
-const InsumoEntryScreen = ({ navigation }: any) => {
+const InsumoEntryScreen = ({ route, navigation }: any) => {
     const { user, selectedTenantId } = useAuth();
+    const preselectedInsumoId = route.params?.preselectedInsumoId;
 
     const [insumosList, setInsumosList] = useState<Insumo[]>([]);
     const [fornecedoresList, setFornecedoresList] = useState<Fornecedor[]>([]);
@@ -26,6 +27,13 @@ const InsumoEntryScreen = ({ navigation }: any) => {
 
     const [loadingData, setLoadingData] = useState(true);
     const [loadingForm, setLoadingForm] = useState(false);
+
+    const parseDecimal = (value: string) => {
+        const normalized = value.replace(',', '.').trim();
+        if (!normalized) return 0;
+        const parsed = Number(normalized);
+        return Number.isFinite(parsed) ? parsed : 0;
+    };
 
     useEffect(() => {
         const loadInitialData = async () => {
@@ -42,7 +50,8 @@ const InsumoEntryScreen = ({ navigation }: any) => {
                 setFornecedoresList(fornecedores);
 
                 if (insumos.length > 0) {
-                    setSelectedInsumoId(insumos[0].id);
+                    const validPreselected = preselectedInsumoId && insumos.some((item) => item.id === preselectedInsumoId);
+                    setSelectedInsumoId(validPreselected ? preselectedInsumoId : insumos[0].id);
                 }
             } catch (error) {
                 Alert.alert("Erro", "Não foi possível carregar os dados iniciais.");
@@ -51,17 +60,36 @@ const InsumoEntryScreen = ({ navigation }: any) => {
             }
         };
         loadInitialData();
-    }, [user]);
+    }, [selectedTenantId, user?.uid, preselectedInsumoId]);
 
     const insumoSelecionado = useMemo(() => {
         return insumosList.find(i => i.id === selectedInsumoId);
     }, [selectedInsumoId, insumosList]);
 
     const valorTotalCompra = useMemo(() => {
-        const qtd = parseFloat(quantidadeComprada.replace(',', '.')) || 0;
-        const custo = parseFloat(custoUnitarioCompra.replace(',', '.')) || 0;
+        const qtd = parseDecimal(quantidadeComprada);
+        const custo = parseDecimal(custoUnitarioCompra);
         return (qtd * custo);
     }, [quantidadeComprada, custoUnitarioCompra]);
+
+    const preview = useMemo(() => {
+        const qtd = parseDecimal(quantidadeComprada);
+        const custoCompra = parseDecimal(custoUnitarioCompra);
+        const estoqueAtual = Number(insumoSelecionado?.estoqueAtual || 0);
+        const custoAtual = Number(insumoSelecionado?.custoUnitario || 0);
+        const estoqueApos = estoqueAtual + qtd;
+        const custoMedioApos =
+            estoqueApos > 0
+                ? ((estoqueAtual * custoAtual) + (qtd * custoCompra)) / estoqueApos
+                : 0;
+
+        return {
+            estoqueAtual,
+            estoqueApos,
+            custoAtual,
+            custoMedioApos,
+        };
+    }, [insumoSelecionado, quantidadeComprada, custoUnitarioCompra]);
 
     const handleSaveEntry = async () => {
         const targetId = selectedTenantId || user?.uid;
@@ -70,8 +98,8 @@ const InsumoEntryScreen = ({ navigation }: any) => {
             return;
         }
 
-        const qtd = parseFloat(quantidadeComprada.replace(',', '.')) || 0;
-        const custo = parseFloat(custoUnitarioCompra.replace(',', '.')) || 0;
+        const qtd = parseDecimal(quantidadeComprada);
+        const custo = parseDecimal(custoUnitarioCompra);
 
         if (qtd <= 0 || isNaN(qtd)) {
             Alert.alert('Erro', 'Quantidade comprada deve ser maior que zero.');
@@ -141,14 +169,26 @@ const InsumoEntryScreen = ({ navigation }: any) => {
                     </View>
 
                     <Text style={styles.label}>Quantidade Comprada ({insumoSelecionado?.unidadePadrao || '?'})</Text>
-                    <TextInput style={styles.input} value={quantidadeComprada} onChangeText={setQuantidadeComprada} keyboardType="numeric" placeholder={`Ex: 50 ${insumoSelecionado?.unidadePadrao || ''}`} />
+                    <TextInput style={styles.input} value={quantidadeComprada} onChangeText={setQuantidadeComprada} keyboardType="decimal-pad" placeholder={`Ex: 50 ${insumoSelecionado?.unidadePadrao || ''}`} />
 
                     <Text style={styles.label}>Custo Unitário da Compra (R$)</Text>
-                    <TextInput style={styles.input} value={custoUnitarioCompra} onChangeText={setCustoUnitarioCompra} keyboardType="numeric" placeholder={`Custo por ${insumoSelecionado?.unidadePadrao || '?'}`} />
+                    <TextInput style={styles.input} value={custoUnitarioCompra} onChangeText={setCustoUnitarioCompra} keyboardType="decimal-pad" placeholder={`Custo por ${insumoSelecionado?.unidadePadrao || '?'}`} />
 
                     <View style={styles.totalBox}>
                         <Text style={styles.totalLabel}>Valor Total da Nota:</Text>
                         <Text style={styles.totalValue}>R$ {valorTotalCompra.toFixed(2)}</Text>
+                    </View>
+
+                    <View style={styles.previewBox}>
+                        <Text style={styles.previewTitle}>Prévia após lançamento</Text>
+                        <Text style={styles.previewRow}>
+                          Estoque: {preview.estoqueAtual.toFixed(2)} {insumoSelecionado?.unidadePadrao || ''}
+                          {'  '}→{'  '}
+                          {preview.estoqueApos.toFixed(2)} {insumoSelecionado?.unidadePadrao || ''}
+                        </Text>
+                        <Text style={styles.previewRow}>
+                          Custo médio: R$ {preview.custoAtual.toFixed(2)} → R$ {preview.custoMedioApos.toFixed(2)}
+                        </Text>
                     </View>
 
                     <Text style={styles.label}>Fornecedor (Opcional)</Text>
@@ -189,6 +229,9 @@ const styles = StyleSheet.create({
     totalBox: { backgroundColor: COLORS.successSoft, padding: 15, borderRadius: RADIUS.sm, marginBottom: SPACING.lg, alignItems: 'center', borderWidth: 1, borderColor: COLORS.cBBF7D0 },
     totalLabel: { fontSize: TYPOGRAPHY.body, color: COLORS.success, fontWeight: '700' },
     totalValue: { fontSize: TYPOGRAPHY.h2, fontWeight: '800', color: COLORS.success, marginTop: 5 },
+    previewBox: { backgroundColor: COLORS.infoSoft, borderWidth: 1, borderColor: COLORS.cBFDBFE, borderRadius: RADIUS.sm, padding: 12, marginBottom: SPACING.lg },
+    previewTitle: { color: COLORS.info, fontSize: 13, fontWeight: '800', marginBottom: 6 },
+    previewRow: { color: COLORS.textPrimary, fontSize: 12, fontWeight: '700', marginBottom: 2 },
     saveButton: { width: '100%', backgroundColor: COLORS.primary, padding: 18, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginTop: 10, minHeight: 55, ...SHADOWS.card },
     saveButtonText: { color: COLORS.textLight, fontWeight: '800', fontSize: TYPOGRAPHY.title },
     emptyText: { textAlign: 'center', color: COLORS.textSecondary, fontSize: TYPOGRAPHY.body }

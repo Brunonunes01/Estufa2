@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect } from 'react';
 import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../hooks/useAuth';
 import { Despesa } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING } from '../../constants/theme';
@@ -33,6 +34,12 @@ const DespesasListScreen = ({ navigation }: any) => {
   useEffect(() => {
     if (isError) showError('Não foi possível carregar as despesas.');
   }, [isError, showError]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
 
   const handleDelete = useCallback(
     (item: Despesa) => {

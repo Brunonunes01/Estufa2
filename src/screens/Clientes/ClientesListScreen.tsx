@@ -80,7 +80,7 @@ const ClientesListScreen = ({ navigation }: any) => {
               <View style={styles.mainInfo}>
                 <Text style={[styles.name, { color: theme.textPrimary }]}>{item.nome}</Text>
                 <Text style={[styles.secondary, { color: theme.textSecondary }]}>
-                  {item.telefone || 'Sem telefone cadastrado'}
+                  {[item.telefone, item.email, item.cidade].filter(Boolean).join(' • ') || 'Sem contato cadastrado'}
                 </Text>
               </View>
               <MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} />
@@ -90,6 +90,9 @@ const ClientesListScreen = ({ navigation }: any) => {
               <View style={styles.typeBadge}>
                 <Text style={styles.typeBadgeText}>{item.tipo?.toUpperCase()}</Text>
               </View>
+              {item.documento ? (
+                <Text style={[styles.metaHint, { color: theme.textSecondary }]}>{item.documento}</Text>
+              ) : null}
               <Text style={[styles.metaHint, { color: theme.textSecondary }]}>Toque para editar</Text>
             </View>
           </TouchableOpacity>

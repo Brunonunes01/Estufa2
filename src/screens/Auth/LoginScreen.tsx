@@ -8,12 +8,19 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../services/firebaseConfig';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import useGoogleAuth from '../../hooks/useGoogleAuth';
 
 const LoginScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false); 
+  const { signInWithGoogle, loadingGoogle, googleDisabled } = useGoogleAuth({
+    onError: (message) => {
+      setError(message);
+      Alert.alert('Erro', message);
+    },
+  });
 
   const handleLogin = async () => {
     setError('');
@@ -28,13 +35,14 @@ const LoginScreen = ({ navigation }: any) => {
     try {
       await signInWithEmailAndPassword(auth, email.trim(), password);
     } catch (err: any) {
-      setLoading(false);
       let msg = 'Erro ao tentar logar.';
       if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
         msg = 'Credenciais inválidas. Verifique e-mail e senha.';
       }
       setError(msg);
       Alert.alert('Erro', msg);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -90,6 +98,27 @@ const LoginScreen = ({ navigation }: any) => {
                 <TouchableOpacity style={styles.loginBtn} onPress={handleLogin} disabled={loading}>
                     {loading ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.loginBtnText}>ENTRAR</Text>}
                 </TouchableOpacity>
+
+                <View style={styles.dividerRow}>
+                    <View style={styles.dividerLine} />
+                    <Text style={styles.dividerText}>ou</Text>
+                    <View style={styles.dividerLine} />
+                </View>
+
+                <TouchableOpacity
+                  style={styles.googleBtn}
+                  onPress={signInWithGoogle}
+                  disabled={loading || loadingGoogle || googleDisabled}
+                >
+                  {loadingGoogle ? (
+                    <ActivityIndicator color={COLORS.textPrimary} />
+                  ) : (
+                    <>
+                      <MaterialCommunityIcons name="google" size={20} color={COLORS.textPrimary} />
+                      <Text style={styles.googleBtnText}>Entrar com Google</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
             </View>
 
             <TouchableOpacity style={styles.registerBtn} onPress={() => navigation.navigate('Register')}>
@@ -118,6 +147,22 @@ const styles = StyleSheet.create({
 
     loginBtn: { backgroundColor: COLORS.primary, height: 56, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginTop: SPACING.sm, ...SHADOWS.card },
     loginBtnText: { color: COLORS.textLight, fontWeight: '900', fontSize: TYPOGRAPHY.body, letterSpacing: 0.8 },
+    dividerRow: { marginTop: SPACING.lg, flexDirection: 'row', alignItems: 'center', gap: 10 },
+    dividerLine: { flex: 1, height: 1, backgroundColor: COLORS.border },
+    dividerText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+    googleBtn: {
+      marginTop: SPACING.md,
+      height: 56,
+      borderRadius: RADIUS.md,
+      borderWidth: 1.5,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 10,
+    },
+    googleBtnText: { color: COLORS.textPrimary, fontWeight: '800', fontSize: TYPOGRAPHY.body },
 
     registerBtn: { marginTop: SPACING.xl, alignItems: 'center' },
     registerText: { fontSize: 15, color: COLORS.textSecondary },

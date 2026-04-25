@@ -45,8 +45,7 @@ export default function ShareAccountScreen({ navigation }: any) {
         if (!user) return;
         setLoadingGen(true);
         try {
-            // Usa o UID do usuário como TenantID padrão se ele estiver na conta principal dele
-            const tenantParaCompartilhar = user.uid; 
+            const tenantParaCompartilhar = selectedTenantId || user.uid;
             const code = await generateShareCode(tenantParaCompartilhar, "Estufa de " + (user.name || "Produtor"), user.name || "Produtor");
             setGeneratedCode(code);
         } catch (error) {

@@ -1,5 +1,6 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Venda } from '../types/domain';
 import { COLORS } from '../constants/theme';
 
@@ -14,6 +15,7 @@ export interface SalesReportTotals {
 }
 
 export interface SalesReportItem {
+  codigo?: string;
   data: string;
   cliente: string;
   estufa: string;
@@ -28,6 +30,7 @@ interface SalesReportPdfData {
   nomeEstufa: string;
   tituloRelatorio: string;
   periodo: string;
+  nomeArquivo?: string;
   observacoes?: string | null;
   totais: SalesReportTotals;
   itens: SalesReportItem[];
@@ -41,8 +44,32 @@ interface ReceiptData {
   nomeEstufa: string;
 }
 
+const SHARE_LOCK_KEY = '__sge_pdf_share_lock__';
+const isShareLocked = () => Boolean((globalThis as any)[SHARE_LOCK_KEY]);
+const setShareLocked = (value: boolean) => {
+  (globalThis as any)[SHARE_LOCK_KEY] = value;
+};
+
+const sanitizeFilenameSegment = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40) || 'arquivo';
+
 const fmtMoeda = (valor: number) =>
   valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+const toDateSafe = (value: any): Date => {
+  if (!value) return new Date();
+  if (value instanceof Date) return value;
+  if (typeof value?.toDate === 'function') return value.toDate();
+  if (typeof value?.seconds === 'number') return new Date(value.seconds * 1000);
+  if (typeof value === 'number') return new Date(value);
+  return new Date(value);
+};
 
 const escapeHtml = (value?: string | null) => {
   if (!value) return '';
@@ -55,12 +82,15 @@ const escapeHtml = (value?: string | null) => {
 };
 
 export const shareSalesReportPdf = async (data: SalesReportPdfData) => {
+  if (isShareLocked()) return;
+  setShareLocked(true);
   const geradoEm = new Date().toLocaleString('pt-BR');
 
   const linhasDetalhes = data.itens
     .map(
       (item) => `
         <tr>
+          <td>${escapeHtml(item.codigo || '-')}</td>
           <td>${escapeHtml(item.data)}</td>
           <td>${escapeHtml(item.cliente)}</td>
           <td>${escapeHtml(item.estufa)}</td>
@@ -316,6 +346,7 @@ export const shareSalesReportPdf = async (data: SalesReportPdfData) => {
               <table>
                 <thead>
                   <tr>
+                    <th>Código</th>
                     <th>Data</th>
                     <th>Cliente</th>
                     <th>Estufa</th>
@@ -325,7 +356,7 @@ export const shareSalesReportPdf = async (data: SalesReportPdfData) => {
                   </tr>
                 </thead>
                 <tbody>
-                  ${linhasDetalhes || '<tr><td colspan="6">Sem registros no período selecionado.</td></tr>'}
+                  ${linhasDetalhes || '<tr><td colspan="7">Sem registros no período selecionado.</td></tr>'}
                 </tbody>
               </table>
             </section>
@@ -343,10 +374,29 @@ export const shareSalesReportPdf = async (data: SalesReportPdfData) => {
 
   try {
     const { uri } = await Print.printToFileAsync({ html });
-    await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+    const fallbackDate = new Date().toISOString().slice(0, 10);
+    const nomeBase =
+      data.nomeArquivo ||
+      `Relatorio_Vendas_${sanitizeFilenameSegment(data.nomeEstufa || data.nomeProdutor)}_${fallbackDate}.pdf`;
+    const nomeArquivo = nomeBase.toLowerCase().endsWith('.pdf') ? nomeBase : `${nomeBase}.pdf`;
+    const destinoUri = `${FileSystem.cacheDirectory}${nomeArquivo}`;
+
+    const existing = await FileSystem.getInfoAsync(destinoUri);
+    if (existing.exists) {
+      await FileSystem.deleteAsync(destinoUri, { idempotent: true });
+    }
+    await FileSystem.copyAsync({ from: uri, to: destinoUri });
+
+    await Sharing.shareAsync(destinoUri, {
+      UTI: '.pdf',
+      mimeType: 'application/pdf',
+      dialogTitle: nomeArquivo,
+    });
   } catch (error) {
     console.error('Erro ao gerar PDF do relatório:', error);
     throw new Error('Não foi possível gerar o PDF do relatório.');
+  } finally {
+    setShareLocked(false);
   }
 };
 
@@ -360,12 +410,18 @@ export const shareVendaReceipt = async (data: ReceiptData) => {
   const precoUnitario = Number(venda.precoUnitario || venda.itens?.[0]?.valorUnitario || 0);
   const valor = Number(venda.valorTotal || quantidade * precoUnitario);
   const status = venda.statusPagamento === 'pendente' ? 'PENDENTE' : 'PAGO';
+  const dataVenda = toDateSafe(venda.dataVenda || venda.dataColheita);
+  const dataVendaLabel = dataVenda.toLocaleDateString('pt-BR');
+  const dataToken = dataVenda.toISOString().slice(0, 10);
+  const codigoToken = sanitizeFilenameSegment(String(venda.id));
+  const clienteToken = sanitizeFilenameSegment(nomeCliente || 'cliente-avulso');
 
   await shareSalesReportPdf({
     nomeProdutor,
     nomeEstufa,
     tituloRelatorio: 'Relatório de Venda Individual',
-    periodo: (venda.dataVenda || venda.dataColheita).toDate().toLocaleDateString('pt-BR'),
+    periodo: dataVendaLabel,
+    nomeArquivo: `Comprovante_${clienteToken}_${dataToken}_${codigoToken}.pdf`,
     observacoes: venda.observacoes || `Produto: ${nomeProduto}`,
     totais: {
       totalReceber: status === 'PENDENTE' ? valor : 0,
@@ -378,7 +434,8 @@ export const shareVendaReceipt = async (data: ReceiptData) => {
     },
     itens: [
       {
-        data: venda.dataColheita.toDate().toLocaleDateString('pt-BR'),
+        codigo: venda.id,
+        data: dataVendaLabel,
         cliente: nomeCliente,
         estufa: nomeEstufa,
         metodoPagamento: (venda.metodoPagamento || venda.formaPagamento || 'N/A').toUpperCase(),

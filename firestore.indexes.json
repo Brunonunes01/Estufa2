@@ -1,0 +1,74 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "tarefas_agricolas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "dataPrevista", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tarefas_agricolas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "dataPrevista", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tarefas_agricolas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tarefas_agricolas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tarefas_agricolas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "plantioId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "vendas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "statusPagamento", "order": "ASCENDING" },
+        { "fieldPath": "valorTotal", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "despesas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "statusPagamento", "order": "ASCENDING" },
+        { "fieldPath": "valor", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "rastreabilidade_eventos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "plantioId", "order": "ASCENDING" },
+        { "fieldPath": "eventAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

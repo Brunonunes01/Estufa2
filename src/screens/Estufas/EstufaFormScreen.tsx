@@ -1,15 +1,26 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { 
   View, Text, TextInput, ScrollView, StyleSheet, 
-  TouchableOpacity, Alert, ActivityIndicator, Modal 
+  TouchableOpacity, Alert, ActivityIndicator, Modal, Platform
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import MapView, { Marker, Region } from 'react-native-maps';
 import { useAuth } from '../../hooks/useAuth';
 import { createEstufa, updateEstufa, getEstufaById, deleteEstufa } from '../../services/estufaService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { Timestamp } from 'firebase/firestore'; 
 import { verifyCurrentUserPassword } from '../../services/securityService';
+
+type MapCoordinate = { latitude: number; longitude: number };
+
+const DEFAULT_MAP_REGION: Region = {
+  latitude: -14.235,
+  longitude: -51.9253,
+  latitudeDelta: 18,
+  longitudeDelta: 18,
+};
 
 const EstufaFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId, canDeleteEstufa } = useAuth();
@@ -30,12 +41,18 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
   const [altura, setAltura] = useState('');
   const [tipoCobertura, setTipoCobertura] = useState('');
   const [observacoes, setObservacoes] = useState('');
+  const [dataConstrucao, setDataConstrucao] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   // --- NOVO ESTADO: STATUS ---
   const [status, setStatus] = useState<"ativa" | "manutencao" | "desativada">('ativa');
   
   const [loading, setLoading] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
+  const [mapVisible, setMapVisible] = useState(false);
+  const [mapSaving, setMapSaving] = useState(false);
+  const [mapRegion, setMapRegion] = useState<Region>(DEFAULT_MAP_REGION);
+  const [selectedPoint, setSelectedPoint] = useState<MapCoordinate | null>(null);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -73,6 +90,9 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
         setAltura(data.alturaM?.toString() || '');
         setTipoCobertura(data.tipoCobertura || '');
         setObservacoes(data.observacoes || '');
+        if (data.dataInicioOperacao && typeof (data.dataInicioOperacao as any).toDate === 'function') {
+          setDataConstrucao((data.dataInicioOperacao as any).toDate());
+        }
         // Carrega o status (se não existir, cai no padrão 'ativa')
         setStatus(data.status || 'ativa');
       }
@@ -93,8 +113,39 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
       }
 
       let location = await Location.getCurrentPositionAsync({});
-      setLatitude(location.coords.latitude.toString());
-      setLongitude(location.coords.longitude.toString());
+      const currentLatitude = location.coords.latitude.toString();
+      const currentLongitude = location.coords.longitude.toString();
+      setLatitude(currentLatitude);
+      setLongitude(currentLongitude);
+
+      const geocode = await Location.reverseGeocodeAsync({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      });
+
+      if (geocode.length > 0) {
+        const first = geocode[0];
+        const cityBase =
+          first.city ||
+          first.subregion ||
+          first.district ||
+          first.name ||
+          first.street ||
+          '';
+        const state = first.region || '';
+        const cityLabel =
+          cityBase && state && cityBase.toLowerCase() !== state.toLowerCase()
+            ? `${cityBase} - ${state}`
+            : cityBase || state;
+
+        if (cityLabel) {
+          setCidade(cityLabel);
+        } else {
+          Alert.alert('Atenção', 'Localização capturada, mas não foi possível identificar automaticamente a cidade.');
+        }
+      } else {
+        Alert.alert('Atenção', 'Localização capturada, mas o serviço de geocodificação não retornou a cidade.');
+      }
     } catch (error) {
       console.error(error);
       Alert.alert('Erro', 'Não foi possível obter a localização atual.');
@@ -110,6 +161,79 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
     }
     setAdminPassword('');
     setDeleteModalVisible(true);
+  };
+
+  const parseCoordinate = (value: string) => {
+    const n = parseFloat((value || '').replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const handleOpenMapPicker = async () => {
+    const lat = parseCoordinate(latitude);
+    const lng = parseCoordinate(longitude);
+    let centerRegion: Region = DEFAULT_MAP_REGION;
+    let marker: MapCoordinate | null = null;
+
+    if (lat !== null && lng !== null) {
+      marker = { latitude: lat, longitude: lng };
+      centerRegion = { ...marker, latitudeDelta: 0.01, longitudeDelta: 0.01 };
+    } else {
+      try {
+        const { status: permissionStatus } = await Location.requestForegroundPermissionsAsync();
+        if (permissionStatus === 'granted') {
+          const current = await Location.getCurrentPositionAsync({});
+          marker = {
+            latitude: current.coords.latitude,
+            longitude: current.coords.longitude,
+          };
+          centerRegion = { ...marker, latitudeDelta: 0.01, longitudeDelta: 0.01 };
+        }
+      } catch {
+        // Se falhar GPS/permissão, mantém região padrão.
+      }
+    }
+
+    setSelectedPoint(marker);
+    setMapRegion(centerRegion);
+    setMapVisible(true);
+  };
+
+  const handleConfirmMapPoint = async () => {
+    if (!selectedPoint) {
+      Alert.alert('Atenção', 'Toque no mapa para marcar um ponto.');
+      return;
+    }
+
+    setMapSaving(true);
+    const lat = selectedPoint.latitude;
+    const lng = selectedPoint.longitude;
+    setLatitude(lat.toFixed(6));
+    setLongitude(lng.toFixed(6));
+
+    try {
+      const geocode = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+      if (geocode.length > 0) {
+        const first = geocode[0];
+        const cityBase =
+          first.city ||
+          first.subregion ||
+          first.district ||
+          first.name ||
+          first.street ||
+          '';
+        const state = first.region || '';
+        const cityLabel =
+          cityBase && state && cityBase.toLowerCase() !== state.toLowerCase()
+            ? `${cityBase} - ${state}`
+            : cityBase || state;
+        if (cityLabel) setCidade(cityLabel);
+      }
+    } catch {
+      // Lat/lng já foram preenchidos; geocodificação é best-effort.
+    } finally {
+      setMapSaving(false);
+      setMapVisible(false);
+    }
   };
 
   const handleConfirmDelete = async () => {
@@ -161,8 +285,8 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
       areaM2: areaCalc,
       tipoCobertura,
       observacoes,
+      dataInicioOperacao: Timestamp.fromDate(dataConstrucao),
       status, // <-- SALVANDO O STATUS AQUI
-      ...(!isEditMode && { dataInicioOperacao: Timestamp.now() }) 
     };
 
     try {
@@ -218,6 +342,35 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
         </View>
 
         <Text style={styles.sectionTitle}>Dimensões e Estrutura</Text>
+
+        <Text style={styles.label}>Data de Construção</Text>
+        <TouchableOpacity style={styles.dateInputButton} onPress={() => setShowDatePicker(true)}>
+          <Text style={styles.dateInputText}>{dataConstrucao.toLocaleDateString('pt-BR')}</Text>
+          <MaterialCommunityIcons name="calendar-month-outline" size={20} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+        {showDatePicker && (
+          <DateTimePicker
+            value={dataConstrucao}
+            mode="date"
+            display="default"
+            onChange={(event, selectedDate) => {
+              if (Platform.OS === 'android') {
+                setShowDatePicker(false);
+                if (event.type === 'set' && selectedDate) {
+                  setDataConstrucao(selectedDate);
+                }
+                return;
+              }
+              if (selectedDate) setDataConstrucao(selectedDate);
+            }}
+            maximumDate={new Date()}
+          />
+        )}
+        {showDatePicker && Platform.OS === 'ios' && (
+          <TouchableOpacity style={styles.dateDoneButton} onPress={() => setShowDatePicker(false)}>
+            <Text style={styles.dateDoneButtonText}>Confirmar data</Text>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.row}>
           <View style={{flex: 1, marginRight: 5}}>
@@ -324,6 +477,11 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
           )}
         </TouchableOpacity>
 
+        <TouchableOpacity style={styles.mapBtn} onPress={handleOpenMapPicker}>
+          <MaterialCommunityIcons name="map-marker-plus-outline" size={20} color={COLORS.info} style={{ marginRight: 8 }} />
+          <Text style={styles.mapBtnText}>Selecionar ponto no mapa</Text>
+        </TouchableOpacity>
+
         <Text style={styles.label}>Responsável Técnico</Text>
         <TextInput 
           style={styles.input} 
@@ -354,6 +512,45 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
         </TouchableOpacity>
         
       </ScrollView>
+
+      <Modal
+        visible={mapVisible}
+        animationType="slide"
+        onRequestClose={() => setMapVisible(false)}
+      >
+        <View style={styles.mapModalContainer}>
+          <View style={styles.mapHeader}>
+            <Text style={styles.mapTitle}>Marque a localização da estufa</Text>
+            <TouchableOpacity onPress={() => setMapVisible(false)} disabled={mapSaving}>
+              <MaterialCommunityIcons name="close" size={24} color={COLORS.textDark} />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.mapHint}>Toque no mapa para posicionar o marcador.</Text>
+
+          <MapView
+            style={styles.map}
+            initialRegion={mapRegion}
+            mapType="satellite"
+            onPress={(event) => setSelectedPoint(event.nativeEvent.coordinate)}
+            onRegionChangeComplete={setMapRegion}
+          >
+            {selectedPoint ? <Marker coordinate={selectedPoint} /> : null}
+          </MapView>
+
+          <TouchableOpacity
+            style={[styles.mapConfirmBtn, (!selectedPoint || mapSaving) && styles.mapConfirmBtnDisabled]}
+            onPress={handleConfirmMapPoint}
+            disabled={!selectedPoint || mapSaving}
+          >
+            {mapSaving ? (
+              <ActivityIndicator color={COLORS.textLight} />
+            ) : (
+              <Text style={styles.mapConfirmBtnText}>Confirmar localização</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </Modal>
 
       <Modal
         visible={deleteModalVisible}
@@ -396,6 +593,10 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.secondary, marginTop: 10, marginBottom: 15 },
   label: { fontWeight: 'bold', marginBottom: 5, color: COLORS.textSecondary, fontSize: 13 },
   input: { backgroundColor: COLORS.surfaceMuted, padding: 15, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, color: COLORS.textDark },
+  dateInputButton: { backgroundColor: COLORS.surfaceMuted, padding: 15, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  dateInputText: { color: COLORS.textDark, fontSize: TYPOGRAPHY.body },
+  dateDoneButton: { alignSelf: 'flex-end', marginTop: -8, marginBottom: 15, paddingHorizontal: 12, paddingVertical: 8, borderRadius: RADIUS.sm, backgroundColor: COLORS.primary },
+  dateDoneButtonText: { color: COLORS.textLight, fontWeight: '700', fontSize: 12 },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   
   // Estilos do seletor de status
@@ -409,9 +610,19 @@ const styles = StyleSheet.create({
 
   locationBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.primary, marginBottom: 15, backgroundColor: COLORS.primaryLight },
   locationBtnText: { color: COLORS.primary, fontWeight: 'bold', fontSize: 14 },
+  mapBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.info, marginBottom: 15, backgroundColor: COLORS.infoSoft },
+  mapBtnText: { color: COLORS.info, fontWeight: 'bold', fontSize: 14 },
   btn: { backgroundColor: COLORS.primary, padding: 18, borderRadius: RADIUS.md, alignItems: 'center', marginTop: 10, marginBottom: 30, ...SHADOWS.card },
   btnText: { color: COLORS.textLight, fontWeight: '800', fontSize: TYPOGRAPHY.body }
   ,
+  mapModalContainer: { flex: 1, backgroundColor: COLORS.background, paddingTop: 48, paddingHorizontal: SPACING.md, paddingBottom: SPACING.lg },
+  mapHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  mapTitle: { color: COLORS.textDark, fontWeight: '800', fontSize: TYPOGRAPHY.h3 },
+  mapHint: { color: COLORS.textSecondary, marginBottom: 10, fontSize: 12 },
+  map: { flex: 1, borderRadius: RADIUS.md, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
+  mapConfirmBtn: { marginTop: 12, height: 48, borderRadius: RADIUS.md, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
+  mapConfirmBtnDisabled: { opacity: 0.5 },
+  mapConfirmBtnText: { color: COLORS.textLight, fontWeight: '800', fontSize: TYPOGRAPHY.body },
   modalOverlay: { flex: 1, backgroundColor: COLORS.rgba00006, justifyContent: 'center', padding: 24 },
   modalCard: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.xl, ...SHADOWS.card },
   modalTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 8 },

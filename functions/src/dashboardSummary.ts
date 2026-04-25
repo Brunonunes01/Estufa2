@@ -16,6 +16,11 @@ const recomputeDashboardSummary = async (tenantId: string) => {
     return data.statusPagamento === 'pendente' ? acc + safeNumber(data.valorTotal) : acc;
   }, 0);
 
+  const totalRecebido = vendas.docs.reduce((acc, doc) => {
+    const data = doc.data();
+    return data.statusPagamento === 'pendente' ? acc : acc + safeNumber(data.valorTotal);
+  }, 0);
+
   const totalPagar = despesas.docs.reduce((acc, doc) => {
     const data = doc.data();
     const status = data.status || data.statusPagamento;
@@ -26,6 +31,7 @@ const recomputeDashboardSummary = async (tenantId: string) => {
     {
       tenantId,
       totalReceber,
+      totalRecebido,
       totalPagar,
       updatedAt: new Date(),
     },

@@ -30,7 +30,9 @@ export const createFornecedor = async (data: FornecedorFormData, userId: string)
   const tenantId = assertTenantId(userId);
   const novoFornecedor = {
     ...data,
+    tenantId,
     userId: tenantId,
+    createdBy: tenantId,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   };
@@ -47,17 +49,22 @@ export const createFornecedor = async (data: FornecedorFormData, userId: string)
 // 2. LISTAR FORNECEDORES
 export const listFornecedores = async (userId: string): Promise<Fornecedor[]> => {
   const tenantId = assertTenantId(userId);
-  const fornecedores: Fornecedor[] = [];
   try {
-    const q = query(
-      collection(db, 'fornecedores'), 
-      where("userId", "==", tenantId)
-    );
-    
-    const querySnapshot = await getDocs(q);
-    querySnapshot.forEach((doc) => {
-      fornecedores.push({ ...doc.data() , id: doc.id } as Fornecedor);
+    const [tenantSnap, legacySnap] = await Promise.all([
+      getDocs(query(collection(db, 'fornecedores'), where("tenantId", "==", tenantId))),
+      getDocs(query(collection(db, 'fornecedores'), where("userId", "==", tenantId))),
+    ]);
+
+    const fornecedoresMap = new Map<string, Fornecedor>();
+    [tenantSnap, legacySnap].forEach((snap) => {
+      snap.forEach((document) => {
+        fornecedoresMap.set(document.id, { ...document.data(), id: document.id } as Fornecedor);
+      });
     });
+
+    const fornecedores = Array.from(fornecedoresMap.values()).sort((a, b) =>
+      String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR')
+    );
     
     return fornecedores;
 
@@ -75,7 +82,7 @@ export const getFornecedorById = async (fornecedorId: string, userId: string): P
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data() as Fornecedor;
-      if (data.userId !== tenantId) {
+      if (data.tenantId !== tenantId && data.userId !== tenantId) {
         throw new Error("Acesso negado: este fornecedor não pertence ao seu tenant.");
       }
       return { ...data , id: docSnap.id };

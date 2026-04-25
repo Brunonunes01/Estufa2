@@ -17,6 +17,9 @@ export const useEstufasListData = (tenantId?: string) =>
         listActivePlantiosByUser(tenantId as string),
       ]);
 
-      return { estufas, activePlantios };
+      const estufaIds = new Set(estufas.map((item) => item.id));
+      const activePlantiosValidos = activePlantios.filter((item) => !!item.estufaId && estufaIds.has(item.estufaId));
+
+      return { estufas, activePlantios: activePlantiosValidos };
     },
   });

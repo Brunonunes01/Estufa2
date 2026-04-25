@@ -19,12 +19,14 @@ import { useIsFocused } from '@react-navigation/native';
 
 import { useAuth } from '../../hooks/useAuth';
 import { useThemeMode } from '../../hooks/useThemeMode';
-import { listAllColheitas } from '../../services/colheitaService';
-import { getVendaById } from '../../services/vendaService';
+import { getVendaById, listAllVendas } from '../../services/vendaService';
+import { getColheitaById } from '../../services/colheitaService';
+import { getPlantioById } from '../../services/plantioService';
 import { listClientes } from '../../services/clienteService';
 import { listEstufas } from '../../services/estufaService';
 import { getTotalDespesasPendentes } from '../../services/despesaService';
-import { shareSalesReportPdf, shareVendaReceipt } from '../../services/receiptService';
+import { shareSalesReportPdf } from '../../services/receiptService';
+import { compartilharPDF } from '../../services/pdfService';
 import { Cliente } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
@@ -55,6 +57,13 @@ const VendasListScreen = ({ navigation }: any) => {
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
 
+  const getVendaQuantidade = (venda: any) => Number(venda.quantidade || venda.itens?.[0]?.quantidade || 0);
+  const getVendaPrecoUnitario = (venda: any) =>
+    Number(venda.precoUnitario || venda.itens?.[0]?.valorUnitario || 0);
+  const getVendaTotal = (venda: any) => Number(venda.valorTotal || getVendaQuantidade(venda) * getVendaPrecoUnitario(venda));
+  const getVendaData = (venda: any) => venda.dataVenda || venda.dataColheita || null;
+  const getVendaUnidade = (venda: any) => venda.unidade || venda.itens?.[0]?.unidade || 'un';
+
   const loadData = async () => {
     const targetId = selectedTenantId || user?.uid;
     if (!targetId) return;
@@ -63,7 +72,7 @@ const VendasListScreen = ({ navigation }: any) => {
 
     try {
       const [vendasData, clientesData, estufasData, despesasPendentes] = await Promise.all([
-        listAllColheitas(targetId),
+        listAllVendas(targetId),
         listClientes(targetId),
         listEstufas(targetId),
         getTotalDespesasPendentes(targetId),
@@ -120,10 +129,9 @@ const VendasListScreen = ({ navigation }: any) => {
       const matchStatus = filterStatus === 'todos' || statusVenda === filterStatus;
 
       let matchDate = true;
-      if (venda.dataColheita) {
-        const dataVenda = venda.dataColheita.toDate
-          ? venda.dataColheita.toDate()
-          : new Date(venda.dataColheita.seconds * 1000);
+      const vendaData = getVendaData(venda);
+      if (vendaData) {
+        const dataVenda = vendaData.toDate ? vendaData.toDate() : new Date(vendaData.seconds * 1000);
         const dVenda = new Date(dataVenda.setHours(0, 0, 0, 0));
 
         if (startDate) {
@@ -153,7 +161,7 @@ const VendasListScreen = ({ navigation }: any) => {
     };
 
     filteredVendas.forEach((v) => {
-      const val = v.quantidade * (v.precoUnitario || 0);
+      const val = getVendaTotal(v);
       const pendente = isPendenteVenda(v);
 
       data.totalValor += val;
@@ -200,6 +208,10 @@ const VendasListScreen = ({ navigation }: any) => {
     setShowFilterModal(false);
   };
 
+  const goToContasReceber = () => {
+    navigation.navigate('ContasReceber');
+  };
+
   const formatDate = (timestamp: any) => {
     if (!timestamp) return '-';
     const d = timestamp.toDate ? timestamp.toDate() : new Date(timestamp.seconds * 1000);
@@ -228,7 +240,7 @@ const VendasListScreen = ({ navigation }: any) => {
 
     msg += '\n*Principais vendas:*\n';
     filteredVendas.slice(0, 10).forEach((venda) => {
-      const total = venda.quantidade * (venda.precoUnitario || 0);
+      const total = getVendaTotal(venda);
       msg += `• ${getClienteNome(venda.clienteId)} - ${formatCurrency(total)}\n`;
     });
 
@@ -257,13 +269,28 @@ const VendasListScreen = ({ navigation }: any) => {
     const nomeProdutor = currentTenant?.ownerName || user?.name || 'Produtor';
 
     try {
-      const detalhes = filteredVendas.map((item) => {
-        const total = item.quantidade * (item.precoUnitario || 0);
+      const vendasParaRelatorio = filteredVendas;
+      const totaisRelatorio = vendasParaRelatorio.reduce(
+        (acc, item) => {
+          const total = getVendaTotal(item);
+          const pendente = isPendenteVenda(item);
+          acc.totalVendido += total;
+          acc.totalRecebido += pendente ? 0 : total;
+          acc.totalReceber += pendente ? total : 0;
+          acc.totalRegistros += 1;
+          return acc;
+        },
+        { totalVendido: 0, totalRecebido: 0, totalReceber: 0, totalRegistros: 0 }
+      );
+
+      const detalhes = vendasParaRelatorio.map((item) => {
+        const total = getVendaTotal(item);
         return {
-          data: formatDate(item.dataColheita),
+          codigo: item.id,
+          data: formatDate(getVendaData(item)),
           cliente: getClienteNome(item.clienteId),
           estufa: estufasMap[item.estufaId] || 'Estufa não identificada',
-          metodoPagamento: item.metodoPagamento ? item.metodoPagamento.toUpperCase() : 'N/A',
+          metodoPagamento: (item.metodoPagamento || item.formaPagamento || 'N/A').toUpperCase(),
           status: isPendenteVenda(item) ? ('PENDENTE' as const) : ('PAGO' as const),
           valor: total,
           observacoes: item.observacoes,
@@ -276,18 +303,18 @@ const VendasListScreen = ({ navigation }: any) => {
           Object.keys(estufasMap).length === 1 ? Object.values(estufasMap)[0] : 'Relatório Consolidado',
         tituloRelatorio: 'Relatório Gerencial de Vendas',
         periodo: periodLabel,
-        observacoes:
-          activeFiltersCount > 0
-            ? `Relatório gerado com ${activeFiltersCount} filtro(s) ativo(s).`
-            : 'Relatório sem filtros adicionais.',
+        observacoes: `Relatório consolidado com ${vendasParaRelatorio.length} vendas do período filtrado.`,
         totais: {
-          totalReceber: stats.totalReceber,
+          totalReceber: totaisRelatorio.totalReceber,
           totalPagar,
-          saldo,
-          totalVendido: stats.totalValor,
-          totalRecebido: stats.totalRecebido,
-          ticketMedio: stats.ticketMedio,
-          totalRegistros: stats.totalItens,
+          saldo: totaisRelatorio.totalReceber - totalPagar,
+          totalVendido: totaisRelatorio.totalVendido,
+          totalRecebido: totaisRelatorio.totalRecebido,
+          ticketMedio:
+            totaisRelatorio.totalRegistros > 0
+              ? totaisRelatorio.totalVendido / totaisRelatorio.totalRegistros
+              : 0,
+          totalRegistros: totaisRelatorio.totalRegistros,
         },
         itens: detalhes,
       });
@@ -296,8 +323,8 @@ const VendasListScreen = ({ navigation }: any) => {
     }
   };
 
-  const handlePrintReceiptById = async (vendaId?: string) => {
-    if (!vendaId) {
+  const handlePrintReceiptById = async (vendaId?: string, vendaFallback?: any) => {
+    if (!vendaId && !vendaFallback?.id) {
       Alert.alert('Erro', 'Venda inválida para geração do PDF individual.');
       return;
     }
@@ -309,35 +336,48 @@ const VendasListScreen = ({ navigation }: any) => {
     }
 
     try {
-      const venda = await getVendaById(vendaId, targetId);
-      if (!venda) {
-        Alert.alert('Erro', 'Registro da venda não encontrado.');
-        return;
-      }
+      const venda =
+        (vendaId ? await getVendaById(vendaId, targetId).catch(() => null) : null) || vendaFallback;
+      if (!venda) throw new Error('Registro da venda não encontrado.');
 
-      if (venda.userId !== targetId) {
-        Alert.alert('Erro', 'A venda selecionada não pertence ao contexto atual.');
-        return;
-      }
+      const currentTenant = availableTenants.find((t) => t.uid === targetId);
+      const nomeFazenda = currentTenant?.ownerName || user?.name || 'Produtor';
+      const cliente = clientesList.find((item) => item.id === venda.clienteId) || null;
+      const plantio = venda.plantioId ? await getPlantioById(venda.plantioId, targetId).catch(() => null) : null;
+      const colheita = venda.colheitaId ? await getColheitaById(venda.colheitaId, targetId).catch(() => null) : null;
+      const cultura = plantio?.cultura || venda.cultura || venda.itens?.[0]?.descricao || 'Cultura não informada';
+      const vendaParaPdf = colheita
+        ? {
+            ...colheita,
+            ...venda,
+            unidade: venda.unidade || colheita.unidade,
+            unidadeMedida: venda.unidadeMedida || colheita.unidadeMedida,
+            loteColheita: venda.loteColheita || colheita.loteColheita,
+            pesoBruto: venda.pesoBruto || colheita.pesoBruto,
+            pesoLiquido: venda.pesoLiquido || colheita.pesoLiquido,
+          }
+        : venda;
 
-      // Busca o nome do produtor (dono do tenant) para o recibo individual
-      const currentTenant = availableTenants.find(t => t.uid === targetId);
-      const nomeProdutor = currentTenant?.ownerName || user?.name || 'Produtor';
-
-      await shareVendaReceipt({
-        venda,
-        nomeProdutor: nomeProdutor,
-        nomeCliente: getClienteNome(venda.clienteId),
-        nomeProduto: 'Produtos da Colheita',
+      await compartilharPDF({
+        colheita: vendaParaPdf as any,
+        cliente,
+        plantio,
+        nomeFazenda,
         nomeEstufa: estufasMap[venda.estufaId] || 'Estufa Geral',
+        cultura,
       });
     } catch (error: any) {
-      Alert.alert('Erro', error.message);
+      Alert.alert('Erro', error?.message || 'Não foi possível gerar o PDF desta venda.');
     }
   };
 
   const renderItem = ({ item }: { item: any }) => {
-    const total = item.quantidade * (item.precoUnitario || 0);
+    const total = getVendaTotal(item);
+    const quantidade = getVendaQuantidade(item);
+    const precoUnitario = getVendaPrecoUnitario(item);
+    const unidade = getVendaUnidade(item);
+    const dataVenda = getVendaData(item);
+    const editTargetId = item.colheitaId || item.id;
     const clienteNome = getClienteNome(item.clienteId);
     const isPendente = isPendenteVenda(item);
 
@@ -345,7 +385,7 @@ const VendasListScreen = ({ navigation }: any) => {
       <View style={[styles.card, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
         <TouchableOpacity
           style={styles.cardTouch}
-          onPress={() => navigation.navigate('ColheitaForm', { colheitaId: item.id, isEdit: true })}
+          onPress={() => navigation.navigate('ColheitaForm', { vendaId: editTargetId, isEdit: true })}
           activeOpacity={0.88}
         >
           <View style={styles.cardHeader}>
@@ -353,7 +393,7 @@ const VendasListScreen = ({ navigation }: any) => {
               <Text style={[styles.clienteName, { color: theme.textPrimary }]} numberOfLines={1}>
                 {clienteNome}
               </Text>
-              <Text style={[styles.dateText, { color: theme.textSecondary }]}>Venda em {formatDate(item.dataColheita)}</Text>
+              <Text style={[styles.dateText, { color: theme.textSecondary }]}>Venda em {formatDate(dataVenda)}</Text>
             </View>
             <View
               style={[
@@ -373,14 +413,20 @@ const VendasListScreen = ({ navigation }: any) => {
           <View style={[styles.divider, { backgroundColor: theme.divider }]} />
 
           <View style={styles.row}>
-            <Text style={[styles.details, { color: theme.textSecondary }]}> 
-              {item.quantidade} {item.unidade} x {formatCurrency(item.precoUnitario || 0)}
+            <Text style={[styles.details, { color: theme.textSecondary }]}>
+              {quantidade} {unidade} x {formatCurrency(precoUnitario)}
             </Text>
             <Text style={[styles.totalValue, { color: theme.textPrimary }]}>{formatCurrency(total)}</Text>
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.pdfIconBtn, { borderLeftColor: theme.divider }]} onPress={(event) => { event.stopPropagation?.(); void handlePrintReceiptById(item.id); }}>
+        <TouchableOpacity
+          style={[styles.pdfIconBtn, { borderLeftColor: theme.divider }]}
+          onPress={(event) => {
+            event.stopPropagation?.();
+            void handlePrintReceiptById(item.id, item);
+          }}
+        >
           <MaterialCommunityIcons name="file-pdf-box" size={23} color={theme.info} />
         </TouchableOpacity>
       </View>
@@ -388,7 +434,7 @@ const VendasListScreen = ({ navigation }: any) => {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}> 
+    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}>
       <ScreenHeaderCard
         title="Relatórios de Vendas"
         subtitle="Painel gerencial com status de recebimento, saldo e exportação profissional em PDF."
@@ -407,13 +453,36 @@ const VendasListScreen = ({ navigation }: any) => {
       </ScreenHeaderCard>
 
       <View style={styles.metricsGrid}>
-        <MetricCard label="A receber" value={formatCurrency(stats.totalReceber)} icon="cash-clock" tone="warning" />
-        <MetricCard label="A pagar" value={formatCurrency(totalPagar)} icon="cash-minus" tone="danger" />
+        <MetricCard
+          label="Recebido"
+          value={formatCurrency(stats.totalRecebido)}
+          icon="cash-check"
+          tone="success"
+          style={styles.metricCard}
+        />
+        <MetricCard
+          label="A receber"
+          value={formatCurrency(stats.totalReceber)}
+          icon="cash-clock"
+          tone="warning"
+          onPress={goToContasReceber}
+          style={styles.metricCard}
+        />
+        <MetricCard
+          label="A pagar"
+          value={formatCurrency(totalPagar)}
+          icon="cash-minus"
+          tone="danger"
+          onPress={goToContasReceber}
+          style={styles.metricCard}
+        />
         <MetricCard
           label="Saldo"
           value={formatCurrency(saldo)}
           icon={saldo >= 0 ? 'trending-up' : 'trending-down'}
           tone={saldo >= 0 ? 'success' : 'danger'}
+          onPress={goToContasReceber}
+          style={styles.metricCard}
         />
       </View>
 
@@ -467,12 +536,12 @@ const VendasListScreen = ({ navigation }: any) => {
       )}
 
       <Modal visible={showFilterModal} animationType="slide" transparent onRequestClose={() => setShowFilterModal(false)}>
-        <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}> 
-          <View style={[styles.modalContent, { backgroundColor: theme.surfaceBackground }]}> 
+        <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
+          <View style={[styles.modalContent, { backgroundColor: theme.surfaceBackground }]}>
             <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Filtrar Relatório</Text>
             <ScrollView>
               <Text style={[styles.label, { color: theme.textSecondary }]}>Cliente</Text>
-              <View style={[styles.pickerWrapper, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}> 
+              <View style={[styles.pickerWrapper, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
                 <Picker selectedValue={filterCliente} onValueChange={setFilterCliente} style={{ color: theme.textPrimary }}>
                   <Picker.Item label="Todos os clientes" value="todos" />
                   <Picker.Item label="Vendas avulsas" value="avulso" />
@@ -492,7 +561,7 @@ const VendasListScreen = ({ navigation }: any) => {
               />
 
               <Text style={[styles.label, { color: theme.textSecondary }]}>Status</Text>
-              <View style={[styles.pickerWrapper, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}> 
+              <View style={[styles.pickerWrapper, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
                 <Picker selectedValue={filterStatus} onValueChange={setFilterStatus} style={{ color: theme.textPrimary }}>
                   <Picker.Item label="Todos" value="todos" />
                   <Picker.Item label="Pagos" value="pago" />
@@ -560,8 +629,8 @@ const VendasListScreen = ({ navigation }: any) => {
       </Modal>
 
       <Modal visible={showReportModal} animationType="fade" transparent onRequestClose={() => setShowReportModal(false)}>
-        <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}> 
-          <View style={[styles.reportCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}> 
+        <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
+          <View style={[styles.reportCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
             <View style={styles.reportHeader}>
               <View style={styles.reportHeaderTextWrap}>
                 <Text style={[styles.reportTitle, { color: theme.textPrimary }]}>Resumo Gerencial</Text>
@@ -572,18 +641,18 @@ const VendasListScreen = ({ navigation }: any) => {
               </TouchableOpacity>
             </View>
 
-            <View style={[styles.bigStat, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}> 
+            <View style={[styles.bigStat, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
               <Text style={[styles.bigStatLabel, { color: theme.textSecondary }]}>Total Vendido</Text>
               <Text style={[styles.bigStatValue, { color: theme.textPrimary }]}>{formatCurrency(stats.totalValor)}</Text>
             </View>
 
-            <View style={[styles.sectionBox, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}> 
+            <View style={[styles.sectionBox, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
               <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Métodos de Pagamento</Text>
               {Object.keys(stats.porMetodo).length === 0 ? (
                 <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Sem dados no período.</Text>
               ) : (
                 Object.keys(stats.porMetodo).map((metodo) => (
-                  <View key={metodo} style={[styles.statRow, { borderBottomColor: theme.divider }]}> 
+                  <View key={metodo} style={[styles.statRow, { borderBottomColor: theme.divider }]}>
                     <Text style={[styles.statLabel, { color: theme.textSecondary }]}>{metodo}</Text>
                     <Text style={[styles.statValue, { color: theme.textPrimary }]}>{formatCurrency(stats.porMetodo[metodo])}</Text>
                   </View>
@@ -625,10 +694,12 @@ const styles = StyleSheet.create({
 
   metricsGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     paddingHorizontal: SPACING.lg,
     marginTop: SPACING.md,
   },
+  metricCard: { minWidth: '47%' },
 
   actionsRow: {
     flexDirection: 'row',

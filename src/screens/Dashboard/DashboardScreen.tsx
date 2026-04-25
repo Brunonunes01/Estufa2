@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo } from 'react';
 import { Alert, FlatList, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { CommonActions, useIsFocused } from '@react-navigation/native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING } from '../../constants/theme';
@@ -14,10 +16,15 @@ import MoneyGrid from '../../components/dashboard/MoneyGrid';
 import AlertsList from '../../components/dashboard/AlertsList';
 import TodayTasks from '../../components/dashboard/TodayTasks';
 import QuickActions from '../../components/dashboard/QuickActions';
+import { updateTarefaStatus } from '../../services/tarefaAgricolaService';
+import { RootStackParamList } from '../../navigation/types';
 
-const DashboardScreen = ({ navigation }: any) => {
+type DashboardScreenProps = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
+
+const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
   const theme = useThemeMode();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
   const { showError } = useFeedback();
   const { isAdmin } = useAuth();
 
@@ -29,6 +36,7 @@ const DashboardScreen = ({ navigation }: any) => {
     estufas,
     todayTasks,
     totalReceber,
+    totalRecebido,
     totalPagar,
     tarefasHojePendentes,
     totalCiclosAtivos,
@@ -36,6 +44,7 @@ const DashboardScreen = ({ navigation }: any) => {
     summaryUpdatedAt,
     loadingResumo,
     isError,
+    refetchResumo,
     activePlantioByEstufa,
     plantiosByEstufa,
     criticalAlerts,
@@ -45,8 +54,20 @@ const DashboardScreen = ({ navigation }: any) => {
     if (isError) showError('Não foi possível carregar os indicadores do painel.');
   }, [isError, showError]);
 
+  useEffect(() => {
+    if (isFocused) {
+      refetchResumo();
+    }
+  }, [isFocused, refetchResumo]);
+
   const navigateTo = useCallback(
-    (screen: string, params?: Record<string, any>) => navigation.navigate(screen, params),
+    (screen: keyof RootStackParamList, params?: RootStackParamList[keyof RootStackParamList]) =>
+      navigation.dispatch(
+        CommonActions.navigate({
+          name: screen as string,
+          params: (params || undefined) as object | undefined,
+        })
+      ),
     [navigation]
   );
 
@@ -123,6 +144,12 @@ const DashboardScreen = ({ navigation }: any) => {
         onPress: () => navigateTo('ContasReceber'),
       },
       {
+        label: 'Tarefas',
+        icon: 'calendar-check-outline',
+        color: COLORS.orange,
+        onPress: () => navigateTo('Tarefas'),
+      },
+      {
         label: 'Estufas',
         icon: 'greenhouse',
         color: COLORS.secondary,
@@ -132,17 +159,33 @@ const DashboardScreen = ({ navigation }: any) => {
     [navigateTo, openQuickManejoFlow, openQuickSaleFlow]
   );
 
-  const modules = useMemo(
+  const modules = useMemo<Array<{ label: string; icon: string; route: keyof RootStackParamList; color: string }>>(
     () => [
-      { label: 'Relatórios', icon: 'chart-box-outline', route: 'VendasList', color: COLORS.primary },
+      { label: 'Relatórios', icon: 'chart-box-outline', route: 'Relatorios', color: COLORS.primary },
+      { label: 'Vendas', icon: 'basket-outline', route: 'VendasList', color: COLORS.success },
       { label: 'Despesas', icon: 'cash-minus', route: 'DespesasList', color: COLORS.modDespesas },
       { label: 'Insumos', icon: 'flask-outline', route: 'InsumosList', color: COLORS.primaryDark },
       { label: 'Clientes', icon: 'account-group-outline', route: 'ClientesList', color: COLORS.info },
       { label: 'Fornecedores', icon: 'truck-delivery-outline', route: 'FornecedoresList', color: COLORS.orange },
-      { label: 'Compartilhar Acesso', icon: 'account-multiple-plus', route: 'ShareAccount', color: COLORS.success },
-      { label: 'Configurações', icon: 'cog-outline', route: 'Settings', color: COLORS.secondary },
+      { label: 'Compartilhar', icon: 'account-multiple-plus', route: 'ShareAccount', color: COLORS.success },
+      { label: 'Tarefas', icon: 'calendar-check-outline', route: 'Tarefas', color: COLORS.orange },
+      { label: 'Ajustes', icon: 'cog-outline', route: 'Settings', color: COLORS.secondary },
     ],
     []
+  );
+
+  const handleCompleteTask = useCallback(
+    async (taskId: string) => {
+      const targetId = selectedTenantId || user?.uid;
+      if (!targetId) return;
+      try {
+        await updateTarefaStatus(taskId, 'concluida', targetId);
+        await refetchResumo();
+      } catch {
+        showError('Não foi possível concluir a tarefa.');
+      }
+    },
+    [selectedTenantId, user?.uid, refetchResumo, showError]
   );
 
   const renderHeader = () => (
@@ -180,7 +223,7 @@ const DashboardScreen = ({ navigation }: any) => {
         </View>
       )}
 
-      <View style={[styles.infoBanner, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}> 
+      <View style={[styles.infoBanner, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
         <MaterialCommunityIcons name="database-sync-outline" size={16} color={theme.textSecondary} />
         <Text style={[styles.infoBannerText, { color: theme.textSecondary }]}>
           {summarySource === 'summary_doc'
@@ -194,6 +237,8 @@ const DashboardScreen = ({ navigation }: any) => {
         titleColor={theme.textPrimary}
         textColor={theme.textPrimary}
         onOpenPlantio={(plantioId) => navigateTo('PlantioDetail', { plantioId })}
+        onOpenTasks={() => navigateTo('Tarefas')}
+        onCompleteTask={handleCompleteTask}
       />
 
       <AlertsList
@@ -211,7 +256,18 @@ const DashboardScreen = ({ navigation }: any) => {
         textColor={theme.textPrimary}
       />
 
-      {isAdmin && (loadingResumo ? <DashboardLoadingSkeleton /> : <MoneyGrid totalReceber={totalReceber} totalPagar={totalPagar} textColor={theme.textSecondary} />)}
+      {isAdmin && (
+        loadingResumo ? (
+          <DashboardLoadingSkeleton />
+        ) : (
+          <MoneyGrid
+            totalReceber={totalReceber}
+            totalRecebido={totalRecebido}
+            totalPagar={totalPagar}
+            textColor={theme.textSecondary}
+          />
+        )
+      )}
 
     </View>
   );
@@ -226,7 +282,7 @@ const DashboardScreen = ({ navigation }: any) => {
             style={[styles.moduleChip, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}
             onPress={() => navigateTo(module.route)}
           >
-            <MaterialCommunityIcons name={module.icon as any} size={18} color={module.color} />
+            <MaterialCommunityIcons name={module.icon as any} size={22} color={module.color} />
             <Text style={[styles.moduleChipText, { color: theme.textPrimary }]}>{module.label}</Text>
           </TouchableOpacity>
         ))}
@@ -235,7 +291,7 @@ const DashboardScreen = ({ navigation }: any) => {
   );
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}> 
+    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}>
       <StatusBar barStyle="light-content" translucent />
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <ScreenHeaderCard
@@ -293,7 +349,7 @@ const styles = StyleSheet.create({
   modulesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   moduleChip: {
     width: '48%',
-    height: 48,
+    height: 58,
     borderRadius: 12,
     borderWidth: 1,
     flexDirection: 'row',
@@ -301,7 +357,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     gap: 8,
   },
-  moduleChipText: { fontSize: 13, fontWeight: '700' },
+  moduleChipText: { fontSize: 14, fontWeight: '800' },
 });
 
 export default DashboardScreen;

@@ -17,8 +17,9 @@ import { useAuth } from '../../hooks/useAuth';
 import { useThemeMode } from '../../hooks/useThemeMode';
 import { listContasAReceber, receberConta } from '../../services/colheitaService';
 import { listClientes } from '../../services/clienteService';
-import { Colheita } from '../../types/domain';
+import { Venda } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { queryClient, queryKeys } from '../../lib/queryClient';
 import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 import MetricCard from '../../components/ui/MetricCard';
 import EmptyState from '../../components/ui/EmptyState';
@@ -28,13 +29,13 @@ const ContasReceberScreen = ({ navigation }: any) => {
   const theme = useThemeMode();
   const isFocused = useIsFocused();
 
-  const [contas, setContas] = useState<Colheita[]>([]);
+  const [contas, setContas] = useState<Venda[]>([]);
   const [clientesMap, setClientesMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [loadingAction, setLoadingAction] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
-  const [selectedConta, setSelectedConta] = useState<Colheita | null>(null);
+  const [selectedConta, setSelectedConta] = useState<Venda | null>(null);
   const [metodoRecebimento, setMetodoRecebimento] = useState('pix');
 
   const carregarDados = async () => {
@@ -66,8 +67,14 @@ const ContasReceberScreen = ({ navigation }: any) => {
     if (isFocused) carregarDados();
   }, [isFocused, selectedTenantId]);
 
+  const getVendaTotal = (venda: Venda) => {
+    const item = venda.itens?.[0];
+    const fallbackTotal = Number(item?.quantidade || 0) * Number(item?.valorUnitario || 0);
+    return Number(venda.valorTotal || fallbackTotal || 0);
+  };
+
   const totalPendente = useMemo(
-    () => contas.reduce((acc, curr) => acc + curr.quantidade * (curr.precoUnitario || 0), 0),
+    () => contas.reduce((acc, curr) => acc + getVendaTotal(curr), 0),
     [contas]
   );
 
@@ -78,7 +85,11 @@ const ContasReceberScreen = ({ navigation }: any) => {
 
   const formatDate = (timestamp: any) => {
     if (!timestamp) return '-';
-    const d = timestamp.toDate ? timestamp.toDate() : new Date(timestamp.seconds * 1000);
+    const d = timestamp.toDate
+      ? timestamp.toDate()
+      : typeof timestamp.seconds === 'number'
+      ? new Date(timestamp.seconds * 1000)
+      : new Date(timestamp);
     return d.toLocaleDateString('pt-BR');
   };
 
@@ -97,7 +108,7 @@ const ContasReceberScreen = ({ navigation }: any) => {
   const formatCurrency = (value: number) =>
     value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-  const handleOpenReceber = (item: Colheita) => {
+  const handleOpenReceber = (item: Venda) => {
     setSelectedConta(item);
     setMetodoRecebimento('pix');
     setModalVisible(true);
@@ -110,6 +121,8 @@ const ContasReceberScreen = ({ navigation }: any) => {
     setLoadingAction(true);
     try {
       await receberConta(selectedConta.id, targetId, metodoRecebimento);
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(targetId) });
+      queryClient.invalidateQueries({ queryKey: ['vendas-list', targetId] });
       setModalVisible(false);
       setSelectedConta(null);
       Alert.alert('Sucesso', 'Pagamento registrado e baixa efetuada.');
@@ -121,17 +134,22 @@ const ContasReceberScreen = ({ navigation }: any) => {
     }
   };
 
-  const renderItem = ({ item }: { item: Colheita }) => {
-    const total = item.quantidade * (item.precoUnitario || 0);
+  const renderItem = ({ item }: { item: Venda }) => {
+    const total = getVendaTotal(item);
+    const primeiraLinha = item.itens?.[0];
+    const quantidade = Number((item as any).quantidade || primeiraLinha?.quantidade || 0);
+    const unidade = String((item as any).unidade || (primeiraLinha as any)?.unidade || 'un');
+    const precoUnitario = Number((item as any).precoUnitario || primeiraLinha?.valorUnitario || 0);
+    const editTargetId = item.colheitaId || item.id;
     const clienteNome = item.clienteId ? clientesMap[item.clienteId] : 'Não identificado';
-    const metodoLabel = formatMetodo(item.metodoPagamento);
+    const metodoLabel = formatMetodo(item.metodoPagamento || item.formaPagamento || undefined);
 
     return (
-      <View style={[styles.card, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}> 
+      <View style={[styles.card, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
         <TouchableOpacity
           activeOpacity={0.9}
           style={styles.cardTouch}
-          onPress={() => navigation.navigate('ColheitaForm', { colheitaId: item.id, isEdit: true })}
+          onPress={() => navigation.navigate('ColheitaForm', { vendaId: editTargetId, isEdit: true })}
         >
           <View style={styles.cardHeader}>
             <View style={styles.cardHeaderMain}>
@@ -140,10 +158,10 @@ const ContasReceberScreen = ({ navigation }: any) => {
                 <MaterialCommunityIcons name="credit-card-clock-outline" size={14} color={theme.info} />
                 <Text style={[styles.metodoText, { color: theme.info }]}>{metodoLabel}</Text>
               </View>
-              <Text style={[styles.dateText, { color: theme.textSecondary }]}>Venda em {formatDate(item.dataColheita)}</Text>
+              <Text style={[styles.dateText, { color: theme.textSecondary }]}>Venda em {formatDate(item.dataVenda)}</Text>
             </View>
 
-            <View style={[styles.badge, { backgroundColor: theme.dangerBackground, borderColor: COLORS.cFECACA }]}> 
+            <View style={[styles.badge, { backgroundColor: theme.dangerBackground, borderColor: COLORS.cFECACA }]}>
               <Text style={[styles.badgeText, { color: COLORS.danger }]}>PENDENTE</Text>
             </View>
           </View>
@@ -151,8 +169,8 @@ const ContasReceberScreen = ({ navigation }: any) => {
           <View style={[styles.divider, { backgroundColor: theme.divider }]} />
 
           <View style={styles.row}>
-            <Text style={[styles.details, { color: theme.textSecondary }]}> 
-              {item.quantidade} {item.unidade} x {formatCurrency(item.precoUnitario || 0)}
+            <Text style={[styles.details, { color: theme.textSecondary }]}>
+              {quantidade} {unidade} x {formatCurrency(precoUnitario)}
             </Text>
             <Text style={[styles.totalValue, { color: theme.textPrimary }]}>{formatCurrency(total)}</Text>
           </View>
@@ -167,7 +185,7 @@ const ContasReceberScreen = ({ navigation }: any) => {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}> 
+    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}>
       <ScreenHeaderCard
         title="Contas a Receber"
         subtitle="Acompanhe pendências, priorize cobranças e registre baixa de pagamentos."
@@ -214,26 +232,26 @@ const ContasReceberScreen = ({ navigation }: any) => {
         animationType="slide"
         onRequestClose={() => setModalVisible(false)}
       >
-        <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}> 
-          <View style={[styles.modalContent, { backgroundColor: theme.surfaceBackground }]}> 
+        <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
+          <View style={[styles.modalContent, { backgroundColor: theme.surfaceBackground }]}>
             <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Receber Pagamento</Text>
 
             {selectedConta ? (
-              <View style={[styles.resumoConta, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}> 
+              <View style={[styles.resumoConta, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
                 <Text style={[styles.resumoLabel, { color: theme.textSecondary }]}>Cliente</Text>
-                <Text style={[styles.resumoValue, { color: theme.textPrimary }]}> 
+                <Text style={[styles.resumoValue, { color: theme.textPrimary }]}>
                   {selectedConta.clienteId ? clientesMap[selectedConta.clienteId] : 'Avulso'}
                 </Text>
 
                 <Text style={[styles.resumoLabel, { color: theme.textSecondary, marginTop: 10 }]}>Valor total</Text>
-                <Text style={[styles.resumoValuePrice, { color: theme.info }]}> 
-                  {formatCurrency(selectedConta.quantidade * (selectedConta.precoUnitario || 0))}
+                <Text style={[styles.resumoValuePrice, { color: theme.info }]}>
+                  {formatCurrency(getVendaTotal(selectedConta))}
                 </Text>
               </View>
             ) : null}
 
             <Text style={[styles.labelPicker, { color: theme.textPrimary }]}>Forma de pagamento</Text>
-            <View style={[styles.pickerWrapper, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}> 
+            <View style={[styles.pickerWrapper, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
               <Picker
                 selectedValue={metodoRecebimento}
                 onValueChange={setMetodoRecebimento}

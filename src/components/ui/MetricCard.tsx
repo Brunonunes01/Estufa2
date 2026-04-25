@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, ViewStyle, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { useThemeMode } from '../../hooks/useThemeMode';
@@ -12,6 +12,7 @@ interface MetricCardProps {
   tone?: 'default' | 'success' | 'warning' | 'danger';
   icon?: string;
   iconColor?: string;
+  onPress?: () => void;
 }
 
 const toneStyles = {
@@ -21,13 +22,21 @@ const toneStyles = {
   danger: { bg: COLORS.dangerBg, value: COLORS.danger, border: COLORS.cFECACA, hint: COLORS.danger },
 };
 
-const MetricCard = ({ label, value, hint, style, tone = 'default', icon, iconColor }: MetricCardProps) => {
+const MetricCard = ({ label, value, hint, style, tone = 'default', icon, iconColor, onPress }: MetricCardProps) => {
   const mode = useThemeMode();
   const palette = toneStyles[tone];
   const effectiveIconColor = iconColor || (tone === 'default' ? mode.textPrimary : palette.value);
+  const cardStyle = [
+    styles.card,
+    {
+      backgroundColor: tone === 'default' ? mode.surfaceBackground : palette.bg,
+      borderColor: tone === 'default' ? mode.border : palette.border,
+    },
+    style,
+  ];
 
-  return (
-    <View style={[styles.card, { backgroundColor: tone === 'default' ? mode.surfaceBackground : palette.bg, borderColor: tone === 'default' ? mode.border : palette.border }, style]}>
+  const content = (
+    <>
       <View style={styles.topRow}>
         <Text style={[styles.label, { color: mode.textSecondary }]}>{label}</Text>
         {icon ? <MaterialCommunityIcons name={icon as any} size={18} color={effectiveIconColor} /> : null}
@@ -36,8 +45,18 @@ const MetricCard = ({ label, value, hint, style, tone = 'default', icon, iconCol
         {value}
       </Text>
       {hint ? <Text style={[styles.hint, { color: tone === 'default' ? mode.textSecondary : palette.hint || COLORS.textSecondary }]}>{hint}</Text> : null}
-    </View>
+    </>
   );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity activeOpacity={0.88} onPress={onPress} style={cardStyle}>
+        {content}
+      </TouchableOpacity>
+    );
+  }
+
+  return <View style={cardStyle}>{content}</View>;
 };
 
 const styles = StyleSheet.create({

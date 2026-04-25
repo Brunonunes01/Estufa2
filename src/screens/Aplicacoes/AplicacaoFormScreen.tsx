@@ -1,4 +1,3 @@
-// src/screens/Aplicacoes/AplicacaoFormScreen.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   View, Text, TextInput, ScrollView, Alert, StyleSheet, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform 
@@ -10,12 +9,12 @@ import { listInsumos } from '../../services/insumoService';
 import { createAplicacao, AplicacaoItemData } from '../../services/aplicacaoService';
 import { Plantio, Insumo } from '../../types/domain';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-
-// Importamos o nosso Design System Global
 import { COLORS } from '../../constants/theme';
+import { queryClient, queryKeys } from '../../lib/queryClient';
 
 const AplicacaoFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const targetId = selectedTenantId || user?.uid;
   const params = route.params || {};
   
   const [plantios, setPlantios] = useState<Plantio[]>([]);
@@ -24,10 +23,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
   const [loading, setLoading] = useState(false);
 
   const [plantioId, setPlantioId] = useState(params.plantioId || '');
-  
-  // --- NOVO: ESTADO PARA O TIPO DE APLICAÇÃO ---
   const [tipoAplicacao, setTipoAplicacao] = useState<'defensivo' | 'fertilizacao'>('defensivo');
-  
   const [volumeTanque, setVolumeTanque] = useState('');
   const [numTanques, setNumTanques] = useState('1');
   const [observacoes, setObservacoes] = useState('');
@@ -44,7 +40,6 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
     });
 
     const load = async () => {
-      const targetId = selectedTenantId || user?.uid;
       if (!targetId) return;
 
       try {
@@ -62,7 +57,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
       finally { setLoadingData(false); }
     };
     load();
-  }, [user, selectedTenantId]);
+  }, [targetId]);
 
   const selectedInsumo = useMemo(() => {
     return insumos.find(i => i.id === tempInsumoId);
@@ -94,34 +89,49 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
   };
 
   const handleSave = async () => {
-      const targetId = selectedTenantId || user?.uid;
-      if (!targetId) return Alert.alert("Erro", "Sessão inválida.");
-      if (!plantioId) return Alert.alert("Atenção", "Selecione a qual plantio esta aplicação se destina.");
-      if (itens.length === 0) return Alert.alert("Atenção", "Adicione pelo menos um produto (insumo) à mistura.");
+      if (!targetId) return Alert.alert("Atenção", "Sua sessão expirou. Entre novamente.");
+      if (!plantioId) return Alert.alert("Atenção", "Escolha o ciclo para registrar a aplicação.");
+      if (itens.length === 0) return Alert.alert("Atenção", "Adicione pelo menos um produto na mistura.");
       
       setLoading(true);
       try {
           const p = plantios.find(pl => pl.id === plantioId);
-          if (!p) return;
+          if (!p) {
+            Alert.alert("Atenção", "Ciclo não encontrado. Atualize a tela e tente novamente.");
+            return;
+          }
           
           const vol = parseFloat(volumeTanque.replace(',', '.')) || 0;
           const tanques = parseFloat(numTanques.replace(',', '.')) || 1;
+          if (tanques <= 0) {
+            Alert.alert("Atenção", "Informe um número de tanques maior que zero.");
+            return;
+          }
           const itensFinais = itens.map(i => ({ ...i, quantidadeAplicada: i.dosePorTanque * tanques }));
 
-          // Cast para 'any' para evitar erros de tipagem no seu aplicacaoService
           await createAplicacao({
               plantioId,
               estufaId: p.estufaId,
-              tipoAplicacao, // <-- Enviando o tipo de aplicação
+              tipoAplicacao,
               volumeTanque: vol,
               numeroTanques: tanques,
               observacoes,
               itens: itensFinais
           } as any, targetId);
           
-          Alert.alert("Sucesso", "Aplicação registada com sucesso!");
-          navigation.goBack();
-      } catch { Alert.alert("Erro", "Falha ao salvar a aplicação."); }
+          if (targetId) {
+            queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(targetId) });
+            queryClient.invalidateQueries({ queryKey: ['aplicacoes-list', targetId] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.insumosList(targetId) });
+          }
+
+          const totalProdutos = itensFinais.reduce((acc, item) => acc + Number(item.quantidadeAplicada || 0), 0);
+          Alert.alert(
+            "Aplicação registrada",
+            `${itensFinais.length} produto(s) • ${tanques} tanque(s)${vol > 0 ? `\nVolume: ${vol} L` : ''}\nTotal aplicado: ${totalProdutos.toFixed(2)}`,
+            [{ text: "OK", onPress: () => navigation.goBack() }]
+          );
+      } catch { Alert.alert("Erro", "Não consegui salvar a aplicação. Tente novamente."); }
       finally { setLoading(false); }
   };
 
@@ -131,7 +141,6 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
-        {/* --- NOVO: SELETOR DE FINALIDADE --- */}
         <View style={styles.card}>
             <Text style={styles.sectionHeader}>Finalidade da Aplicação</Text>
             <View style={styles.pillContainer}>
@@ -193,7 +202,6 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
                         {insumos.map(i => (
                           <Picker.Item 
                             key={i.id} 
-                            // Melhoria visual: Mostra a tag [ADUBO] ou [DEFENSIVO] antes do nome
                             label={`[${(i.tipo || 'outro').toUpperCase()}] ${i.nome} (Est: ${i.estoqueAtual} ${i.unidadePadrao || i.unidadeMedida || 'un'})`} 
                             value={i.id} 
                           />
@@ -267,40 +275,30 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
   scrollContent: { padding: 20 },
-  card: { backgroundColor: COLORS.surface, padding: 20, borderRadius: 24, marginBottom: 20, shadowColor: COLORS.textDark, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 2, borderWidth: 1, borderColor: COLORS.border },
+  card: { backgroundColor: COLORS.surface, padding: 20, borderRadius: 24, marginBottom: 20, elevation: 2, borderWidth: 1, borderColor: COLORS.border },
   sectionHeader: { fontSize: 16, fontWeight: '800', color: COLORS.info, marginBottom: 15, textTransform: 'uppercase' },
-  
-  // Estilos da Finalidade (Pills)
   pillContainer: { flexDirection: 'row', gap: 10 },
   pill: { flex: 1, paddingVertical: 15, borderRadius: 12, borderWidth: 1, borderColor: COLORS.info, alignItems: 'center', backgroundColor: COLORS.surface },
   pillActive: { backgroundColor: COLORS.info },
   pillText: { color: COLORS.info, fontWeight: 'bold', fontSize: 13, textAlign: 'center' },
   pillTextActive: { color: COLORS.textLight },
-
   inputGroup: { marginBottom: 15 },
   label: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 },
-  
-  inputWrapper: { backgroundColor: COLORS.cFFFFFF, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.borderDark, height: 56, justifyContent: 'center' },
+  inputWrapper: { backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.border, height: 56, justifyContent: 'center' },
   input: { paddingHorizontal: 15, fontSize: 18, color: COLORS.textPrimary, height: '100%', fontWeight: 'bold' },
-  
-  unitSuffix: { backgroundColor: COLORS.surface, height: '100%', justifyContent: 'center', paddingHorizontal: 15, borderLeftWidth: 1.5, borderLeftColor: COLORS.borderDark },
-  unitText: { fontWeight: 'bold', color: COLORS.c475569, fontSize: 16 },
+  unitSuffix: { backgroundColor: COLORS.surface, height: '100%', justifyContent: 'center', paddingHorizontal: 15, borderLeftWidth: 1.5, borderLeftColor: COLORS.border },
+  unitText: { fontWeight: 'bold', color: COLORS.textSecondary, fontSize: 16 },
   helperText: { fontSize: 11, color: COLORS.textPrimary, marginTop: 8, fontStyle: 'italic' },
-
   row: { flexDirection: 'row' },
-  
-  addBox: { backgroundColor: COLORS.cEFF6FF, padding: 15, borderRadius: 16, borderWidth: 1, borderColor: COLORS.cBFDBFE },
+  addBox: { backgroundColor: COLORS.infoSoft, padding: 15, borderRadius: 16, borderWidth: 1, borderColor: COLORS.info },
   addBtn: { backgroundColor: COLORS.info, width: 56, height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginLeft: 15, elevation: 2 },
-  
   divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 20 },
-  
-  itemRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.cFFFFFF, padding: 12, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: COLORS.borderDark, elevation: 1 },
+  itemRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, padding: 12, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border, elevation: 1 },
   itemIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center' },
   itemName: { fontWeight: '800', color: COLORS.textPrimary, fontSize: 15 },
   itemDose: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
-
-  saveBtn: { backgroundColor: COLORS.info, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 40, elevation: 4 },
-  saveText: { color: COLORS.textPrimary, fontWeight: '800', fontSize: 18, letterSpacing: 0.5 }
+  saveBtn: { backgroundColor: COLORS.info, height: 60, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 40, elevation: 4 },
+  saveText: { color: COLORS.textLight, fontWeight: '800', fontSize: 19, letterSpacing: 0.5 }
 });
 
 export default AplicacaoFormScreen;

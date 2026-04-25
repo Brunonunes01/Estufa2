@@ -21,15 +21,15 @@ const InsumosListScreen = ({ navigation }: any) => {
 
   const renderItem = ({ item }: { item: Insumo }) => {
     const minimo = item.estoqueMinimo ?? 0;
-    const isLowStock = item.estoqueMinimo !== null && item.estoqueAtual <= minimo;
+    const hasMinimo = item.estoqueMinimo !== null && item.estoqueMinimo !== undefined;
+    const isLowStock = hasMinimo && item.estoqueAtual <= minimo;
     const ratio = minimo > 0 ? Math.min(item.estoqueAtual / minimo, 1.6) : 1;
     const ratioPercent = `${Math.max(ratio * 100, 8)}%` as `${number}%`;
 
     return (
       <TouchableOpacity
         style={[styles.card, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}
-        activeOpacity={0.9}
-        onPress={() => navigation.navigate('InsumoForm', { insumoId: item.id })}
+        activeOpacity={0.95}
       >
         <View style={styles.cardHeader}>
           <View style={[styles.iconBox, { backgroundColor: `${COLORS.primary}1A` }]}>
@@ -78,6 +78,21 @@ const InsumosListScreen = ({ navigation }: any) => {
           <Text style={[styles.minimumText, { color: theme.textSecondary }]}>
             Mínimo recomendado: {minimo} {item.unidadePadrao}
           </Text>
+        </View>
+
+        <View style={styles.cardActions}>
+          <TouchableOpacity
+            style={[styles.cardActionBtn, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
+            onPress={() => navigation.navigate('InsumoForm', { insumoId: item.id })}
+          >
+            <Text style={[styles.cardActionText, { color: theme.textPrimary }]}>Editar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.cardActionBtn, styles.cardActionPrimary]}
+            onPress={() => navigation.navigate('InsumoEntry', { preselectedInsumoId: item.id })}
+          >
+            <Text style={[styles.cardActionText, { color: COLORS.textLight }]}>Entrada</Text>
+          </TouchableOpacity>
         </View>
       </TouchableOpacity>
     );
@@ -203,6 +218,20 @@ const styles = StyleSheet.create({
   progressTrack: { marginTop: 8, height: 7, borderRadius: 99, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 99 },
   minimumText: { marginTop: 7, fontSize: 11, fontWeight: '600' },
+  cardActions: { marginTop: 10, flexDirection: 'row', gap: 8 },
+  cardActionBtn: {
+    flex: 1,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardActionPrimary: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  cardActionText: { fontSize: 12, fontWeight: '800' },
 
   fab: {
     position: 'absolute',

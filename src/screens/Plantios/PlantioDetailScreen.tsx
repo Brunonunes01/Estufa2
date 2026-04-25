@@ -3,11 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { getPlantioById, updatePlantioStatus } from '../../services/plantioService';
-import { listColheitasByPlantio } from '../../services/colheitaService';
-import { listAplicacoesByPlantio } from '../../services/aplicacaoService';
 import { calculateRentabilidadeByPlantio } from '../../services/rentabilidadeService';
 import { getEstufaById } from '../../services/estufaService';
-import { Plantio, Colheita } from '../../types/domain';
+import { Plantio } from '../../types/domain';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 // CORRIGIDO: Adicionado o hífen no @react-navigation
 import { useIsFocused } from '@react-navigation/native';
@@ -20,7 +18,6 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
   const isFocused = useIsFocused();
 
   const [plantio, setPlantio] = useState<Plantio | null>(null);
-  const [colheitas, setColheitas] = useState<Colheita[]>([]);
   const [financeiro, setFinanceiro] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -47,13 +44,7 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
         const estufa = await getEstufaById(p.estufaId, targetId);
         const area = estufa?.areaM2 || 0;
 
-        const [listaColheitas, , rentabilidade] = await Promise.all([
-            listColheitasByPlantio(targetId, plantioId),
-            listAplicacoesByPlantio(targetId, plantioId),
-            calculateRentabilidadeByPlantio(targetId, plantioId, area)
-        ]);
-
-        setColheitas(listaColheitas);
+        const rentabilidade = await calculateRentabilidadeByPlantio(targetId, plantioId, area);
         setFinanceiro(rentabilidade);
       }
     } catch (error) {
@@ -175,6 +166,15 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
       </View>
 
       <View style={styles.secondaryActions}>
+          {isOwner ? (
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={() => navigation.navigate('PlantioForm', { plantioId: plantio.id, estufaId: plantio.estufaId })}
+            >
+              <MaterialCommunityIcons name="pencil-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.secondaryBtnText}>Editar Dados do Ciclo</Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity style={styles.secondaryBtn} onPress={() => navigation.navigate('ContasReceber')}>
               <MaterialCommunityIcons name="hand-coin-outline" size={16} color={COLORS.warning} />
               <Text style={styles.secondaryBtnText}>Contas a Receber</Text>
@@ -183,31 +183,11 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
               <MaterialCommunityIcons name="chart-box-outline" size={16} color={COLORS.info} />
               <Text style={styles.secondaryBtnText}>Relatórios de Vendas</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={() => navigation.navigate('PlantioHistory', { plantioId: plantio.id, estufaId: plantio.estufaId })}>
+              <MaterialCommunityIcons name="history" size={16} color={COLORS.textPrimary} />
+              <Text style={styles.secondaryBtnText}>Histórico do Ciclo</Text>
+          </TouchableOpacity>
       </View>
-
-      {/* LISTA RECENTE DE VENDAS */}
-      <View style={[styles.sectionHeaderRow, {marginTop: 15}]}>
-        <Text style={styles.sectionTitle}>Últimas Vendas</Text>
-      </View>
-      
-      {colheitas.length === 0 ? (
-          <View style={styles.emptyBox}>
-              <Text style={{color: COLORS.textGray}}>Nenhuma venda registada neste ciclo.</Text>
-          </View>
-      ) : (
-          colheitas.slice(0, 5).map(c => (
-              <View key={c.id} style={styles.listItem}>
-                  <View style={styles.listIcon}>
-                      <MaterialCommunityIcons name="cash" size={20} color={COLORS.primary} />
-                  </View>
-                  <View style={{flex:1}}>
-                      <Text style={styles.listMain}>{c.quantidade} {c.unidade}</Text>
-                      <Text style={styles.listSub}>{c.dataColheita.toDate().toLocaleDateString()}</Text>
-                  </View>
-                  <Text style={styles.listValue}>R$ {(c.quantidade * (c.precoUnitario || 0)).toFixed(2)}</Text>
-              </View>
-          ))
-      )}
 
       {isOwner && !isPlantioInactive && (
           <TouchableOpacity style={styles.dangerBtn} onPress={handleFinalizar}>
@@ -240,17 +220,9 @@ const styles = StyleSheet.create({
   gridBtns: { flexDirection: 'row', gap: 10, marginBottom: 25 },
   btnAction: { flex: 1, height: 80, borderRadius: RADIUS.md, borderWidth: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.surface },
   btnText: { fontWeight: '700', fontSize: 13, marginTop: 6 },
-  secondaryActions: { flexDirection: 'row', gap: 10, marginTop: -10, marginBottom: 24 },
-  secondaryBtn: { flex: 1, height: 40, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surfaceMuted, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
+  secondaryActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: -10, marginBottom: 24 },
+  secondaryBtn: { minWidth: '48%', flex: 1, height: 40, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surfaceMuted, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
   secondaryBtnText: { fontSize: 12, fontWeight: '700', color: COLORS.textPrimary },
-  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '700', color: COLORS.textDark },
-  emptyBox: { padding: 20, backgroundColor: COLORS.surface, borderRadius: RADIUS.md, alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },
-  listItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, padding: 15, borderRadius: RADIUS.md, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },
-  listIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.cECFDF5, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  listMain: { fontWeight: '700', color: COLORS.textDark, fontSize: 13 },
-  listSub: { fontSize: 12, color: COLORS.textGray, marginTop: 2 },
-  listValue: { fontWeight: '700', color: COLORS.primary },
   dangerBtn: { marginTop: 20, padding: 15, borderWidth: 1, borderColor: COLORS.danger, borderRadius: RADIUS.md, alignItems: 'center' },
   dangerText: { color: COLORS.danger, fontWeight: '700' }
 });

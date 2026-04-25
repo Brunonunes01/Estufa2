@@ -13,6 +13,7 @@ import {
 import { db } from './firebaseConfig';
 import { Estufa } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
+import { cancelActivePlantiosByEstufa } from './plantioService';
 
 export const createEstufa = async (data: Partial<Estufa>, userId: string) => {
   const tenantId = assertTenantId(userId);
@@ -98,6 +99,8 @@ export const deleteEstufa = async (id: string, userId: string) => {
     // Verifica propriedade antes de excluir
     const estufa = await getEstufaById(id, tenantId);
     if (!estufa) throw new Error("Estufa não encontrada para exclusão.");
+
+    await cancelActivePlantiosByEstufa(tenantId, id);
 
     const docRef = doc(db, 'estufas', id);
     await deleteDoc(docRef);

@@ -2,6 +2,7 @@
   "expo": {
     "name": "Estufa Pro",
     "slug": "estufa-pro",
+    "scheme": "estufapro",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -29,6 +30,9 @@
       "eas": {
         "projectId": "6cb20ebb-7cfe-4178-9a4f-b644d94feaac"
       }
-    }
+    },
+    "plugins": [
+      "expo-web-browser"
+    ]
   }
 }
