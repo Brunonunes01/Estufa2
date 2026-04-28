@@ -28,6 +28,8 @@ export const colors = {
   borderDark: '#B7C4D0',
   divider: '#E8EEF2',
   successSoft: '#DCFCE7',
+  dangerSoft: '#FEF2F2', // alias for dangerBg
+  primarySoft: '#CCFBF1', // alias for primaryLight
   dangerBg: '#FEF2F2',
   warningSoft: '#FFF7ED',
   info: '#2563EB',

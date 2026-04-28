@@ -1,3 +1,5 @@
+import { Plantio } from "../types/domain";
+
 export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
@@ -31,4 +33,7 @@ export type RootStackParamList = {
   Relatorios: undefined;
   RelatorioOperacional: undefined;
   Tarefas: undefined;
+  // Wizard
+  WizardSelectPlantio: undefined;
+  WizardSelectActivity: { plantio: Plantio };
 };

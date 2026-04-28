@@ -67,32 +67,30 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
     }
   };
 
-  const mutation = useMutation(
-    (plantioData: any) => {
+  const mutation = useMutation({
+    mutationFn: async (plantioData: any) => {
       if (!targetId) {
         throw new Error("Sua sessão expirou. Entre novamente.");
       }
       if (isEditMode && editingId) {
-        return updatePlantio(editingId as string, plantioData, targetId);
+        await updatePlantio(editingId as string, plantioData, targetId);
       } else {
-        return createPlantio(plantioData, targetId);
+        await createPlantio(plantioData, targetId);
       }
     },
-    {
-      onSuccess: (data, variables) => {
-        invalidateQueries();
-        const custoEstimadoValue = variables.custoEstimadoInicial || 0;
-        Alert.alert(
-          isEditMode ? "Ciclo atualizado" : "Ciclo criado",
-          `${variables.cultura} • ${variables.quantidadePlantada} ${variables.unidadeQuantidade}${custoEstimadoValue > 0 ? `\nCusto inicial: R$ ${custoEstimadoValue.toFixed(2)}` : ''}`,
-          [{ text: "OK", onPress: () => navigation.goBack() }]
-        );
-      },
-      onError: (error: any) => {
-        Alert.alert("Erro", error.message || "Não consegui salvar o ciclo. Tente novamente.");
-      },
-    }
-  );
+    onSuccess: (data, variables) => {
+      invalidateQueries();
+      const custoEstimadoValue = variables.custoEstimadoInicial || 0;
+      Alert.alert(
+        isEditMode ? "Ciclo atualizado" : "Ciclo criado",
+        `${variables.cultura} • ${variables.quantidadePlantada} ${variables.unidadeQuantidade}${custoEstimadoValue > 0 ? `\nCusto inicial: R$ ${custoEstimadoValue.toFixed(2)}` : ''}`,
+        [{ text: "OK", onPress: () => navigation.goBack() }]
+      );
+    },
+    onError: (error: any) => {
+      Alert.alert("Erro", error.message || "Não consegui salvar o ciclo. Tente novamente.");
+    },
+  });
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -471,8 +469,8 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
           multiline
         />
 
-        <TouchableOpacity style={styles.btn} onPress={handleSave} disabled={mutation.isLoading}>
-          {mutation.isLoading ? (
+        <TouchableOpacity style={styles.btn} onPress={handleSave} disabled={mutation.isPending}>
+          {mutation.isPending ? (
             <ActivityIndicator color={COLORS.textLight} />
           ) : (
             <Text style={styles.btnText}>Guardar Lote de Plantio</Text>
@@ -480,7 +478,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
         </TouchableOpacity>
 
         {isEditMode ? (
-          <TouchableOpacity style={styles.secondaryDangerBtn} onPress={handleDelete} disabled={mutation.isLoading || deleting}>
+          <TouchableOpacity style={styles.secondaryDangerBtn} onPress={handleDelete} disabled={mutation.isPending || deleting}>
             <MaterialCommunityIcons name="trash-can-outline" size={18} color={COLORS.danger} />
             <Text style={styles.secondaryDangerText}>Ações do ciclo (cancelar/excluir)</Text>
           </TouchableOpacity>

@@ -28,21 +28,21 @@ const RelatorioOperacionalScreen = () => {
 
   const [selectedPlantioId, setSelectedPlantioId] = useState<string | null>(null);
 
-  const { data: plantios, isLoading: isLoadingPlantios } = useQuery<Plantio[]>(
-    ['allPlantios', tenantId],
-    () => listAllPlantios(tenantId!),
-    { enabled: !!tenantId }
-  );
+  const { data: plantios, isLoading: isLoadingPlantios } = useQuery<Plantio[]>({
+    queryKey: ['allPlantios', tenantId],
+    queryFn: () => listAllPlantios(tenantId!),
+    enabled: !!tenantId,
+  });
 
   const selectedPlantio = useMemo(() => {
     return plantios?.find(p => p.id === selectedPlantioId) || null;
   }, [plantios, selectedPlantioId]);
 
-  const { data: analysisData, isLoading: isLoadingAnalysis } = useQuery(
-    ['cycleAnalysis', selectedPlantioId],
-    () => fetchCycleAnalysisData(selectedPlantio!, tenantId!),
-    { enabled: !!selectedPlantio && !!tenantId && !!selectedPlantio.estufaId }
-  );
+  const { data: analysisData, isLoading: isLoadingAnalysis } = useQuery({
+    queryKey: ['cycleAnalysis', selectedPlantioId],
+    queryFn: () => fetchCycleAnalysisData(selectedPlantio!, tenantId!),
+    enabled: !!selectedPlantio && !!tenantId && !!selectedPlantio.estufaId,
+  });
 
   const calculatedMetrics = useMemo(() => {
     if (!selectedPlantio || !analysisData || !analysisData.estufa) {

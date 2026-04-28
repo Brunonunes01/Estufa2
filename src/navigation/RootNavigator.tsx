@@ -53,6 +53,8 @@ import ManejosHistoryScreen from '../screens/Manejos/ManejosHistoryScreen';
 import RelatoriosScreen from '../screens/Financeiro/RelatoriosScreen';
 import RelatorioOperacionalScreen from '../screens/Financeiro/RelatorioOperacionalScreen';
 import TarefasScreen from '../screens/Tarefas/TarefasScreen';
+import WizardSelectPlantioScreen from '../screens/Wizards/WizardSelectPlantioScreen';
+import WizardSelectActivityScreen from '../screens/Wizards/WizardSelectActivityScreen';
 import { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -165,6 +167,9 @@ const AppStack = () => (
     <Stack.Screen name="Relatorios" component={RelatoriosScreen} options={{ title: 'BI & Relatórios' }} />
     <Stack.Screen name="RelatorioOperacional" component={RelatorioOperacionalScreen} options={{ title: 'Relatório Operacional' }} />
     <Stack.Screen name="Tarefas" component={TarefasScreen} options={{ title: 'Tarefas Agrícolas' }} />
+    {/* Wizard Screens */}
+    <Stack.Screen name="WizardSelectPlantio" component={WizardSelectPlantioScreen} options={{ title: 'Passo 1: Selecionar Ciclo' }} />
+    <Stack.Screen name="WizardSelectActivity" component={WizardSelectActivityScreen} options={{ title: 'Passo 2: Escolher Atividade' }} />
   </Stack.Navigator>
 );
 

@@ -223,6 +223,11 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         </View>
       )}
 
+      <TouchableOpacity style={styles.wizardButton} onPress={() => navigateTo('WizardSelectPlantio')}>
+        <MaterialCommunityIcons name="magic-staff" size={24} color={COLORS.textLight} />
+        <Text style={styles.wizardButtonText}>Registrar Atividade do Dia</Text>
+      </TouchableOpacity>
+
       <View style={[styles.infoBanner, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
         <MaterialCommunityIcons name="database-sync-outline" size={16} color={theme.textSecondary} />
         <Text style={[styles.infoBannerText, { color: theme.textSecondary }]}>
@@ -323,6 +328,22 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   listContent: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.md },
+
+  wizardButton: {
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.md,
+    borderRadius: 12,
+    gap: 12,
+    marginBottom: SPACING.lg,
+  },
+  wizardButtonText: {
+    color: COLORS.textLight,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
 
   infoBanner: {
     borderRadius: 12,

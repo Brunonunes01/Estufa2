@@ -121,6 +121,7 @@ export interface Estufa extends BaseDoc {
   larguraM?: number;
   alturaM?: number;
   areaM2?: number;
+  area?: number;
   tipoCobertura?: string;
   observacoes?: string;
   dataInicioOperacao?: Timestamp;
@@ -265,6 +266,7 @@ export interface Venda extends BaseDoc {
   statusPagamento: 'pendente' | 'pago' | 'atrasado' | 'cancelado';
   formaPagamento?: 'pix' | 'boleto' | 'transferencia' | 'dinheiro' | 'cartao' | 'outro' | 'prazo';
   observacoes?: string;
+  quantidade?: number;
 
   // Campos legados de relatório
   metodoPagamento?: string | null;
