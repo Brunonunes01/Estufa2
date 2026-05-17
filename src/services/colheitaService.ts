@@ -27,6 +27,10 @@ import {
 } from './vendaService';
 import { assertTenantId } from './tenantGuard';
 import { createTraceabilityEventSafely } from './traceabilityService';
+import {
+  buildPublicTraceabilityLookupUrl,
+  createTraceabilityPublicTokenFromId,
+} from './publicTraceabilityService';
 
 export type ColheitaFormData = {
   quantidade: number;
@@ -181,6 +185,7 @@ export const createColheita = async (
     const vendaRef = doc(collection(db, 'vendas'));
     const valorTotal = Number(data.quantidade || 0) * Number(data.precoUnitario || 0);
     const statusPagamento = data.metodoPagamento === 'prazo' ? 'pendente' : 'pago';
+    const traceabilityPublicToken = createTraceabilityPublicTokenFromId(vendaRef.id);
     vendaCriadaId = vendaRef.id;
     vendaStatusPagamento = statusPagamento;
 
@@ -189,6 +194,11 @@ export const createColheita = async (
       userId: tenantId,
       createdBy: tenantId,
       plantioId,
+      originType: 'plantio',
+      originId: plantioId,
+      hydroLoteId: null,
+      traceabilityPublicToken,
+      traceabilityPublicUrl: buildPublicTraceabilityLookupUrl(traceabilityPublicToken) || null,
       estufaId,
       colheitaId: colheitaRef.id,
       clienteId: data.clienteId || null,
@@ -208,6 +218,7 @@ export const createColheita = async (
       formaPagamento: (data.metodoPagamento || 'pix') as Venda['formaPagamento'],
       metodoPagamento: data.metodoPagamento || 'pix',
       observacoes: data.observacoes || '',
+      quantidade: Number(data.quantidade || 0),
       ...(overrideAudit || {}),
       createdAt: now,
       updatedAt: now,
@@ -333,31 +344,56 @@ export const deleteColheita = async (colheitaId: string, userId: string) => {
     statusPagamento: string | null;
   }> = [];
 
+  const [byTenantVendaSnap, byLegacyVendaSnap] = await Promise.all([
+    getDocs(
+      query(
+        collection(db, 'vendas'),
+        where('tenantId', '==', tenantId),
+        where('colheitaId', '==', colheitaId)
+      )
+    ),
+    getDocs(
+      query(
+        collection(db, 'vendas'),
+        where('userId', '==', tenantId),
+        where('colheitaId', '==', colheitaId)
+      )
+    ),
+  ]);
+
+  const linkedVendaRefs = new Map<string, ReturnType<typeof doc>>();
+  [...byTenantVendaSnap.docs, ...byLegacyVendaSnap.docs].forEach((item) => {
+    linkedVendaRefs.set(item.id, item.ref);
+  });
+
   return runTransaction(db, async (transaction) => {
     const colheitaRef = doc(db, 'colheitas', colheitaId);
     const colheitaSnap = await transaction.get(colheitaRef);
     if (!colheitaSnap.exists()) throw new Error('Colheita não encontrada.');
     const colheitaData = colheitaSnap.data() as Colheita;
+    if (colheitaData.tenantId !== tenantId && colheitaData.userId !== tenantId) {
+      throw new Error('Acesso negado.');
+    }
     deletedColheitaPlantioId = colheitaData.plantioId;
     deletedColheitaEstufaId = colheitaData.estufaId || null;
 
-    // Buscar venda vinculada
-    const q = query(
-      collection(db, 'vendas'),
-      where('tenantId', '==', tenantId),
-      where('colheitaId', '==', colheitaId)
-    );
-    const vendaSnap = await getDocs(q);
-
-    vendaSnap.forEach((vDoc) => {
-      const vendaData = vDoc.data() as Venda;
+    for (const vendaRef of linkedVendaRefs.values()) {
+      const vendaSnap = await transaction.get(vendaRef);
+      if (!vendaSnap.exists()) continue;
+      const vendaData = vendaSnap.data() as Venda;
+      if (
+        (vendaData.tenantId !== tenantId && vendaData.userId !== tenantId) ||
+        vendaData.colheitaId !== colheitaId
+      ) {
+        continue;
+      }
       linkedVendasDeleted.push({
-        id: vDoc.id,
+        id: vendaSnap.id,
         valorTotal: Number(vendaData.valorTotal || 0),
         statusPagamento: vendaData.statusPagamento || null,
       });
-      transaction.delete(vDoc.ref);
-    });
+      transaction.delete(vendaRef);
+    }
 
     transaction.delete(colheitaRef);
   }).then(async () => {

@@ -7,7 +7,7 @@ export type RootStackParamList = {
   ShareAccount: undefined;
   Perfil: undefined;
   Settings: undefined;
-  EstufasList: { mode?: 'colheita' | 'manejo' } | undefined;
+  EstufasList: { mode?: 'colheita' | 'manejo' | 'hidro_layout' } | undefined;
   EstufaForm: { estufaId?: string } | undefined;
   EstufaDetail: { estufaId: string };
   EstufaHistory: { estufaId: string } | undefined;
@@ -33,6 +33,21 @@ export type RootStackParamList = {
   Relatorios: undefined;
   RelatorioOperacional: undefined;
   Tarefas: undefined;
+  HidroponiaEstufaLayout: { estufaId: string };
+  HidroponiaMotores: { estufaId?: string } | undefined;
+  HidroponiaLotes: { estufaId?: string } | undefined;
+  HidroponiaLoteForm: { loteId?: string; estufaId?: string; setorId?: string } | undefined;
+  HidroponiaLoteDetail: { loteId: string };
+  HidroponiaVerduras: undefined;
+  HidroponiaVendaForm: { vendaId?: string; loteId?: string; estufaId?: string } | undefined;
+  HidroponiaMovimentarLote: { 
+    loteId: string; 
+    fromOcupacaoId?: string; 
+    toSetorId?: string; 
+    toEstruturaId?: string 
+  };
+  HidroponiaColheitaForm: { ocupacaoId: string; isSeedlingResale?: boolean };
+  HidroponiaLeituraForm: { loteId?: string; estufaId?: string; reservatorioId?: string } | undefined;
   // Wizard
   WizardSelectPlantio: undefined;
   WizardSelectActivity: { plantio: Plantio };

@@ -3,6 +3,12 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'react-native';
 import { Cliente, Colheita, Plantio } from '../types/domain';
+import {
+  buildPublicTraceabilityLookupUrl,
+  buildPublicTraceabilityQrUrl,
+  buildTraceabilityTextPayload,
+  resolveTraceabilityPublicToken,
+} from './publicTraceabilityService';
 
 type PaymentStatus = 'pago' | 'pendente' | 'atrasado' | 'cancelado';
 
@@ -192,6 +198,25 @@ export const buildHtmlTemplate = (input: ComprovantePDFInput, logoBase64: string
     colheita.loteColheita || colheita.lote || friendlyCode(colheita.colheitaId, 'COLHEITA');
   const observacoesVenda = String(colheita.observacoes || '').trim();
   const origem = nomeEstufa || nomeFazenda || 'Origem não informada';
+  const traceabilityToken = resolveTraceabilityPublicToken({
+    id: colheita.id,
+    traceabilityPublicToken: colheita.traceabilityPublicToken || null,
+  });
+  const traceabilityLink =
+    String(colheita.traceabilityPublicUrl || '').trim() ||
+    buildPublicTraceabilityLookupUrl(traceabilityToken);
+  const traceabilityTextPayload = buildTraceabilityTextPayload({
+    token: traceabilityToken || codigoVenda,
+    produto: produtoLabel,
+    origem,
+    loteOrigem: String(lotePlantio || 'Não informado'),
+    loteColheita: String(loteColheita || 'Não informado'),
+    dataVenda: `${dataOperacao.date} ${dataOperacao.time}`,
+    quantidade: `${formatQuantity(quantidadeTotal)} ${String(unidadeTotal)}`,
+  });
+  const traceabilityQrSource = traceabilityLink || traceabilityTextPayload;
+  const traceabilityQrUrl = buildPublicTraceabilityQrUrl(traceabilityQrSource);
+  const traceabilityLinkLabel = traceabilityLink || 'QR com dados offline';
   const itensRows = itens
     .map(
       (item) => `
@@ -279,6 +304,10 @@ export const buildHtmlTemplate = (input: ComprovantePDFInput, logoBase64: string
             width: 92px; height: 92px; border: 2px dashed #16a34a; border-radius: 8px;
             display: flex; align-items: center; justify-content: center;
             color: #166534; font-size: 10px; text-align: center; padding: 6px; background: #ffffff;
+          }
+          .qr-image {
+            width: 92px; height: 92px; border: 1px solid #16a34a; border-radius: 8px;
+            background: #ffffff;
           }
           .notes {
             border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px;
@@ -372,9 +401,15 @@ export const buildHtmlTemplate = (input: ComprovantePDFInput, logoBase64: string
                 <div class="trace-row"><strong>Cultura:</strong> ${escapeHtml(produtoLabel)}</div>
                 <div class="trace-row"><strong>Lote do plantio:</strong> ${escapeHtml(String(lotePlantio))}</div>
                 <div class="trace-row"><strong>Lote da colheita:</strong> ${escapeHtml(String(loteColheita))}</div>
+                <div class="trace-row"><strong>Código de rastreio:</strong> ${escapeHtml(traceabilityToken || codigoVenda)}</div>
+                <div class="trace-row"><strong>Consulta pública:</strong> ${escapeHtml(traceabilityLinkLabel)}</div>
                 <div class="trace-row muted">Código de auditoria: ${escapeHtml(codigoVenda)}</div>
               </div>
-              <div class="qr-placeholder">Espaço reservado para QR Code</div>
+              ${
+                traceabilityQrUrl
+                  ? `<img class="qr-image" src="${escapeHtml(traceabilityQrUrl)}" alt="QR Code de rastreabilidade" />`
+                  : '<div class="qr-placeholder">QR indisponível</div>'
+              }
             </div>
           </section>
 

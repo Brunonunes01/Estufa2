@@ -5,7 +5,12 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
-import { generateShareCode, redeemShareCode, getSharedTenants } from '../../services/shareService';
+import {
+    generateShareCode,
+    redeemShareCode,
+    getSharedTenants,
+    SHARE_CODE_DEFAULT_LENGTH,
+} from '../../services/shareService';
 import { Tenant } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
@@ -45,7 +50,13 @@ export default function ShareAccountScreen({ navigation }: any) {
         if (!user) return;
         setLoadingGen(true);
         try {
-            const tenantParaCompartilhar = selectedTenantId || user.uid;
+            const tenantParaCompartilhar = user.uid;
+            if (selectedTenantId && selectedTenantId !== user.uid) {
+                Alert.alert(
+                    'Conta compartilhada selecionada',
+                    'Convites só podem ser gerados pela conta principal. O código será gerado para "Minha Estufa (Principal)".'
+                );
+            }
             const code = await generateShareCode(tenantParaCompartilhar, "Estufa de " + (user.name || "Produtor"), user.name || "Produtor");
             setGeneratedCode(code);
         } catch (error) {
@@ -144,11 +155,11 @@ export default function ShareAccountScreen({ navigation }: any) {
                             <View style={styles.inputContainer}>
                                 <TextInput 
                                     style={styles.input}
-                                    placeholder="Ex: X7K9P2"
+                                    placeholder="Ex: 9F1A3B..."
                                     placeholderTextColor={COLORS.textPlaceholder}
                                     value={inputCode}
                                     onChangeText={text => setInputCode(text.toUpperCase())}
-                                    maxLength={6}
+                                    maxLength={SHARE_CODE_DEFAULT_LENGTH}
                                     autoCapitalize="characters"
                                 />
                                 <TouchableOpacity 
@@ -290,7 +301,14 @@ const styles = StyleSheet.create({
         alignItems: 'center', borderWidth: 1, borderColor: COLORS.border
     },
     codeLabel: { fontSize: 14, color: COLORS.success, fontWeight: '600' },
-    codeValue: { fontSize: 40, fontWeight: '900', color: COLORS.secondary, marginVertical: 15, letterSpacing: 6 },
+    codeValue: {
+        fontSize: 28,
+        fontWeight: '900',
+        color: COLORS.secondary,
+        marginVertical: 15,
+        letterSpacing: 2,
+        textAlign: 'center',
+    },
     codeWarning: { fontSize: 13, color: COLORS.success, marginBottom: 20 },
     
     secondaryBtn: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: RADIUS.sm, backgroundColor: COLORS.whiteAlpha10 },

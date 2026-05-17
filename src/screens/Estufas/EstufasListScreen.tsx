@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../hooks/useAuth';
 import { Estufa, Plantio } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING } from '../../constants/theme';
@@ -18,6 +19,7 @@ import { evaluateEstufaHealth } from '../../utils/estufaHealth';
 import { useEstufasListData } from '../../hooks/queries/useEstufasListData';
 import { useFeedback } from '../../hooks/useFeedback';
 import { useThemeMode } from '../../hooks/useThemeMode';
+import { useAppSettings } from '../../hooks/useAppSettings';
 import EmptyState from '../../components/ui/EmptyState';
 import SkeletonBlock from '../../components/ui/SkeletonBlock';
 import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
@@ -25,17 +27,39 @@ import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 const EstufasListScreen = ({ navigation, route }: any) => {
   const { user, selectedTenantId } = useAuth();
   const theme = useThemeMode();
+  const { settings } = useAppSettings();
   const { showError, showWarning } = useFeedback();
-  const mode = route?.params?.mode as 'colheita' | 'plantio' | 'manejo' | undefined;
+  const mode = route?.params?.mode as 'colheita' | 'plantio' | 'manejo' | 'hidro_layout' | undefined;
   const targetId = selectedTenantId || user?.uid;
   const { data, isLoading, isFetching, isError, refetch } = useEstufasListData(targetId);
-  const estufas: Estufa[] = data?.estufas || [];
+  const estufasRaw: Estufa[] = data?.estufas || [];
   const plantios: Plantio[] = data?.activePlantios || [];
   const loading = isLoading || isFetching;
+  const isHydroMode = settings.activeProductionMode === 'hidroponia';
+
+  const estufas = useMemo(
+    () =>
+      estufasRaw.filter((estufa) => {
+        const isHydroponicEstufa =
+          !!estufa.productionModes?.includes('hydroponics') ||
+          estufa.tipo === 'hidroponia' ||
+          !!estufa.hydroponicSystemType;
+        return isHydroMode ? isHydroponicEstufa : !isHydroponicEstufa;
+      }),
+    [estufasRaw, isHydroMode]
+  );
 
   useEffect(() => {
     if (isError) showError('Não foi possível carregar a lista de estufas.');
   }, [isError, showError]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (targetId) {
+        refetch();
+      }
+    }, [targetId, refetch])
+  );
 
   const activePlantioByEstufa = useMemo(() => {
     const map: Record<string, Plantio | null> = {};
@@ -60,6 +84,10 @@ const EstufasListScreen = ({ navigation, route }: any) => {
 
   const irParaVenda = useCallback(
     (estufaId: string) => {
+      if (isHydroMode) {
+        navigation.navigate('HidroponiaLotes', { estufaId });
+        return;
+      }
       const plantioAtivo = activePlantioByEstufa[estufaId];
       if (!plantioAtivo) {
         Alert.alert('Sem ciclo ativo', 'Crie um novo ciclo nesta estufa para registrar venda.', [
@@ -72,7 +100,7 @@ const EstufasListScreen = ({ navigation, route }: any) => {
 
       navigation.navigate('ColheitaForm', { plantioId: plantioAtivo.id, estufaId });
     },
-    [activePlantioByEstufa, navigation, showWarning]
+    [activePlantioByEstufa, navigation, showWarning, isHydroMode]
   );
 
   const compartilharLocalizacao = useCallback(async (estufa: Estufa) => {
@@ -128,6 +156,10 @@ const EstufasListScreen = ({ navigation, route }: any) => {
         irParaManejo(estufaId);
         return;
       }
+      if (mode === 'hidro_layout') {
+        navigation.navigate('HidroponiaEstufaLayout', { estufaId });
+        return;
+      }
       navigation.navigate('EstufaDetail', { estufaId });
     },
     [mode, irParaVenda, irParaManejo, navigation]
@@ -140,16 +172,22 @@ const EstufasListScreen = ({ navigation, route }: any) => {
         ? 'Escolha a estufa para o plantio'
         : mode === 'manejo'
           ? 'Onde registrar o manejo?'
+          : mode === 'hidro_layout'
+            ? 'Escolha a estufa para layout'
           : 'Hubs de Estufa';
 
   const headerSubtitle =
     mode === 'colheita'
       ? 'Selecione a estufa para registrar a venda.'
       : mode === 'plantio'
-        ? 'Selecione a estufa para iniciar um novo lote.'
+        ? 'Selecione a estufa para iniciar uma nova produção.'
         : mode === 'manejo'
           ? 'Selecione a estufa para abrir o diário de manejo.'
-          : 'Monitore status, ciclo e venda por unidade com um toque.';
+          : mode === 'hidro_layout'
+            ? 'Selecione a estufa para abrir movimentação e ocupação de bancadas.'
+          : isHydroMode
+            ? 'Monitore as estufas hidropônicas e acesse layout/produção com um toque.'
+            : 'Monitore status, ciclo e venda por unidade com um toque.';
 
   const renderItem = ({ item }: { item: Estufa }) => {
     const isAtiva = item.status === 'ativa';
@@ -216,7 +254,7 @@ const EstufasListScreen = ({ navigation, route }: any) => {
         </View>
 
         <Text style={[styles.cycleInfo, { color: theme.textPrimary }]} numberOfLines={1}>
-          {plantioAtivo ? `Ciclo ativo: ${plantioAtivo.cultura}` : 'Sem ciclo ativo'}
+          {isHydroMode ? 'Operação hidropônica' : plantioAtivo ? `Ciclo ativo: ${plantioAtivo.cultura}` : 'Sem ciclo ativo'}
         </Text>
 
         {!mode && (
@@ -235,22 +273,31 @@ const EstufasListScreen = ({ navigation, route }: any) => {
               <Text style={[styles.actionBtnText, { color: theme.textPrimary }]}>Hub</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.actionBtn, { borderColor: theme.border }]}
-              onPress={() =>
-                plantioAtivo
-                  ? navigation.navigate('PlantioDetail', { plantioId: plantioAtivo.id })
-                  : navigation.navigate('PlantioForm', { estufaId: item.id })
-              }
-            >
-              <Text style={[styles.actionBtnText, { color: theme.textPrimary }]}>
-                {plantioAtivo ? 'Ciclo' : 'Novo Ciclo'}
-              </Text>
-            </TouchableOpacity>
+            {isHydroMode ? (
+              <TouchableOpacity
+                style={[styles.actionBtn, { borderColor: theme.border }]}
+                onPress={() => navigation.navigate('HidroponiaEstufaLayout', { estufaId: item.id })}
+              >
+                <Text style={[styles.actionBtnText, { color: theme.textPrimary }]}>Layout</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.actionBtn, { borderColor: theme.border }]}
+                onPress={() =>
+                  plantioAtivo
+                    ? navigation.navigate('PlantioDetail', { plantioId: plantioAtivo.id })
+                    : navigation.navigate('PlantioForm', { estufaId: item.id })
+                }
+              >
+                <Text style={[styles.actionBtnText, { color: theme.textPrimary }]}>
+                  {plantioAtivo ? 'Ciclo' : 'Novo Ciclo'}
+                </Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity style={styles.actionBtnPrimary} onPress={() => irParaVenda(item.id)}>
-              <MaterialCommunityIcons name="basket-plus" size={14} color={COLORS.textLight} />
-              <Text style={styles.actionBtnPrimaryText}>Vender</Text>
+              <MaterialCommunityIcons name={isHydroMode ? 'water' : 'basket-plus'} size={14} color={COLORS.textLight} />
+              <Text style={styles.actionBtnPrimaryText}>{isHydroMode ? 'Hidroponia' : 'Vender'}</Text>
             </TouchableOpacity>
           </View>
         )}

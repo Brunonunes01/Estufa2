@@ -177,62 +177,102 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
     );
   }
 
-  const quickActions = [
-    {
-      key: 'hub-cycle',
-      title: plantioAtivo ? 'Painel do Ciclo' : 'Novo Ciclo',
-      icon: 'sprout',
-      color: COLORS.success,
-      onPress: () =>
-        plantioAtivo
-          ? navigation.navigate('PlantioDetail', { plantioId: plantioAtivo.id })
-          : navigation.navigate('PlantioForm', { estufaId: estufa.id }),
-    },
-    {
-      key: 'hub-sale',
-      title: 'Registrar Venda',
-      icon: 'basket-plus',
-      color: COLORS.primary,
-      onPress: () =>
-        plantioAtivo
-          ? navigation.navigate('ColheitaForm', { plantioId: plantioAtivo.id, estufaId: estufa.id })
-          : navigation.navigate('PlantioForm', { estufaId: estufa.id }),
-    },
-    {
-      key: 'hub-apply',
-      title: 'Aplicar Insumo',
-      icon: 'flask-outline',
-      color: COLORS.info,
-      onPress: () =>
-        plantioAtivo
-          ? navigation.navigate('AplicacaoForm', { plantioId: plantioAtivo.id, estufaId: estufa.id })
-          : navigation.navigate('PlantioForm', { estufaId: estufa.id }),
-    },
-    {
-      key: 'hub-journal',
-      title: 'Diário de Manejo',
-      icon: 'notebook-outline',
-      color: COLORS.orange,
-      onPress: () =>
-        plantioAtivo
-          ? navigation.navigate('ManejosHistory', { plantioId: plantioAtivo.id, estufaId: estufa.id })
-          : navigation.navigate('PlantioForm', { estufaId: estufa.id }),
-    },
-    {
-      key: 'hub-reports',
-      title: 'Relatórios',
-      icon: 'chart-box-outline',
-      color: COLORS.info,
-      onPress: () => navigation.navigate('VendasList'),
-    },
-    {
-      key: 'hub-finance',
-      title: 'Financeiro',
-      icon: 'hand-coin-outline',
-      color: COLORS.warning,
-      onPress: () => navigation.navigate('ContasReceber'),
-    },
-  ];
+  const isHydroMode = settings.activeProductionMode === 'hidroponia';
+
+  const quickActions = isHydroMode
+    ? [
+        {
+          key: 'hub-hydro-layout',
+          title: 'Layout',
+          icon: 'table-row',
+          color: COLORS.success,
+          onPress: () => navigation.navigate('HidroponiaEstufaLayout', { estufaId: estufa.id }),
+        },
+        {
+          key: 'hub-hydroponics',
+          title: 'Hidroponia',
+          icon: 'water',
+          color: COLORS.info,
+          onPress: () => navigation.navigate('HidroponiaLotes', { estufaId: estufa.id }),
+        },
+        {
+          key: 'hub-hydro-sale',
+          title: 'Registrar Venda',
+          icon: 'basket-plus-outline',
+          color: COLORS.primary,
+          onPress: () => navigation.navigate('HidroponiaLotes', { estufaId: estufa.id }),
+        },
+        {
+          key: 'hub-reports',
+          title: 'Relatórios',
+          icon: 'chart-box-outline',
+          color: COLORS.info,
+          onPress: () => navigation.navigate('VendasList'),
+        },
+        {
+          key: 'hub-finance',
+          title: 'Financeiro',
+          icon: 'hand-coin-outline',
+          color: COLORS.warning,
+          onPress: () => navigation.navigate('ContasReceber'),
+        },
+      ]
+    : [
+        {
+          key: 'hub-cycle',
+          title: plantioAtivo ? 'Painel do Ciclo' : 'Novo Ciclo',
+          icon: 'sprout',
+          color: COLORS.success,
+          onPress: () =>
+            plantioAtivo
+              ? navigation.navigate('PlantioDetail', { plantioId: plantioAtivo.id })
+              : navigation.navigate('PlantioForm', { estufaId: estufa.id }),
+        },
+        {
+          key: 'hub-sale',
+          title: 'Registrar Venda',
+          icon: 'basket-plus',
+          color: COLORS.primary,
+          onPress: () =>
+            plantioAtivo
+              ? navigation.navigate('ColheitaForm', { plantioId: plantioAtivo.id, estufaId: estufa.id })
+              : navigation.navigate('PlantioForm', { estufaId: estufa.id }),
+        },
+        {
+          key: 'hub-apply',
+          title: 'Aplicar Insumo',
+          icon: 'flask-outline',
+          color: COLORS.info,
+          onPress: () =>
+            plantioAtivo
+              ? navigation.navigate('AplicacaoForm', { plantioId: plantioAtivo.id, estufaId: estufa.id })
+              : navigation.navigate('PlantioForm', { estufaId: estufa.id }),
+        },
+        {
+          key: 'hub-journal',
+          title: 'Diário de Manejo',
+          icon: 'notebook-outline',
+          color: COLORS.orange,
+          onPress: () =>
+            plantioAtivo
+              ? navigation.navigate('ManejosHistory', { plantioId: plantioAtivo.id, estufaId: estufa.id })
+              : navigation.navigate('PlantioForm', { estufaId: estufa.id }),
+        },
+        {
+          key: 'hub-reports',
+          title: 'Relatórios',
+          icon: 'chart-box-outline',
+          color: COLORS.info,
+          onPress: () => navigation.navigate('VendasList'),
+        },
+        {
+          key: 'hub-finance',
+          title: 'Financeiro',
+          icon: 'hand-coin-outline',
+          color: COLORS.warning,
+          onPress: () => navigation.navigate('ContasReceber'),
+        },
+      ];
 
   return (
     <ScrollView

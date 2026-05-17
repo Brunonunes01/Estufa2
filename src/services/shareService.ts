@@ -1,5 +1,5 @@
 // src/services/shareService.ts
-import { db } from './firebaseConfig';
+import { auth, db } from './firebaseConfig';
 import { 
     collection, getDocs, doc, setDoc, getDoc, writeBatch, Timestamp
 } from 'firebase/firestore';
@@ -10,6 +10,8 @@ const REDEEM_RATE_KEY = 'share_redeem_rate_v1';
 const REDEEM_WINDOW_MS = 10 * 60 * 1000;
 const REDEEM_MAX_ATTEMPTS = 8;
 const REDEEM_COOLDOWN_MS = 15 * 1000;
+export const SHARE_CODE_MIN_LENGTH = 20;
+export const SHARE_CODE_DEFAULT_LENGTH = 24;
 
 const toMillis = (value: ShareCode['expiresAt']) => {
     if (typeof value === 'number') return value;
@@ -26,7 +28,7 @@ const defaultSharePermissions = {
 
 const generateSecureShareCode = () => {
     if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-        const bytes = new Uint8Array(12); // 96 bits
+        const bytes = new Uint8Array(12); // 96 bits => 24 chars em hexadecimal
         crypto.getRandomValues(bytes);
         return Array.from(bytes)
             .map((item) => item.toString(16).padStart(2, '0'))
@@ -100,6 +102,11 @@ const registerRedeemAttempt = async (success: boolean) => {
 
 // Gera um código de compartilhamento mais forte (sem Cloud Functions)
 export const generateShareCode = async (tenantId: string, tenantName: string, ownerName: string) => {
+    const currentUid = auth.currentUser?.uid;
+    if (!currentUid || currentUid !== tenantId) {
+        throw new Error('Somente o dono do tenant pode gerar convite desta conta.');
+    }
+
     const expiresAt = Timestamp.fromMillis(Date.now() + (24 * 60 * 60 * 1000)); // 24 horas
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -135,6 +142,9 @@ export const redeemShareCode = async (code: string, userId: string): Promise<boo
         await enforceRedeemRateLimit();
         const normalizedCode = code.trim().toUpperCase();
         if (!normalizedCode) throw new Error("Código inválido.");
+        if (normalizedCode.length < SHARE_CODE_MIN_LENGTH) {
+            throw new Error(`Código inválido. Use o código completo (${SHARE_CODE_MIN_LENGTH}+ caracteres).`);
+        }
 
         // Busca o código pelo ID do documento
         const shareRef = doc(db, 'share_codes', normalizedCode);

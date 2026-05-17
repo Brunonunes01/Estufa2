@@ -1,11 +1,11 @@
 import {
-  addDoc,
   collection,
-  deleteDoc,
   doc,
   getDoc,
   getDocs,
   query,
+  runTransaction,
+  setDoc,
   Timestamp,
   updateDoc,
   where,
@@ -14,9 +14,21 @@ import { db } from './firebaseConfig';
 import { Venda } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { createTraceabilityEventSafely } from './traceabilityService';
+import { triggerExternalDashboardSync } from './externalAutomationService';
+import { getClienteById } from './clienteService';
+import {
+  buildPublicTraceabilityLookupUrl,
+  createTraceabilityPublicTokenFromId,
+} from './publicTraceabilityService';
+import { syncHydroLoteStatus } from '../modules/hidroponia/services/hidroponiaLoteService';
 
 export interface VendaFormData {
-  plantioId: string;
+  plantioId?: string;
+  hydroLoteId?: string;
+  originType?: Venda['originType'];
+  originId?: string | null;
+  itemDescricao?: string | null;
+  cultura?: string | null;
   estufaId?: string;
   clienteId?: string | null;
   quantidade: number;
@@ -34,14 +46,79 @@ export interface VendaFormData {
   } | null;
 }
 
+const buildClienteEndereco = (cliente: any) => {
+  const parts = [
+    cliente?.endereco,
+    cliente?.numero,
+    cliente?.bairro,
+    cliente?.cidade,
+    cliente?.estado,
+    cliente?.cep,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(', ') : null;
+};
+
+const resolveCompradorTrace = async (tenantId: string, clienteId?: string | null) => {
+  if (!clienteId) {
+    return {
+      nome: 'Consumidor final',
+      documento: null,
+      endereco: null,
+      tipo: 'consumidor_final',
+    };
+  }
+  const cliente = await getClienteById(clienteId, tenantId);
+  return {
+    nome: cliente?.nome || 'Cliente não identificado',
+    documento: cliente?.documento || null,
+    endereco: cliente ? buildClienteEndereco(cliente) : null,
+    tipo: 'comprador',
+  };
+};
+
 const toStatusPagamento = (metodoPagamento?: string | null): Venda['statusPagamento'] => {
   if (metodoPagamento === 'prazo') return 'pendente';
   return 'pago';
 };
 
-const buildVendaPayload = (data: VendaFormData, tenantId: string) => {
+const isReceivableStatus = (status?: Venda['statusPagamento'] | null, metodoPagamento?: string | null) =>
+  status === 'pendente' || status === 'atrasado' || (!status && metodoPagamento === 'prazo');
+
+const isReceivedStatus = (status?: Venda['statusPagamento'] | null) => status === 'pago';
+
+const validateVendaFormData = (data: VendaFormData) => {
+  const quantidade = Number(data.quantidade || 0);
+  const precoUnitario = Number(data.precoUnitario || 0);
+
+  if (!Number.isFinite(quantidade) || quantidade <= 0) {
+    throw new Error('Quantidade da venda deve ser maior que zero.');
+  }
+  if (!Number.isFinite(precoUnitario) || precoUnitario < 0) {
+    throw new Error('Preço unitário da venda não pode ser negativo.');
+  }
+  if (!data.unidade?.trim()) {
+    throw new Error('Informe a unidade da venda.');
+  }
+};
+
+const buildVendaPayload = (
+  data: VendaFormData,
+  tenantId: string,
+  traceabilityPublicToken?: string
+) => {
   const dataVenda = data.dataVenda ? Timestamp.fromDate(data.dataVenda) : Timestamp.now();
   const statusPagamento = toStatusPagamento(data.metodoPagamento);
+  const originType: Venda['originType'] =
+    data.originType || (data.hydroLoteId ? 'hydro_lote' : 'plantio');
+  const originId =
+    data.originId !== undefined
+      ? data.originId
+      : originType === 'hydro_lote'
+      ? data.hydroLoteId || null
+      : data.plantioId || null;
+  const itemDescricao =
+    data.itemDescricao?.trim() ||
+    (originType === 'hydro_lote' ? 'Produção hidropônica' : 'Produção agrícola');
 
   const vencimento =
     statusPagamento === 'pendente'
@@ -49,12 +126,19 @@ const buildVendaPayload = (data: VendaFormData, tenantId: string) => {
       : null;
 
   const valorTotal = Number(data.quantidade || 0) * Number(data.precoUnitario || 0);
+  const token = traceabilityPublicToken || null;
+  const traceabilityPublicUrl = token ? buildPublicTraceabilityLookupUrl(token) || null : null;
 
   return {
     tenantId,
     userId: tenantId, // Mantido por retrocompatibilidade com regras antigas
     createdBy: tenantId,
-    plantioId: data.plantioId,
+    plantioId: data.plantioId || null,
+    hydroLoteId: data.hydroLoteId || null,
+    traceabilityPublicToken: token,
+    traceabilityPublicUrl,
+    originType,
+    originId,
     estufaId: data.estufaId,
     colheitaId: data.colheitaId,
     clienteId: data.clienteId || null,
@@ -63,7 +147,7 @@ const buildVendaPayload = (data: VendaFormData, tenantId: string) => {
     itens: [
       {
         colheitaId: data.colheitaId,
-        descricao: 'Produção agrícola',
+        descricao: itemDescricao,
         quantidade: Number(data.quantidade || 0),
         unidade: data.unidade,
         valorUnitario: Number(data.precoUnitario || 0),
@@ -74,6 +158,7 @@ const buildVendaPayload = (data: VendaFormData, tenantId: string) => {
     formaPagamento: (data.metodoPagamento || 'pix') as Venda['formaPagamento'],
     metodoPagamento: data.metodoPagamento || 'pix',
     observacoes: data.observacoes || '',
+    cultura: data.cultura || null,
     cicloDesbloqueadoPorAdmin: !!data.cycleOverrideAudit,
     desbloqueioAdminByUid: data.cycleOverrideAudit?.byUid || null,
     desbloqueioAdminByName: data.cycleOverrideAudit?.byName || null,
@@ -101,11 +186,20 @@ const mergeVendaDocs = (snaps: Awaited<ReturnType<typeof getDocs>>[]): Venda[] =
 
 export const createVenda = async (data: VendaFormData, userId: string) => {
   const tenantId = assertTenantId(userId);
-  const payload = buildVendaPayload(data, tenantId);
-  const ref = await addDoc(collection(db, 'vendas'), payload);
+  validateVendaFormData(data);
+  const ref = doc(collection(db, 'vendas'));
+  const traceabilityPublicToken = createTraceabilityPublicTokenFromId(ref.id);
+  const payload = buildVendaPayload(data, tenantId, traceabilityPublicToken);
+  await setDoc(ref, payload);
+  const tracePlantioId = data.plantioId || null;
+  const traceHydroLoteId =
+    data.hydroLoteId || (data.originType === 'hydro_lote' ? data.originId || null : null);
+  const compradorTrace = await resolveCompradorTrace(tenantId, data.clienteId || null);
+  const item = payload.itens?.[0];
 
   await createTraceabilityEventSafely(tenantId, {
-    plantioId: data.plantioId,
+    plantioId: tracePlantioId,
+    hydroLoteId: traceHydroLoteId,
     estufaId: data.estufaId || null,
     entidade: 'venda',
     entidadeId: ref.id,
@@ -123,7 +217,36 @@ export const createVenda = async (data: VendaFormData, userId: string) => {
       precoUnitario: Number(data.precoUnitario || 0),
       metodoPagamento: data.metodoPagamento || 'pix',
       clienteId: data.clienteId || null,
+      originType: payload.originType || null,
+      originId: payload.originId || null,
+      traceabilityPublicToken: payload.traceabilityPublicToken || null,
+      traceabilityPublicUrl: payload.traceabilityPublicUrl || null,
       cicloDesbloqueadoPorAdmin: !!data.cycleOverrideAudit,
+      produto: {
+        descricao: item?.descricao || data.itemDescricao || null,
+        quantidade: Number(item?.quantidade || data.quantidade || 0),
+        unidade: item?.unidade || data.unidade || null,
+        codigoRastreio: traceHydroLoteId || tracePlantioId || ref.id,
+      },
+      enteAnterior: {
+        nome: payload.originType === 'hydro_lote' ? 'Produção hidropônica' : 'Produção agrícola',
+        documento: payload.originId || null,
+        tipo: payload.originType || null,
+      },
+      entePosterior: compradorTrace,
+    },
+  });
+
+  await triggerExternalDashboardSync({
+    tenantId,
+    entity: 'venda',
+    action: 'create',
+    recordId: ref.id,
+    metadata: {
+      statusPagamento: payload.statusPagamento,
+      originType: payload.originType || null,
+      originId: payload.originId || null,
+      valorTotal: payload.valorTotal,
     },
   });
 
@@ -143,69 +266,218 @@ export const getVendaById = async (id: string, userId: string): Promise<Venda | 
 
 export const updateVenda = async (id: string, data: VendaFormData, userId: string) => {
   const tenantId = assertTenantId(userId);
+  validateVendaFormData(data);
   const venda = await getVendaById(id, tenantId);
   if (!venda) throw new Error('Venda não encontrada.');
+  const hydroAllocations = Array.isArray((venda as any).hydroAllocations)
+    ? ((venda as any).hydroAllocations as unknown[])
+    : [];
 
-  const payload = buildVendaPayload(data, tenantId);
+  if (hydroAllocations.length > 0) {
+    const previousQuantidade = Number((venda as any).quantidade || venda.itens?.[0]?.quantidade || 0);
+    const previousUnidade = String((venda as any).unidade || venda.itens?.[0]?.unidade || '');
+    const previousLoteId = String((venda as any).hydroLoteId || venda.originId || '');
+    const nextLoteId = String(data.hydroLoteId || data.originId || previousLoteId);
+
+    if (
+      Number(data.quantidade || 0) !== previousQuantidade ||
+      String(data.unidade || '') !== previousUnidade ||
+      nextLoteId !== previousLoteId
+    ) {
+      throw new Error(
+        'Venda hidropônica com baixa de saldo não pode alterar quantidade, unidade ou produção. Exclua a venda para estornar o saldo e registre novamente.'
+      );
+    }
+  }
+
+  const payload = buildVendaPayload(
+    {
+      ...data,
+      plantioId: data.plantioId ?? venda.plantioId ?? undefined,
+      hydroLoteId: data.hydroLoteId ?? venda.hydroLoteId ?? undefined,
+      originType: data.originType ?? venda.originType,
+      originId: data.originId !== undefined ? data.originId : venda.originId ?? null,
+      estufaId: data.estufaId ?? venda.estufaId,
+      clienteId: data.clienteId !== undefined ? data.clienteId : venda.clienteId ?? null,
+      colheitaId: data.colheitaId ?? venda.colheitaId ?? undefined,
+    },
+    tenantId,
+    venda.traceabilityPublicToken || undefined
+  );
   await updateDoc(doc(db, 'vendas', id), {
     ...payload,
     createdAt: venda.createdAt,
     updatedAt: Timestamp.now(),
   });
 
-  const plantioId = data.plantioId || venda.plantioId;
-  if (plantioId) {
-    await createTraceabilityEventSafely(tenantId, {
-      plantioId,
-      estufaId: data.estufaId || venda.estufaId || null,
-      entidade: 'venda',
-      entidadeId: id,
-      acao: data.cycleOverrideAudit ? 'desbloqueio_ciclo' : 'atualizado',
-      descricao: 'Venda atualizada.',
-      motivo: data.cycleOverrideAudit?.reason || null,
-      actorUid: data.cycleOverrideAudit?.byUid || tenantId,
-      actorName: data.cycleOverrideAudit?.byName || null,
-      metadata: {
-        previousStatusPagamento: venda.statusPagamento,
-        valorTotal: payload.valorTotal,
-        statusPagamento: payload.statusPagamento,
-        quantidade: Number(data.quantidade || 0),
-        unidade: data.unidade || null,
-        precoUnitario: Number(data.precoUnitario || 0),
-        metodoPagamento: data.metodoPagamento || payload.metodoPagamento || 'pix',
-        clienteId: data.clienteId || venda.clienteId || null,
-        cicloDesbloqueadoPorAdmin: !!data.cycleOverrideAudit,
+  const plantioId = data.plantioId || venda.plantioId || null;
+  const hydroLoteId = data.hydroLoteId || (venda as any).hydroLoteId || null;
+  const compradorTrace = await resolveCompradorTrace(
+    tenantId,
+    data.clienteId || venda.clienteId || null
+  );
+  const item = payload.itens?.[0];
+  await createTraceabilityEventSafely(tenantId, {
+    plantioId,
+    hydroLoteId,
+    estufaId: data.estufaId || venda.estufaId || null,
+    entidade: 'venda',
+    entidadeId: id,
+    acao: data.cycleOverrideAudit ? 'desbloqueio_ciclo' : 'atualizado',
+    descricao: 'Venda atualizada.',
+    motivo: data.cycleOverrideAudit?.reason || null,
+    actorUid: data.cycleOverrideAudit?.byUid || tenantId,
+    actorName: data.cycleOverrideAudit?.byName || null,
+    metadata: {
+      previousStatusPagamento: venda.statusPagamento,
+      valorTotal: payload.valorTotal,
+      statusPagamento: payload.statusPagamento,
+      quantidade: Number(data.quantidade || 0),
+      unidade: data.unidade || null,
+      precoUnitario: Number(data.precoUnitario || 0),
+      metodoPagamento: data.metodoPagamento || payload.metodoPagamento || 'pix',
+      clienteId: data.clienteId || venda.clienteId || null,
+      originType: payload.originType || (venda as any).originType || null,
+      originId: payload.originId || (venda as any).originId || null,
+      cicloDesbloqueadoPorAdmin: !!data.cycleOverrideAudit,
+      produto: {
+        descricao: item?.descricao || data.itemDescricao || null,
+        quantidade: Number(item?.quantidade || data.quantidade || 0),
+        unidade: item?.unidade || data.unidade || null,
+        codigoRastreio: hydroLoteId || plantioId || id,
       },
-    });
-  }
+      enteAnterior: {
+        nome:
+          (payload.originType || (venda as any).originType) === 'hydro_lote'
+            ? 'Produção hidropônica'
+            : 'Produção agrícola',
+        documento: payload.originId || (venda as any).originId || null,
+        tipo: payload.originType || (venda as any).originType || null,
+      },
+      entePosterior: compradorTrace,
+    },
+  });
+
+  await triggerExternalDashboardSync({
+    tenantId,
+    entity: 'venda',
+    action: 'update',
+    recordId: id,
+    metadata: {
+      statusPagamento: payload.statusPagamento,
+      originType: payload.originType || null,
+      originId: payload.originId || null,
+      valorTotal: payload.valorTotal,
+    },
+  });
 };
 
 export const deleteVenda = async (id: string, userId: string) => {
   const tenantId = assertTenantId(userId);
   const venda = await getVendaById(id, tenantId);
   if (!venda) throw new Error('Venda não encontrada.');
-  await deleteDoc(doc(db, 'vendas', id));
+  const hydroAllocations = Array.isArray((venda as any).hydroAllocations)
+    ? ((venda as any).hydroAllocations as Array<{
+        ocupacaoId?: string;
+        estruturaId?: string;
+        quantidade?: number;
+      }>)
+    : [];
 
-  if (venda.plantioId) {
-    await createTraceabilityEventSafely(tenantId, {
-      plantioId: venda.plantioId,
-      estufaId: venda.estufaId || null,
-      entidade: 'venda',
-      entidadeId: id,
-      acao: 'excluido',
-      descricao: 'Venda excluída.',
-      actorUid: tenantId,
-      metadata: {
-        colheitaId: venda.colheitaId || null,
-        clienteId: venda.clienteId || null,
-        quantidade: Number((venda as any).quantidade || venda.itens?.[0]?.quantidade || 0),
-        unidade: (venda as any).unidade || null,
-        precoUnitario: Number((venda as any).precoUnitario || venda.itens?.[0]?.valorUnitario || 0),
-        valorTotal: venda.valorTotal || 0,
-        statusPagamento: venda.statusPagamento,
-      },
-    });
+  await runTransaction(db, async (transaction) => {
+    const vendaRef = doc(db, 'vendas', id);
+    const vendaSnap = await transaction.get(vendaRef);
+    if (!vendaSnap.exists()) throw new Error('Venda não encontrada.');
+
+    const currentVenda = vendaSnap.data() as Venda;
+    if (currentVenda.tenantId !== tenantId && currentVenda.userId !== tenantId) {
+      throw new Error('Acesso negado.');
+    }
+
+    if (hydroAllocations.length > 0) {
+      const ocupacoes = [];
+      for (const allocation of hydroAllocations) {
+        if (!allocation.ocupacaoId) {
+          throw new Error('Venda hidropônica sem ocupação de origem para estorno.');
+        }
+        const ocupacaoRef = doc(db, 'hidroponia_ocupacoes', allocation.ocupacaoId);
+        const ocupacaoSnap = await transaction.get(ocupacaoRef);
+        if (!ocupacaoSnap.exists()) {
+          throw new Error('Não é possível estornar: ocupação original não encontrada.');
+        }
+        const ocupacao = ocupacaoSnap.data() as any;
+        if (ocupacao.tenantId !== tenantId && ocupacao.userId !== tenantId) {
+          throw new Error('Acesso negado à ocupação original.');
+        }
+        ocupacoes.push({ allocation, ocupacao, ocupacaoRef });
+      }
+
+      ocupacoes.forEach(({ allocation, ocupacao, ocupacaoRef }) => {
+        const quantidadeEstorno = Number(allocation.quantidade || 0);
+        if (!Number.isFinite(quantidadeEstorno) || quantidadeEstorno <= 0) {
+          throw new Error('Quantidade de estorno inválida.');
+        }
+        transaction.update(ocupacaoRef, {
+          status: 'ativa',
+          quantidadeAlocada: Number(ocupacao.quantidadeAlocada || 0) + quantidadeEstorno,
+          dataFim: null,
+          updatedAt: Timestamp.now(),
+        });
+
+        if (allocation.estruturaId && (currentVenda as any).hydroLoteId) {
+          transaction.set(doc(db, 'hidroponia_estrutura_locks', `${currentVenda.estufaId}_${allocation.estruturaId}`), {
+            tenantId,
+            estufaId: currentVenda.estufaId || null,
+            estruturaId: allocation.estruturaId,
+            loteId: (currentVenda as any).hydroLoteId,
+            active: true,
+            updatedAt: Timestamp.now(),
+          }, { merge: true });
+        }
+      });
+    }
+
+    transaction.delete(vendaRef);
+  });
+
+  if (hydroAllocations.length > 0 && (venda as any).hydroLoteId) {
+    await syncHydroLoteStatus((venda as any).hydroLoteId, tenantId);
   }
+
+  await createTraceabilityEventSafely(tenantId, {
+    plantioId: venda.plantioId || null,
+    hydroLoteId: (venda as any).hydroLoteId || null,
+    estufaId: venda.estufaId || null,
+    entidade: 'venda',
+    entidadeId: id,
+    acao: 'excluido',
+    descricao: 'Venda excluída.',
+    actorUid: tenantId,
+    metadata: {
+      colheitaId: venda.colheitaId || null,
+      clienteId: venda.clienteId || null,
+      quantidade: Number((venda as any).quantidade || venda.itens?.[0]?.quantidade || 0),
+      unidade: (venda as any).unidade || null,
+      precoUnitario: Number((venda as any).precoUnitario || venda.itens?.[0]?.valorUnitario || 0),
+      valorTotal: venda.valorTotal || 0,
+      statusPagamento: venda.statusPagamento,
+      originType: (venda as any).originType || null,
+      originId: (venda as any).originId || null,
+    },
+  });
+
+  await triggerExternalDashboardSync({
+    tenantId,
+    entity: 'venda',
+    action: 'delete',
+    recordId: id,
+    metadata: {
+      statusPagamento: venda.statusPagamento || null,
+      originType: (venda as any).originType || null,
+      originId: (venda as any).originId || null,
+      valorTotal: Number(venda.valorTotal || 0),
+    },
+  });
 };
 
 export const listAllVendas = async (userId: string): Promise<Venda[]> => {
@@ -276,32 +548,55 @@ export const receberVenda = async (vendaId: string, userId: string, metodoRecebi
     updatedAt: Timestamp.now(),
   });
 
-  if (venda.plantioId) {
-    await createTraceabilityEventSafely(tenantId, {
-      plantioId: venda.plantioId,
-      estufaId: venda.estufaId || null,
-      entidade: 'venda',
-      entidadeId: vendaId,
-      acao: 'recebimento_registrado',
-      descricao: 'Recebimento da venda confirmado.',
-      actorUid: tenantId,
-      metadata: {
-        metodoPagamento: metodoRecebimento || venda.metodoPagamento || venda.formaPagamento || 'pix',
-        previousStatusPagamento: venda.statusPagamento,
-        newStatusPagamento: 'pago',
-      },
-    });
-  }
+  await createTraceabilityEventSafely(tenantId, {
+    plantioId: venda.plantioId || null,
+    hydroLoteId: (venda as any).hydroLoteId || null,
+    estufaId: venda.estufaId || null,
+    entidade: 'venda',
+    entidadeId: vendaId,
+    acao: 'recebimento_registrado',
+    descricao: 'Recebimento da venda confirmado.',
+    actorUid: tenantId,
+    metadata: {
+      metodoPagamento: metodoRecebimento || venda.metodoPagamento || venda.formaPagamento || 'pix',
+      previousStatusPagamento: venda.statusPagamento,
+      newStatusPagamento: 'pago',
+      originType: (venda as any).originType || null,
+      originId: (venda as any).originId || null,
+    },
+  });
+
+  await triggerExternalDashboardSync({
+    tenantId,
+    entity: 'venda',
+    action: 'status_change',
+    recordId: vendaId,
+    metadata: {
+      previousStatusPagamento: venda.statusPagamento || null,
+      newStatusPagamento: 'pago',
+      originType: (venda as any).originType || null,
+      originId: (venda as any).originId || null,
+      valorTotal: Number(venda.valorTotal || 0),
+    },
+  });
 };
 
 export const listContasAReceber = async (userId: string): Promise<Venda[]> => {
   const tenantId = assertTenantId(userId);
   const [tenantSnap, legacySnap] = await Promise.all([
     getDocs(
-      query(collection(db, 'vendas'), where('tenantId', '==', tenantId), where('statusPagamento', '==', 'pendente'))
+      query(
+        collection(db, 'vendas'),
+        where('tenantId', '==', tenantId),
+        where('statusPagamento', 'in', ['pendente', 'atrasado'])
+      )
     ),
     getDocs(
-      query(collection(db, 'vendas'), where('userId', '==', tenantId), where('statusPagamento', '==', 'pendente'))
+      query(
+        collection(db, 'vendas'),
+        where('userId', '==', tenantId),
+        where('statusPagamento', 'in', ['pendente', 'atrasado'])
+      )
     ),
   ]);
 
@@ -322,13 +617,16 @@ export const getVendasFinancialSummary = async (userId: string) => {
       const item = venda.itens?.[0];
       const fallbackTotal = Number(item?.quantidade || 0) * Number(item?.valorUnitario || 0);
       const valor = Number(venda.valorTotal || fallbackTotal || 0);
-      const pendente =
-        venda.statusPagamento === 'pendente' ||
-        (!venda.statusPagamento && venda.metodoPagamento === 'prazo');
+      const statusPagamento = venda.statusPagamento;
+      const pendente = isReceivableStatus(statusPagamento, venda.metodoPagamento);
+      const recebido = isReceivedStatus(statusPagamento);
+      const ignorarFinanceiro = statusPagamento === 'cancelado';
 
-      acc.totalVendido += valor;
+      if (!ignorarFinanceiro) {
+        acc.totalVendido += valor;
+      }
       acc.totalReceber += pendente ? valor : 0;
-      acc.totalRecebido += pendente ? 0 : valor;
+      acc.totalRecebido += recebido ? valor : 0;
       return acc;
     },
     { totalVendido: 0, totalReceber: 0, totalRecebido: 0 }

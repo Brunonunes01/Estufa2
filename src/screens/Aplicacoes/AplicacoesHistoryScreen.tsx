@@ -18,19 +18,20 @@ import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ícones
 import { COLORS } from '../../constants/theme';
 
 const AplicacoesHistoryScreen = ({ route, navigation }: any) => {
-  const { user } = useAuth();
+  const { user, selectedTenantId } = useAuth();
   const { plantioId, estufaId } = route.params; 
+  const targetId = selectedTenantId || user?.uid;
   
   const [aplicacoes, setAplicacoes] = useState<Aplicacao[]>([]);
   const [loading, setLoading] = useState(true);
   const isFocused = useIsFocused();
 
   const carregarDados = async () => {
-    if (!user || !plantioId) return;
+    if (!targetId || !plantioId) return;
     setLoading(true);
     try {
       // Nota: listInsumos removido pois os nomes dos insumos já estão salvos no AplicacaoItem
-      const listaAplicacoes = await listAplicacoesByPlantio(user.uid, plantioId);
+      const listaAplicacoes = await listAplicacoesByPlantio(targetId, plantioId);
       setAplicacoes(listaAplicacoes);
 
     } catch (error) {
@@ -43,7 +44,7 @@ const AplicacoesHistoryScreen = ({ route, navigation }: any) => {
   useEffect(() => {
     navigation.setOptions({ title: 'Histórico de Aplicações' });
     if (isFocused) carregarDados();
-  }, [plantioId, user, isFocused, navigation]); 
+  }, [plantioId, targetId, isFocused, navigation]); 
 
   const handleClonarAplicacao = (aplicacao: Aplicacao) => {
     navigation.navigate('AplicacaoForm', { 

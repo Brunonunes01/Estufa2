@@ -6,6 +6,7 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { createColheita, updateColheita, getColheitaById, deleteColheita, ColheitaFormData } from '../../services/colheitaService';
+import { getVendaById } from '../../services/vendaService';
 import { listAllPlantios, unlockPlantioCycleForEarlySale } from '../../services/plantioService';
 import { listEstufas } from '../../services/estufaService';
 import { listClientes, createCliente } from '../../services/clienteService';
@@ -23,8 +24,10 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId, canDeleteEstufa } = useAuth();
   const targetId = selectedTenantId || user?.uid;
   const params = route.params || {};
-  const editingId = params.colheitaId || params.vendaId;
-  const isEditMode = !!editingId;
+  const vendaIdParam = params.vendaId as string | undefined;
+  const colheitaIdParam = params.colheitaId as string | undefined;
+  const isEditMode = !!(colheitaIdParam || vendaIdParam);
+  const [editingColheitaId, setEditingColheitaId] = useState<string | null>(colheitaIdParam || null);
 
   const [plantiosDisponiveis, setPlantiosDisponiveis] = useState<Plantio[]>([]);
   const [clientesList, setClientesList] = useState<Cliente[]>([]);
@@ -89,8 +92,26 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
             }
 
             if (isEditMode) {
-                const venda = await getColheitaById(editingId, targetId);
+                let resolvedColheitaId = colheitaIdParam;
+                if (!resolvedColheitaId && vendaIdParam) {
+                    const vendaOrigem = await getVendaById(vendaIdParam, targetId);
+                    if (!vendaOrigem) {
+                      throw new Error('Venda não encontrada para edição.');
+                    }
+                    const isHydroSale =
+                      (vendaOrigem as any).originType === 'hydro_lote' || !!(vendaOrigem as any).hydroLoteId;
+                    if (isHydroSale) {
+                      throw new Error('Esta venda é hidropônica e deve ser editada na tela de vendas hidropônicas.');
+                    }
+                    resolvedColheitaId = vendaOrigem.colheitaId || null;
+                }
+                if (!resolvedColheitaId) {
+                  throw new Error('Venda sem colheita vinculada para edição nesta tela.');
+                }
+
+                const venda = await getColheitaById(resolvedColheitaId, targetId);
                 if (venda) {
+                    setEditingColheitaId(resolvedColheitaId);
                     setQuantidade(String(venda.quantidade));
                     setUnidade(venda.unidade as UnidadeColheita);
                     setPreco(venda.precoUnitario ? String(venda.precoUnitario) : '');
@@ -103,16 +124,18 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                         const dc = venda.dataColheita;
                         setDataVenda(dc.toDate ? dc.toDate() : new Date(dc.seconds * 1000));
                     }
+                } else {
+                    throw new Error('Colheita vinculada à venda não encontrada.');
                 }
             }
-        } catch (e) {
-            Alert.alert("Erro", "Falha ao carregar dados.");
+        } catch (e: any) {
+            Alert.alert("Erro", e?.message || "Falha ao carregar dados.");
         } finally {
             setLoadingData(false);
         }
     };
     carregarTudo();
-  }, [targetId, editingId]);
+  }, [targetId, isEditMode, colheitaIdParam, vendaIdParam]);
 
   const valorTotal = useMemo(() => {
     const qtd = parseFloat(quantidade.replace(',','.')) || 0;
@@ -167,12 +190,16 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
 
   const handleDelete = () => {
     if (!targetId) return;
+    if (!editingColheitaId) {
+      Alert.alert('Erro', 'Não foi possível identificar a colheita desta venda.');
+      return;
+    }
 
     Alert.alert("Excluir Venda", "Deseja remover este registro permanentemente?", [
       { text: "Cancelar", style: "cancel" },
       { text: "Excluir", style: "destructive", onPress: async () => {
           try {
-            await deleteColheita(editingId, targetId);
+            await deleteColheita(editingColheitaId, targetId);
             invalidateQueries();
             navigation.goBack();
           } catch (e) { Alert.alert("Erro", "Falha ao excluir."); }
@@ -232,7 +259,10 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
           const shouldSaveWithCycleUnlock = isBeforeMinimumSaleDate && isCycleUnlockedForSale;
 
           if (isEditMode) {
-              await updateColheita(editingId, data, targetId, {
+              if (!editingColheitaId) {
+                throw new Error('Não foi possível identificar a colheita vinculada para edição.');
+              }
+              await updateColheita(editingColheitaId, data, targetId, {
                 allowBeforeCycleDays: allowBeforeCycleDays || shouldSaveWithCycleUnlock,
                 overrideAudit: allowBeforeCycleDays
                   ? {

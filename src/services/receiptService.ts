@@ -20,7 +20,7 @@ export interface SalesReportItem {
   cliente: string;
   estufa: string;
   metodoPagamento: string;
-  status: 'PAGO' | 'PENDENTE';
+  status: 'PAGO' | 'PENDENTE' | 'CANCELADO';
   valor: number;
   observacoes?: string | null;
 }
@@ -87,8 +87,14 @@ export const shareSalesReportPdf = async (data: SalesReportPdfData) => {
   const geradoEm = new Date().toLocaleString('pt-BR');
 
   const linhasDetalhes = data.itens
-    .map(
-      (item) => `
+    .map((item) => {
+      const statusClass =
+        item.status === 'PAGO'
+          ? 'status-paid'
+          : item.status === 'CANCELADO'
+          ? 'status-cancelled'
+          : 'status-open';
+      return `
         <tr>
           <td>${escapeHtml(item.codigo || '-')}</td>
           <td>${escapeHtml(item.data)}</td>
@@ -96,12 +102,12 @@ export const shareSalesReportPdf = async (data: SalesReportPdfData) => {
           <td>${escapeHtml(item.estufa)}</td>
           <td>${escapeHtml(item.metodoPagamento)}</td>
           <td>
-            <span class="status ${item.status === 'PAGO' ? 'status-paid' : 'status-open'}">${item.status}</span>
+            <span class="status ${statusClass}">${item.status}</span>
           </td>
           <td class="align-right">${fmtMoeda(item.valor)}</td>
         </tr>
-      `
-    )
+      `;
+    })
     .join('');
 
   const linhasObservacoes = data.itens
@@ -262,6 +268,11 @@ export const shareSalesReportPdf = async (data: SalesReportPdfData) => {
             background: ${COLORS.dangerBg};
             border: 1px solid ${COLORS.cFECACA};
           }
+          .status-cancelled {
+            color: ${COLORS.textSecondary};
+            background: ${COLORS.surfaceMuted};
+            border: 1px solid ${COLORS.border};
+          }
           .paragraph {
             margin: 0;
             padding: 12px;
@@ -409,7 +420,12 @@ export const shareVendaReceipt = async (data: ReceiptData) => {
   const quantidade = Number(venda.quantidade || venda.itens?.[0]?.quantidade || 0);
   const precoUnitario = Number(venda.precoUnitario || venda.itens?.[0]?.valorUnitario || 0);
   const valor = Number(venda.valorTotal || quantidade * precoUnitario);
-  const status = venda.statusPagamento === 'pendente' ? 'PENDENTE' : 'PAGO';
+  const status =
+    venda.statusPagamento === 'pendente'
+      ? 'PENDENTE'
+      : venda.statusPagamento === 'cancelado'
+      ? 'CANCELADO'
+      : 'PAGO';
   const dataVenda = toDateSafe(venda.dataVenda || venda.dataColheita);
   const dataVendaLabel = dataVenda.toLocaleDateString('pt-BR');
   const dataToken = dataVenda.toISOString().slice(0, 10);
@@ -426,10 +442,10 @@ export const shareVendaReceipt = async (data: ReceiptData) => {
     totais: {
       totalReceber: status === 'PENDENTE' ? valor : 0,
       totalPagar: 0,
-      saldo: valor,
-      totalVendido: valor,
+      saldo: status === 'CANCELADO' ? 0 : valor,
+      totalVendido: status === 'CANCELADO' ? 0 : valor,
       totalRecebido: status === 'PAGO' ? valor : 0,
-      ticketMedio: valor,
+      ticketMedio: status === 'CANCELADO' ? 0 : valor,
       totalRegistros: 1,
     },
     itens: [

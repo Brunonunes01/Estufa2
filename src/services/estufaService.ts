@@ -11,13 +11,57 @@ import {
   Timestamp 
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
-import { Estufa } from '../types/domain';
+import { Estufa, HydroMotor, HydroSetor } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { cancelActivePlantiosByEstufa } from './plantioService';
+
+const normalizeMotores = (motores?: HydroMotor[] | null) =>
+  Array.isArray(motores) ? motores : [];
+
+const normalizeSetores = (setores?: HydroSetor[] | null) =>
+  Array.isArray(setores) ? setores : [];
+
+const validateHydroMotorBindings = (setoresInput?: HydroSetor[] | null, motoresInput?: HydroMotor[] | null) => {
+  const setores = normalizeSetores(setoresInput);
+  const motores = normalizeMotores(motoresInput);
+
+  const motorIds = new Set<string>();
+  const motorCodes = new Set<string>();
+  motores.forEach((motor) => {
+    const motorId = String(motor?.id || '').trim();
+    if (!motorId) {
+      throw new Error('Todo motor precisa ter um identificador válido.');
+    }
+    if (motorIds.has(motorId)) {
+      throw new Error('Existem motores duplicados na estufa.');
+    }
+    motorIds.add(motorId);
+
+    const codigo = String(motor?.codigo || '').trim().toUpperCase();
+    if (codigo) {
+      if (motorCodes.has(codigo)) {
+        throw new Error('Código de motor duplicado na estufa.');
+      }
+      motorCodes.add(codigo);
+    }
+  });
+
+  setores.forEach((setor) => {
+    const setorNome = String(setor?.nome || '').trim() || 'Setor sem nome';
+    const motorId = String((setor as any)?.motorId || '').trim();
+    if (!motorId) {
+      throw new Error(`O setor "${setorNome}" precisa estar vinculado a um motor.`);
+    }
+    if (!motorIds.has(motorId)) {
+      throw new Error(`O setor "${setorNome}" está vinculado a um motor inexistente.`);
+    }
+  });
+};
 
 export const createEstufa = async (data: Partial<Estufa>, userId: string) => {
   const tenantId = assertTenantId(userId);
   try {
+    validateHydroMotorBindings(data.setores, data.motores);
     const novaEstufa = {
       ...data,
       userId: tenantId,
@@ -84,6 +128,12 @@ export const updateEstufa = async (id: string, data: Partial<Estufa>, userId: st
     // Verifica propriedade antes de atualizar
     const estufa = await getEstufaById(id, tenantId);
     if (!estufa) throw new Error("Estufa não encontrada.");
+
+    if (data.motores !== undefined || data.setores !== undefined) {
+      const nextSetores = data.setores !== undefined ? data.setores : estufa.setores;
+      const nextMotores = data.motores !== undefined ? data.motores : estufa.motores;
+      validateHydroMotorBindings(nextSetores, nextMotores);
+    }
 
     const docRef = doc(db, 'estufas', id);
     await updateDoc(docRef, { ...data, updatedAt: Timestamp.now() });

@@ -17,6 +17,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNetInfo } from '@react-native-community/netinfo';
 
 import { useAuth } from '../hooks/useAuth';
+import { useAppSettings } from '../hooks/useAppSettings';
 import { useThemeMode } from '../hooks/useThemeMode';
 import { COLORS, RADIUS } from '../constants/theme';
 
@@ -55,6 +56,16 @@ import RelatorioOperacionalScreen from '../screens/Financeiro/RelatorioOperacion
 import TarefasScreen from '../screens/Tarefas/TarefasScreen';
 import WizardSelectPlantioScreen from '../screens/Wizards/WizardSelectPlantioScreen';
 import WizardSelectActivityScreen from '../screens/Wizards/WizardSelectActivityScreen';
+import HidroponiaLotesScreen from '../modules/hidroponia/screens/HidroponiaLotesScreen';
+import HidroponiaEstufaLayoutScreen from '../modules/hidroponia/screens/HidroponiaEstufaLayoutScreen';
+import HidroponiaMotoresScreen from '../modules/hidroponia/screens/HidroponiaMotoresScreen';
+import HidroponiaLoteFormScreen from '../modules/hidroponia/screens/HidroponiaLoteFormScreen';
+import HidroponiaLoteDetailScreen from '../modules/hidroponia/screens/HidroponiaLoteDetailScreen';
+import HidroponiaMovimentarLoteScreen from '../modules/hidroponia/screens/HidroponiaMovimentarLoteScreen';
+import HidroponiaLeituraFormScreen from '../modules/hidroponia/screens/HidroponiaLeituraFormScreen';
+import HidroponiaVendaFormScreen from '../modules/hidroponia/screens/HidroponiaVendaFormScreen';
+import HidroponiaColheitaFormScreen from '../modules/hidroponia/screens/HidroponiaColheitaFormScreen';
+import HidroponiaVerdurasScreen from '../modules/hidroponia/screens/HidroponiaVerdurasScreen';
 import { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -135,7 +146,7 @@ const AuthStack = () => (
   </Stack.Navigator>
 );
 
-const AppStack = () => (
+const AppStack = ({ activeMode }: { activeMode: 'ciclo_longo' | 'hidroponia' }) => (
   <Stack.Navigator id="app-stack" screenOptions={defaultScreenOptions}>
     <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false, animation: 'fade' }} />
     <Stack.Screen name="ShareAccount" component={ShareAccountScreen} options={{ title: 'Compartilhar Acesso' }} />
@@ -145,16 +156,9 @@ const AppStack = () => (
     <Stack.Screen name="EstufaForm" component={EstufaFormScreen} options={{ title: 'Cadastro da Estufa' }} />
     <Stack.Screen name="EstufaDetail" component={EstufaDetailScreen} options={{ title: 'Detalhes da Estufa' }} />
     <Stack.Screen name="EstufaHistory" component={EstufaHistoryScreen} options={{ title: 'Histórico da Estufa' }} />
-    <Stack.Screen name="PlantioForm" component={PlantioFormScreen} options={{ title: 'Novo Plantio' }} />
-    <Stack.Screen name="PlantioDetail" component={PlantioDetailScreen} options={{ title: 'Painel do Ciclo' }} />
-    <Stack.Screen name="PlantioHistory" component={PlantioHistoryScreen} options={{ title: 'Histórico do Ciclo' }} />
-    <Stack.Screen name="ManejoForm" component={ManejoFormScreen} options={{ title: 'Registro de Manejo' }} />
-    <Stack.Screen name="ManejosHistory" component={ManejosHistoryScreen} options={{ title: 'Diário de Manejo' }} />
-    <Stack.Screen name="ColheitaForm" component={ColheitaFormScreen} options={{ title: 'Registrar Venda' }} />
     <Stack.Screen name="VendasList" component={VendasListScreen} options={{ title: 'Relatórios de Vendas' }} />
     <Stack.Screen name="ContasReceber" component={ContasReceberScreen} options={{ title: 'Contas a Receber' }} />
-    <Stack.Screen name="AplicacaoForm" component={AplicacaoFormScreen} options={{ title: 'Aplicação' }} />
-    <Stack.Screen name="AplicacoesHistory" component={AplicacoesHistoryScreen} options={{ title: 'Histórico de Aplicações' }} />
+    <Stack.Screen name="HidroponiaVendaForm" component={HidroponiaVendaFormScreen} options={{ title: 'Venda Hidroponia' }} />
     <Stack.Screen name="InsumosList" component={InsumosListScreen} options={{ title: 'Estoque de Insumos' }} />
     <Stack.Screen name="InsumoForm" component={InsumoFormScreen} options={{ title: 'Cadastro de Insumo' }} />
     <Stack.Screen name="InsumoEntry" component={InsumoEntryScreen} options={{ title: 'Entrada de Estoque' }} />
@@ -167,14 +171,38 @@ const AppStack = () => (
     <Stack.Screen name="Relatorios" component={RelatoriosScreen} options={{ title: 'BI & Relatórios' }} />
     <Stack.Screen name="RelatorioOperacional" component={RelatorioOperacionalScreen} options={{ title: 'Relatório Operacional' }} />
     <Stack.Screen name="Tarefas" component={TarefasScreen} options={{ title: 'Tarefas Agrícolas' }} />
-    {/* Wizard Screens */}
-    <Stack.Screen name="WizardSelectPlantio" component={WizardSelectPlantioScreen} options={{ title: 'Passo 1: Selecionar Ciclo' }} />
-    <Stack.Screen name="WizardSelectActivity" component={WizardSelectActivityScreen} options={{ title: 'Passo 2: Escolher Atividade' }} />
+    {activeMode === 'ciclo_longo' ? (
+      <>
+        <Stack.Screen name="PlantioForm" component={PlantioFormScreen} options={{ title: 'Novo Plantio' }} />
+        <Stack.Screen name="PlantioDetail" component={PlantioDetailScreen} options={{ title: 'Painel do Ciclo' }} />
+        <Stack.Screen name="PlantioHistory" component={PlantioHistoryScreen} options={{ title: 'Histórico do Ciclo' }} />
+        <Stack.Screen name="ManejoForm" component={ManejoFormScreen} options={{ title: 'Registro de Manejo' }} />
+        <Stack.Screen name="ManejosHistory" component={ManejosHistoryScreen} options={{ title: 'Diário de Manejo' }} />
+        <Stack.Screen name="ColheitaForm" component={ColheitaFormScreen} options={{ title: 'Registrar Venda' }} />
+        <Stack.Screen name="AplicacaoForm" component={AplicacaoFormScreen} options={{ title: 'Aplicação' }} />
+        <Stack.Screen name="AplicacoesHistory" component={AplicacoesHistoryScreen} options={{ title: 'Histórico de Aplicações' }} />
+        <Stack.Screen name="WizardSelectPlantio" component={WizardSelectPlantioScreen} options={{ title: 'Passo 1: Selecionar Ciclo' }} />
+        <Stack.Screen name="WizardSelectActivity" component={WizardSelectActivityScreen} options={{ title: 'Passo 2: Escolher Atividade' }} />
+      </>
+    ) : (
+      <>
+        <Stack.Screen name="HidroponiaEstufaLayout" component={HidroponiaEstufaLayoutScreen} options={{ title: 'Layout da Estufa' }} />
+        <Stack.Screen name="HidroponiaMotores" component={HidroponiaMotoresScreen} options={{ title: 'Motores' }} />
+        <Stack.Screen name="HidroponiaLotes" component={HidroponiaLotesScreen} options={{ title: 'Hidroponia' }} />
+        <Stack.Screen name="HidroponiaVerduras" component={HidroponiaVerdurasScreen} options={{ title: 'Cadastro de Verduras' }} />
+        <Stack.Screen name="HidroponiaLoteForm" component={HidroponiaLoteFormScreen} options={{ title: 'Iniciar Produção' }} />
+        <Stack.Screen name="HidroponiaLoteDetail" component={HidroponiaLoteDetailScreen} options={{ title: 'Detalhe da Produção' }} />
+        <Stack.Screen name="HidroponiaMovimentarLote" component={HidroponiaMovimentarLoteScreen} options={{ title: 'Movimentar Produção' }} />
+        <Stack.Screen name="HidroponiaColheitaForm" component={HidroponiaColheitaFormScreen} options={{ title: 'Colheita Hidroponia' }} />
+        <Stack.Screen name="HidroponiaLeituraForm" component={HidroponiaLeituraFormScreen} options={{ title: 'Leitura pH/CE' }} />
+      </>
+    )}
   </Stack.Navigator>
 );
 
 export const RootNavigator = () => {
   const { user, loading } = useAuth();
+  const { settings } = useAppSettings();
   const mode = useThemeMode();
   
   // Lógica para detetar se é Web e calcular largura
@@ -206,8 +234,8 @@ export const RootNavigator = () => {
         }
       ]}>
         <OfflineBanner />
-        <NavigationContainer>
-          {user ? <AppStack /> : <AuthStack />}
+        <NavigationContainer key={settings.activeProductionMode}>
+          {user ? <AppStack activeMode={settings.activeProductionMode} /> : <AuthStack />}
         </NavigationContainer>
       </View>
     </View>

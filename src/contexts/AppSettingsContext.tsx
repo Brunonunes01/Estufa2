@@ -5,6 +5,7 @@ export interface AppSettings {
   darkMode: boolean;
   notifyCritical: boolean;
   notifyDailySummary: boolean;
+  activeProductionMode: 'ciclo_longo' | 'hidroponia';
 }
 
 interface AppSettingsContextData {
@@ -19,6 +20,7 @@ const defaultSettings: AppSettings = {
   darkMode: false,
   notifyCritical: true,
   notifyDailySummary: true,
+  activeProductionMode: 'ciclo_longo',
 };
 
 export const AppSettingsContext = createContext<AppSettingsContextData>({} as AppSettingsContextData);
@@ -32,8 +34,17 @@ export const AppSettingsProvider = ({ children }: { children: ReactNode }) => {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         if (raw) {
-          const parsed = JSON.parse(raw) as AppSettings;
-          setSettings({ ...defaultSettings, ...parsed });
+          const parsed = JSON.parse(raw) as Partial<AppSettings> & {
+            productionProfiles?: { hydroponics?: boolean };
+          };
+          const inferredMode: AppSettings['activeProductionMode'] =
+            parsed.activeProductionMode ||
+            (parsed.productionProfiles?.hydroponics ? 'hidroponia' : 'ciclo_longo');
+          setSettings({
+            ...defaultSettings,
+            ...parsed,
+            activeProductionMode: inferredMode,
+          });
         }
       } catch (error) {
         console.error('Erro ao carregar preferências locais:', error);

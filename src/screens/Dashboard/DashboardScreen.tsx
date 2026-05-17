@@ -9,6 +9,7 @@ import { useThemeMode } from '../../hooks/useThemeMode';
 import { useFeedback } from '../../hooks/useFeedback';
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics';
 import { useAuth } from '../../hooks/useAuth';
+import { useAppSettings } from '../../hooks/useAppSettings';
 import DashboardLoadingSkeleton from '../../components/dashboard/DashboardLoadingSkeleton';
 import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 import HeroStats from '../../components/dashboard/HeroStats';
@@ -27,6 +28,8 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
   const isFocused = useIsFocused();
   const { showError } = useFeedback();
   const { isAdmin } = useAuth();
+  const { settings } = useAppSettings();
+  const isHydroMode = settings.activeProductionMode === 'hidroponia';
 
   const {
     user,
@@ -117,8 +120,71 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
     navigateTo('EstufasList', { mode: 'manejo' });
   }, [estufas, handleManejoFlow, navigateTo]);
 
-  const quickActions = useMemo(
-    () => [
+  const openHydroLayoutFlow = useCallback(() => {
+    if (estufas.length === 1) {
+      navigateTo('HidroponiaEstufaLayout', { estufaId: estufas[0].id });
+      return;
+    }
+    navigateTo('EstufasList', { mode: 'hidro_layout' });
+  }, [estufas, navigateTo]);
+
+  const openHydroMotorFlow = useCallback(() => {
+    if (estufas.length === 1) {
+      navigateTo('HidroponiaMotores', { estufaId: estufas[0].id });
+      return;
+    }
+    navigateTo('HidroponiaMotores');
+  }, [estufas, navigateTo]);
+
+  const quickActions = useMemo(() => {
+    if (isHydroMode) {
+      return [
+        {
+          label: 'Motores por Setor',
+          icon: 'engine-outline',
+          color: COLORS.info,
+          onPress: openHydroMotorFlow,
+        },
+        {
+          label: 'Movimentar Bancadas',
+          icon: 'swap-horizontal',
+          color: COLORS.success,
+          onPress: openHydroLayoutFlow,
+        },
+        {
+          label: 'Iniciar Produção',
+          icon: 'sprout',
+          color: COLORS.primaryDark,
+          onPress: () => navigateTo('HidroponiaLoteForm'),
+        },
+        {
+          label: 'Vender Hidroponia',
+          icon: 'basket-plus-outline',
+          color: COLORS.primary,
+          onPress: () => navigateTo('HidroponiaLotes'),
+        },
+        {
+          label: 'Nova Despesa',
+          icon: 'cash-minus',
+          color: COLORS.danger,
+          onPress: () => navigateTo('DespesaForm'),
+        },
+        {
+          label: 'Contas a Receber',
+          icon: 'hand-coin',
+          color: COLORS.primary,
+          onPress: () => navigateTo('ContasReceber'),
+        },
+        {
+          label: 'Tarefas',
+          icon: 'calendar-check-outline',
+          color: COLORS.orange,
+          onPress: () => navigateTo('Tarefas'),
+        },
+      ];
+    }
+
+    return [
       {
         label: 'Colher / Vender',
         icon: 'basket',
@@ -155,12 +221,11 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         color: COLORS.secondary,
         onPress: () => navigateTo('EstufasList'),
       },
-    ],
-    [navigateTo, openQuickManejoFlow, openQuickSaleFlow]
-  );
+    ];
+  }, [isHydroMode, navigateTo, openHydroLayoutFlow, openQuickManejoFlow, openQuickSaleFlow]);
 
-  const modules = useMemo<Array<{ label: string; icon: string; route: keyof RootStackParamList; color: string }>>(
-    () => [
+  const modules = useMemo<Array<{ label: string; icon: string; route: keyof RootStackParamList; color: string }>>(() => {
+    const base: Array<{ label: string; icon: string; route: keyof RootStackParamList; color: string }> = [
       { label: 'Relatórios', icon: 'chart-box-outline', route: 'Relatorios', color: COLORS.primary },
       { label: 'Vendas', icon: 'basket-outline', route: 'VendasList', color: COLORS.success },
       { label: 'Despesas', icon: 'cash-minus', route: 'DespesasList', color: COLORS.modDespesas },
@@ -170,9 +235,14 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
       { label: 'Compartilhar', icon: 'account-multiple-plus', route: 'ShareAccount', color: COLORS.success },
       { label: 'Tarefas', icon: 'calendar-check-outline', route: 'Tarefas', color: COLORS.orange },
       { label: 'Ajustes', icon: 'cog-outline', route: 'Settings', color: COLORS.secondary },
-    ],
-    []
-  );
+    ];
+
+    if (isHydroMode) {
+      base.splice(3, 0, { label: 'Hidroponia', icon: 'water', route: 'HidroponiaLotes', color: COLORS.info });
+    }
+
+    return base;
+  }, [isHydroMode]);
 
   const handleCompleteTask = useCallback(
     async (taskId: string) => {
@@ -223,10 +293,12 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         </View>
       )}
 
-      <TouchableOpacity style={styles.wizardButton} onPress={() => navigateTo('WizardSelectPlantio')}>
-        <MaterialCommunityIcons name="magic-staff" size={24} color={COLORS.textLight} />
-        <Text style={styles.wizardButtonText}>Registrar Atividade do Dia</Text>
-      </TouchableOpacity>
+      {!isHydroMode ? (
+        <TouchableOpacity style={styles.wizardButton} onPress={() => navigateTo('WizardSelectPlantio')}>
+          <MaterialCommunityIcons name="magic-staff" size={24} color={COLORS.textLight} />
+          <Text style={styles.wizardButtonText}>Registrar Atividade do Dia</Text>
+        </TouchableOpacity>
+      ) : null}
 
       <View style={[styles.infoBanner, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
         <MaterialCommunityIcons name="database-sync-outline" size={16} color={theme.textSecondary} />
@@ -236,6 +308,22 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
             : 'Resumo em agregação local (fallback).'}
         </Text>
       </View>
+
+      {isHydroMode ? (
+        <View style={[styles.motorSection, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
+          <View style={styles.motorSectionHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.motorSectionTitle, { color: theme.textPrimary }]}>Motores por Setor</Text>
+              <Text style={[styles.motorSectionSubtitle, { color: theme.textSecondary }]}>
+                Cadastre e edite motores em uma tela dedicada.
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.motorSectionBtn} onPress={openHydroMotorFlow}>
+              <Text style={styles.motorSectionBtnText}>Configurar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
 
       <TodayTasks
         tasks={todayTasks}
@@ -355,6 +443,21 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   infoBannerText: { fontSize: 11 },
+  motorSection: { borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: SPACING.md },
+  motorSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  motorSectionTitle: { fontSize: 15, fontWeight: '900' },
+  motorSectionSubtitle: { fontSize: 12, marginTop: 2 },
+  motorSectionBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  motorSectionBtnText: { color: COLORS.textLight, fontSize: 12, fontWeight: '800' },
   tenantBox: {
     borderRadius: 12,
     borderWidth: 1,

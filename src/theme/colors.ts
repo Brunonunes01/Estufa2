@@ -45,6 +45,7 @@ export const colors = {
   whiteAlpha15: 'rgba(255,255,255,0.15)',
   whiteAlpha18: 'rgba(255,255,255,0.18)',
   whiteAlpha20: 'rgba(255,255,255,0.2)',
+  whiteAlpha60: 'rgba(255,255,255,0.6)',
   whiteAlpha80: 'rgba(255,255,255,0.8)',
 
   // semantic extras used across modules

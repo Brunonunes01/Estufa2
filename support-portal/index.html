@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SGE Support Portal</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Acesso Restrito</p>
+          <h1>Portal de Suporte SGE</h1>
+          <p class="subtitle">
+            Operação separada do app principal, com login de suporte, diagnóstico por tenant e trilha de auditoria.
+          </p>
+        </div>
+        <button id="logoutBtn" class="ghost hidden">Sair</button>
+      </header>
+
+      <main id="appRoot" class="content"></main>
+    </div>
+
+    <script type="module" src="./portal.js"></script>
+  </body>
+</html>

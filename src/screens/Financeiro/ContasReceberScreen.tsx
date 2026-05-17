@@ -65,7 +65,7 @@ const ContasReceberScreen = ({ navigation }: any) => {
 
   useEffect(() => {
     if (isFocused) carregarDados();
-  }, [isFocused, selectedTenantId]);
+  }, [isFocused, selectedTenantId, user?.uid]);
 
   const getVendaTotal = (venda: Venda) => {
     const item = venda.itens?.[0];
@@ -140,16 +140,20 @@ const ContasReceberScreen = ({ navigation }: any) => {
     const quantidade = Number((item as any).quantidade || primeiraLinha?.quantidade || 0);
     const unidade = String((item as any).unidade || (primeiraLinha as any)?.unidade || 'un');
     const precoUnitario = Number((item as any).precoUnitario || primeiraLinha?.valorUnitario || 0);
-    const editTargetId = item.colheitaId || item.id;
-    const clienteNome = item.clienteId ? clientesMap[item.clienteId] : 'Não identificado';
+    const clienteNome = item.clienteId ? clientesMap[item.clienteId] || 'Cliente desconhecido' : 'Não identificado';
     const metodoLabel = formatMetodo(item.metodoPagamento || item.formaPagamento || undefined);
+    const isHydroSale = (item as any).originType === 'hydro_lote' || !!(item as any).hydroLoteId;
 
     return (
       <View style={[styles.card, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
         <TouchableOpacity
           activeOpacity={0.9}
           style={styles.cardTouch}
-          onPress={() => navigation.navigate('ColheitaForm', { vendaId: editTargetId, isEdit: true })}
+          onPress={() =>
+            isHydroSale
+              ? navigation.navigate('HidroponiaVendaForm', { vendaId: item.id })
+              : navigation.navigate('ColheitaForm', { vendaId: item.id, isEdit: true })
+          }
         >
           <View style={styles.cardHeader}>
             <View style={styles.cardHeaderMain}>

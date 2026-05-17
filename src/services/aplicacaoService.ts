@@ -44,6 +44,9 @@ export const createAplicacao = async (data: CreateAplicacaoData, userId: string)
     if (!plantioSnap.exists()) throw new Error('Plantio não encontrado.');
 
     const plantio = plantioSnap.data() as Plantio;
+    if (plantio.tenantId !== tenantId && plantio.userId !== tenantId) {
+      throw new Error('Acesso negado ao plantio selecionado.');
+    }
 
     const itensAplicacao: AplicacaoItem[] = [];
     let custoCalculadoTotal = 0;
@@ -57,6 +60,9 @@ export const createAplicacao = async (data: CreateAplicacaoData, userId: string)
 
       if (!insumoSnap.exists()) throw new Error(`Insumo não encontrado (${item.nomeInsumo}).`);
       const insumo = insumoSnap.data() as Insumo;
+      if (insumo.tenantId !== tenantId && insumo.userId !== tenantId) {
+        throw new Error(`Acesso negado ao insumo ${item.nomeInsumo}.`);
+      }
 
       if ((insumo.estoqueAtual || 0) < quantidade) {
         throw new Error(`Estoque insuficiente para ${item.nomeInsumo}. Disponível: ${insumo.estoqueAtual ?? 0} ${item.unidade}`);

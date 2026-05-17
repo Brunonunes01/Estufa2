@@ -17,6 +17,8 @@ export interface User extends BaseDoc {
   displayName?: string;
   email: string;
   role?: UserRole;
+  isSupportAgent?: boolean;
+  supportLevel?: 'read' | 'write' | 'owner';
   photoURL?: string;
   activeSafraId?: string;
   sharedAccess?: Array<{ tenantId: string; ownerName?: string; tenantName?: string }>;
@@ -99,9 +101,54 @@ export interface SubdivisaoEstufa {
   tipo?: 'canteiro' | 'setor' | 'lote' | 'bancada';
 }
 
+export type ProductionMode = 'long_cycle' | 'hydroponics' | 'seedlings' | 'seedling_resale';
+
+export type HydroponicSystemType = 'nft' | 'dwc' | 'floating' | 'substrate' | 'semi_hydroponic' | 'other';
+
+export interface HydroEstrutura {
+  id: string;
+  nome: string;
+  codigo?: string;
+  tipo: 'bancada' | 'canal' | 'perfil' | 'mesa' | 'bercario' | 'outro';
+  capacidadePlantas?: number;
+  quantidadeFuros?: number;
+  reservatorioId?: string | null;
+  x?: number;
+  y?: number;
+  ativo: boolean;
+}
+
+export interface HydroSetor {
+  id: string;
+  nome: string;
+  motorId: string;
+  estruturas?: HydroEstrutura[];
+}
+
+export interface HydroReservatorio {
+  id: string;
+  nome: string;
+  volumeLitros?: number;
+  setorId?: string | null;
+  ativo: boolean;
+}
+
+export interface HydroMotor {
+  id: string;
+  nome: string;
+  codigo?: string;
+  status: 'ativo' | 'inativo' | 'manutencao';
+  observacoes?: string;
+}
+
 export interface Estufa extends BaseDoc {
   nome: string;
   tipo?: 'hidroponia' | 'solo' | 'semi-hidroponia';
+  productionModes?: ProductionMode[];
+  hydroponicSystemType?: HydroponicSystemType;
+  setores?: HydroSetor[];
+  motores?: HydroMotor[];
+  reservatorios?: HydroReservatorio[];
   capacidadeTotal?: number;
   unidadeMedida?: 'm2' | 'plantas' | 'bancadas';
   subdivisoes?: SubdivisaoEstufa[];
@@ -256,6 +303,11 @@ export interface VendaItem {
 
 export interface Venda extends BaseDoc {
   plantioId?: string;
+  originType?: 'plantio' | 'hydro_lote' | 'seedling_lote' | 'resale_lote';
+  originId?: string | null;
+  hydroLoteId?: string | null;
+  traceabilityPublicToken?: string | null;
+  traceabilityPublicUrl?: string | null;
   estufaId?: string;
   colheitaId?: string;
   clienteId?: string | null;
@@ -320,9 +372,21 @@ export interface TarefaAgricola extends BaseDoc {
 }
 
 export interface RastreabilidadeEvento extends BaseDoc {
-  plantioId: string;
+  plantioId?: string | null;
+  hydroLoteId?: string | null;
   estufaId?: string | null;
-  entidade: 'plantio' | 'colheita' | 'venda' | 'aplicacao' | 'manejo' | 'tarefa' | 'estufa';
+  entidade:
+    | 'plantio'
+    | 'hydro_lote'
+    | 'hydro_movimentacao'
+    | 'hydro_leitura'
+    | 'hydro_colheita'
+    | 'colheita'
+    | 'venda'
+    | 'aplicacao'
+    | 'manejo'
+    | 'tarefa'
+    | 'estufa';
   entidadeId: string;
   acao:
     | 'criado'
@@ -331,7 +395,13 @@ export interface RastreabilidadeEvento extends BaseDoc {
     | 'excluido'
     | 'recebimento_registrado'
     | 'desbloqueio_ciclo'
-    | 'cancelado';
+    | 'cancelado'
+    | 'semeado'
+    | 'movido'
+    | 'leitura_registrada'
+    | 'nutriente_adicionado'
+    | 'colhido'
+    | 'etiqueta_gerada';
   descricao: string;
   motivo?: string | null;
   actorUid?: string | null;

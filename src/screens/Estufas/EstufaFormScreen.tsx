@@ -6,12 +6,17 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import MapView, { Marker, Region } from 'react-native-maps';
+import MapView, { Marker, Region } from '../../components/MapViewCompat';
 import { useAuth } from '../../hooks/useAuth';
 import { createEstufa, updateEstufa, getEstufaById, deleteEstufa } from '../../services/estufaService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { Timestamp } from 'firebase/firestore'; 
 import { verifyCurrentUserPassword } from '../../services/securityService';
+import { HydroponicSystemType, ProductionMode } from '../../types/domain';
+import { HYDRO_SYSTEM_OPTIONS } from '../../modules/hidroponia/constants';
+import { useAppSettings } from '../../hooks/useAppSettings';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../lib/queryClient';
 
 type MapCoordinate = { latitude: number; longitude: number };
 
@@ -24,8 +29,11 @@ const DEFAULT_MAP_REGION: Region = {
 
 const EstufaFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId, canDeleteEstufa } = useAuth();
+  const { settings } = useAppSettings();
+  const queryClient = useQueryClient();
   const editingId = route.params?.estufaId;
   const isEditMode = !!editingId;
+  const isHydroMode = settings.activeProductionMode === 'hidroponia';
 
   // Estados base e rastreabilidade
   const [nome, setNome] = useState('');
@@ -46,6 +54,8 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
 
   // --- NOVO ESTADO: STATUS ---
   const [status, setStatus] = useState<"ativa" | "manutencao" | "desativada">('ativa');
+  const [isHydroponic, setIsHydroponic] = useState(isHydroMode);
+  const [hydroponicSystemType, setHydroponicSystemType] = useState<HydroponicSystemType>('nft');
   
   const [loading, setLoading] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
@@ -59,18 +69,28 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: isEditMode ? 'Editar Estufa' : 'Nova Estufa',
+      title: isEditMode
+        ? 'Editar Estufa'
+        : isHydroMode
+        ? 'Nova Estufa Hidropônica'
+        : 'Nova Estufa de Ciclo Longo',
       headerRight: () => isEditMode && canDeleteEstufa ? (
         <TouchableOpacity onPress={handleDelete} style={{marginRight: 15}}>
           <MaterialCommunityIcons name="trash-can-outline" size={24} color={COLORS.textLight} />
         </TouchableOpacity>
       ) : null,
     });
-  }, [navigation, isEditMode, canDeleteEstufa]);
+  }, [navigation, isEditMode, canDeleteEstufa, isHydroMode]);
 
   useEffect(() => {
     if (isEditMode) loadEstufa();
   }, [editingId]);
+
+  useEffect(() => {
+    if (!isEditMode) {
+      setIsHydroponic(isHydroMode);
+    }
+  }, [isEditMode, isHydroMode]);
 
   const loadEstufa = async () => {
     const targetId = selectedTenantId || user?.uid;
@@ -95,6 +115,8 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
         }
         // Carrega o status (se não existir, cai no padrão 'ativa')
         setStatus(data.status || 'ativa');
+        setIsHydroponic(!!data.productionModes?.includes('hydroponics') || data.tipo === 'hidroponia');
+        setHydroponicSystemType(data.hydroponicSystemType || 'nft');
       }
     } catch (error) {
       console.error(error);
@@ -272,6 +294,8 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
     const altNum = parseFloat(altura.replace(',', '.')) || 0;
     const areaCalc = compNum * largNum;
     
+    const persistAsHydroponic = isEditMode ? isHydroponic : isHydroMode;
+    const productionModes: ProductionMode[] = persistAsHydroponic ? ['hydroponics'] : ['long_cycle'];
     const estufaData = {
       nome,
       cidade,
@@ -287,6 +311,9 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
       observacoes,
       dataInicioOperacao: Timestamp.fromDate(dataConstrucao),
       status, // <-- SALVANDO O STATUS AQUI
+      tipo: persistAsHydroponic ? 'hidroponia' : 'solo',
+      productionModes,
+      hydroponicSystemType: persistAsHydroponic ? hydroponicSystemType : null,
     };
 
     try {
@@ -295,6 +322,12 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
       } else {
         await createEstufa(estufaData as any, targetId);
       }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.estufasList(targetId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(targetId) }),
+      ]);
+
       navigation.goBack();
     } catch (e: any) {
       Alert.alert("Erro", e.message || "Falha ao salvar.");
@@ -315,6 +348,19 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
           placeholder="Ex: Estufa 01" 
           placeholderTextColor={COLORS.textPlaceholder} 
         />
+
+        <View style={styles.modeBadge}>
+          <MaterialCommunityIcons
+            name={isHydroMode ? 'water' : 'sprout'}
+            size={16}
+            color={isHydroMode ? COLORS.info : COLORS.success}
+          />
+          <Text style={styles.modeBadgeText}>
+            {isHydroMode
+              ? 'Cadastro no modo Hidroponia (esta estufa aparecerá só em Hidroponia).'
+              : 'Cadastro no modo Ciclo Longo (esta estufa aparecerá só no Ciclo Longo).'}
+          </Text>
+        </View>
 
         {/* --- SELEÇÃO DE STATUS --- */}
         <Text style={styles.sectionTitle}>Status da Estufa</Text>
@@ -340,6 +386,26 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
             <Text style={[styles.statusText, status === 'desativada' && styles.statusTextActive]}>Desativada</Text>
           </TouchableOpacity>
         </View>
+
+        {(isHydroMode || isHydroponic) && (
+          <>
+            <Text style={styles.sectionTitle}>Configuração Hidropônica</Text>
+            <Text style={styles.label}>Sistema hidropônico</Text>
+            <View style={styles.systemContainer}>
+              {HYDRO_SYSTEM_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[styles.systemBtn, hydroponicSystemType === option.value && styles.systemBtnActive]}
+                  onPress={() => setHydroponicSystemType(option.value)}
+                >
+                  <Text style={[styles.systemText, hydroponicSystemType === option.value && styles.systemTextActive]}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
 
         <Text style={styles.sectionTitle}>Dimensões e Estrutura</Text>
 
@@ -593,6 +659,24 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.secondary, marginTop: 10, marginBottom: 15 },
   label: { fontWeight: 'bold', marginBottom: 5, color: COLORS.textSecondary, fontSize: 13 },
   input: { backgroundColor: COLORS.surfaceMuted, padding: 15, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, color: COLORS.textDark },
+  modeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: SPACING.md,
+  },
+  modeBadgeText: {
+    flex: 1,
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
   dateInputButton: { backgroundColor: COLORS.surfaceMuted, padding: 15, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   dateInputText: { color: COLORS.textDark, fontSize: TYPOGRAPHY.body },
   dateDoneButton: { alignSelf: 'flex-end', marginTop: -8, marginBottom: 15, paddingHorizontal: 12, paddingVertical: 8, borderRadius: RADIUS.sm, backgroundColor: COLORS.primary },
@@ -607,6 +691,14 @@ const styles = StyleSheet.create({
   statusBtnDanger: { backgroundColor: COLORS.danger, borderColor: COLORS.danger },
   statusText: { color: COLORS.textSecondary, fontWeight: 'bold', fontSize: 13 },
   statusTextActive: { color: COLORS.textLight },
+  hydroCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.surface, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, marginBottom: SPACING.md },
+  hydroTitle: { color: COLORS.textPrimary, fontWeight: '800', fontSize: 14 },
+  hydroText: { color: COLORS.textSecondary, fontSize: 12, marginTop: 3, lineHeight: 17 },
+  systemContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 15 },
+  systemBtn: { borderRadius: RADIUS.pill, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, paddingHorizontal: 12, paddingVertical: 8 },
+  systemBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  systemText: { color: COLORS.textSecondary, fontWeight: '800', fontSize: 12 },
+  systemTextActive: { color: COLORS.textLight },
 
   locationBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.primary, marginBottom: 15, backgroundColor: COLORS.primaryLight },
   locationBtnText: { color: COLORS.primary, fontWeight: 'bold', fontSize: 14 },

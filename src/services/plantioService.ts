@@ -1,6 +1,5 @@
 import {
   collection,
-  addDoc,
   query,
   where,
   getDocs,
@@ -8,7 +7,6 @@ import {
   doc,
   getDoc,
   updateDoc,
-  deleteDoc,
   writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
@@ -208,7 +206,62 @@ export const updatePlantio = async (id: string, data: Partial<Plantio>, userId: 
     payload.custoEstimadoInicial = nextCustoInicial && nextCustoInicial > 0 ? nextCustoInicial : null;
   }
 
-  await updateDoc(doc(db, 'plantios', id), payload);
+  let investimentoInicialDocId: string | null = null;
+  if (hasCustoInicialUpdate) {
+    const despesasSnap = await getDocs(
+      query(collection(db, 'despesas'), where('tenantId', '==', tenantId), where('plantioId', '==', id))
+    );
+    investimentoInicialDocId =
+      despesasSnap.docs.find((item) => (item.data() as any).tipoGasto === 'investimento_inicial')?.id || null;
+  }
+
+  if (!hasCustoInicialUpdate) {
+    await updateDoc(doc(db, 'plantios', id), payload);
+  } else {
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'plantios', id), payload);
+
+    const culturaLabel = data.cultura || plantio.cultura || 'Plantio';
+    const quantidadeLabel = Number(data.quantidadePlantada ?? plantio.quantidadePlantada ?? 0);
+    const unidadeLabel = data.unidadeQuantidade || plantio.unidadeQuantidade || 'un';
+    const descricao = `Custo inicial: ${culturaLabel} (${quantidadeLabel} ${unidadeLabel})`;
+    const estufaId = data.estufaId || plantio.estufaId || null;
+
+    if ((nextCustoInicial || 0) > 0) {
+      if (investimentoInicialDocId) {
+        batch.update(doc(db, 'despesas', investimentoInicialDocId), {
+          descricao,
+          valor: nextCustoInicial,
+          estufaId,
+          statusPagamento: 'pago',
+          status: 'pago',
+          updatedAt: now,
+          tipoGasto: 'investimento_inicial',
+        });
+      } else {
+        const despesaRef = doc(collection(db, 'despesas'));
+        batch.set(despesaRef, {
+          tenantId,
+          userId: tenantId,
+          descricao,
+          categoria: 'outro',
+          valor: nextCustoInicial,
+          dataDespesa: now,
+          statusPagamento: 'pago',
+          status: 'pago',
+          plantioId: id,
+          estufaId,
+          createdAt: now,
+          updatedAt: now,
+          tipoGasto: 'investimento_inicial',
+        });
+      }
+    } else if (investimentoInicialDocId) {
+      batch.delete(doc(db, 'despesas', investimentoInicialDocId));
+    }
+
+    await batch.commit();
+  }
 
   await createTraceabilityEventSafely(tenantId, {
     plantioId: id,
@@ -241,79 +294,10 @@ export const updatePlantio = async (id: string, data: Partial<Plantio>, userId: 
     },
   });
 
-  if (!hasCustoInicialUpdate) return;
-
-  const despesasSnap = await getDocs(
-    query(collection(db, 'despesas'), where('tenantId', '==', tenantId), where('plantioId', '==', id))
-  );
-  const investimentoInicialDoc = despesasSnap.docs.find(
-    (item) => (item.data() as any).tipoGasto === 'investimento_inicial'
-  );
-
-  const culturaLabel = data.cultura || plantio.cultura || 'Plantio';
-  const quantidadeLabel = Number(data.quantidadePlantada ?? plantio.quantidadePlantada ?? 0);
-  const unidadeLabel = data.unidadeQuantidade || plantio.unidadeQuantidade || 'un';
-  const descricao = `Custo inicial: ${culturaLabel} (${quantidadeLabel} ${unidadeLabel})`;
-  const estufaId = data.estufaId || plantio.estufaId || null;
-
-  if ((nextCustoInicial || 0) > 0) {
-    if (investimentoInicialDoc) {
-      await updateDoc(doc(db, 'despesas', investimentoInicialDoc.id), {
-        descricao,
-        valor: nextCustoInicial,
-        estufaId,
-        statusPagamento: 'pago',
-        status: 'pago',
-        updatedAt: now,
-        tipoGasto: 'investimento_inicial',
-      });
-    } else {
-      await addDoc(collection(db, 'despesas'), {
-        tenantId,
-        userId: tenantId,
-        descricao,
-        categoria: 'outro',
-        valor: nextCustoInicial,
-        dataDespesa: now,
-        statusPagamento: 'pago',
-        status: 'pago',
-        plantioId: id,
-        estufaId,
-        createdAt: now,
-        updatedAt: now,
-        tipoGasto: 'investimento_inicial',
-      });
-    }
-    return;
-  }
-
-  if (investimentoInicialDoc) {
-    await deleteDoc(doc(db, 'despesas', investimentoInicialDoc.id));
-  }
 };
 
 export const deletePlantio = async (id: string, userId: string) => {
-  const tenantId = assertTenantId(userId);
-  const plantio = await getPlantioById(id, tenantId);
-  if (!plantio) throw new Error('Plantio não encontrado.');
-
-  await deleteDoc(doc(db, 'plantios', id));
-
-  await createTraceabilityEventSafely(tenantId, {
-    plantioId: id,
-    estufaId: plantio.estufaId || null,
-    entidade: 'plantio',
-    entidadeId: id,
-    acao: 'excluido',
-    descricao: 'Plantio excluído.',
-    actorUid: tenantId,
-    metadata: {
-      codigoLote: plantio.codigoLote || null,
-      cultura: plantio.cultura || null,
-      status: plantio.status || null,
-      custoAcumulado: Number(plantio.custoAcumulado || 0),
-    },
-  });
+  return deletePlantioSafely(id, userId);
 };
 
 export const deletePlantioSafely = async (id: string, userId: string) => {

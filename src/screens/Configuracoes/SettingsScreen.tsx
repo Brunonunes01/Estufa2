@@ -10,7 +10,7 @@ import {
   Switch,
 } from 'react-native';
 import { useNetInfo } from '@react-native-community/netinfo';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -75,7 +75,7 @@ const SettingsScreen = () => {
     try {
       await updateDoc(doc(db, 'users', user.uid), {
         name: nome.trim(),
-        updatedAt: new Date(),
+        updatedAt: Timestamp.now(),
       });
       if (auth.currentUser) {
         await updateProfile(auth.currentUser, { displayName: nome.trim() });
@@ -207,6 +207,41 @@ const SettingsScreen = () => {
       </View>
 
       <View style={styles.card}>
+        <SectionHeading title="Modo de Operação" subtitle="Mostra apenas as telas do modo selecionado" />
+        <View style={styles.modeRow}>
+          <TouchableOpacity
+            style={[styles.modeBtn, settings.activeProductionMode === 'ciclo_longo' && styles.modeBtnActive]}
+            onPress={() => updateSettings({ activeProductionMode: 'ciclo_longo' })}
+          >
+            <MaterialCommunityIcons
+              name="sprout"
+              size={16}
+              color={settings.activeProductionMode === 'ciclo_longo' ? COLORS.textLight : COLORS.textSecondary}
+            />
+            <Text style={[styles.modeBtnText, settings.activeProductionMode === 'ciclo_longo' && styles.modeBtnTextActive]}>
+              Ciclo Longo
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeBtn, settings.activeProductionMode === 'hidroponia' && styles.modeBtnActive]}
+            onPress={() => updateSettings({ activeProductionMode: 'hidroponia' })}
+          >
+            <MaterialCommunityIcons
+              name="water"
+              size={16}
+              color={settings.activeProductionMode === 'hidroponia' ? COLORS.textLight : COLORS.textSecondary}
+            />
+            <Text style={[styles.modeBtnText, settings.activeProductionMode === 'hidroponia' && styles.modeBtnTextActive]}>
+              Hidroponia
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.helpText}>
+          Ao trocar o modo, o app reinicia a navegação para exibir somente os módulos da operação escolhida.
+        </Text>
+      </View>
+
+      <View style={styles.card}>
         <SectionHeading title="Aparência" subtitle="Personalize o visual do aplicativo" />
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Modo escuro (experimental)</Text>
@@ -291,6 +326,22 @@ const styles = StyleSheet.create({
   switchLabel: { color: COLORS.textPrimary, fontSize: TYPOGRAPHY.body, fontWeight: '600', flex: 1, marginRight: 10 },
   systemValue: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   helpText: { marginTop: 8, color: COLORS.textSecondary, fontSize: 12 },
+  modeRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  modeBtn: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  modeBtnActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary },
+  modeBtnText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+  modeBtnTextActive: { color: COLORS.textLight },
   logoutBtn: {
     height: 48,
     borderRadius: RADIUS.sm,

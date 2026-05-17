@@ -5,6 +5,10 @@ import { RastreabilidadeEvento } from '../types/domain';
 
 export type TraceabilityEntityType =
   | 'plantio'
+  | 'hydro_lote'
+  | 'hydro_movimentacao'
+  | 'hydro_leitura'
+  | 'hydro_colheita'
   | 'colheita'
   | 'venda'
   | 'aplicacao'
@@ -19,10 +23,17 @@ export type TraceabilityAction =
   | 'excluido'
   | 'recebimento_registrado'
   | 'desbloqueio_ciclo'
-  | 'cancelado';
+  | 'cancelado'
+  | 'semeado'
+  | 'movido'
+  | 'leitura_registrada'
+  | 'nutriente_adicionado'
+  | 'colhido'
+  | 'etiqueta_gerada';
 
 export interface CreateTraceabilityEventInput {
-  plantioId: string;
+  plantioId?: string | null;
+  hydroLoteId?: string | null;
   estufaId?: string | null;
   entidade: TraceabilityEntityType;
   entidadeId: string;
@@ -42,7 +53,8 @@ export const createTraceabilityEvent = async (userId: string, data: CreateTracea
     tenantId,
     userId: tenantId,
     createdBy: data.actorUid || tenantId,
-    plantioId: data.plantioId,
+    plantioId: data.plantioId || null,
+    hydroLoteId: data.hydroLoteId || null,
     estufaId: data.estufaId || null,
     entidade: data.entidade,
     entidadeId: data.entidadeId,
@@ -79,6 +91,24 @@ export const listTraceabilityEventsByPlantio = async (
     collection(db, 'rastreabilidade_eventos'),
     where('tenantId', '==', tenantId),
     where('plantioId', '==', plantioId),
+    orderBy('eventAt', 'desc'),
+    limit(maxItems)
+  );
+
+  const snap = await getDocs(q);
+  return snap.docs.map((item) => ({ ...(item.data() as RastreabilidadeEvento), id: item.id }));
+};
+
+export const listTraceabilityEventsByHydroLote = async (
+  userId: string,
+  hydroLoteId: string,
+  maxItems = 100
+): Promise<RastreabilidadeEvento[]> => {
+  const tenantId = assertTenantId(userId);
+  const q = query(
+    collection(db, 'rastreabilidade_eventos'),
+    where('tenantId', '==', tenantId),
+    where('hydroLoteId', '==', hydroLoteId),
     orderBy('eventAt', 'desc'),
     limit(maxItems)
   );

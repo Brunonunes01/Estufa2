@@ -7,6 +7,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "support:portal": "node support-portal/server.mjs 4173",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -21,6 +22,7 @@
     "@tanstack/react-query": "^5.96.0",
     "expo": "~54.0.23",
     "expo-auth-session": "~7.0.10",
+    "expo-contacts": "^55.0.14",
     "expo-location": "~19.0.8",
     "expo-print": "~15.0.8",
     "expo-sharing": "~14.0.8",

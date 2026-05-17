@@ -63,6 +63,22 @@ const VendasListScreen = ({ navigation }: any) => {
   const getVendaTotal = (venda: any) => Number(venda.valorTotal || getVendaQuantidade(venda) * getVendaPrecoUnitario(venda));
   const getVendaData = (venda: any) => venda.dataVenda || venda.dataColheita || null;
   const getVendaUnidade = (venda: any) => venda.unidade || venda.itens?.[0]?.unidade || 'un';
+  const getNormalizedStatusPagamento = (venda: any) =>
+    String(venda?.statusPagamento || '')
+      .trim()
+      .toLowerCase();
+  const getFinancialStatus = (venda: any): 'pendente' | 'pago' | 'cancelado' => {
+    const statusPagamento = getNormalizedStatusPagamento(venda);
+    if (statusPagamento === 'cancelado') return 'cancelado';
+    if (
+      statusPagamento === 'pendente' ||
+      statusPagamento === 'atrasado' ||
+      (!statusPagamento && venda.metodoPagamento === 'prazo')
+    ) {
+      return 'pendente';
+    }
+    return 'pago';
+  };
 
   const loadData = async () => {
     const targetId = selectedTenantId || user?.uid;
@@ -102,7 +118,7 @@ const VendasListScreen = ({ navigation }: any) => {
 
   useEffect(() => {
     if (isFocused) loadData();
-  }, [isFocused, selectedTenantId]);
+  }, [isFocused, selectedTenantId, user?.uid]);
 
   const getClienteNome = (id?: string | null) => {
     if (!id) return 'Cliente Avulso';
@@ -110,9 +126,6 @@ const VendasListScreen = ({ navigation }: any) => {
     if (loading && Object.keys(clientesMap).length === 0) return 'Carregando...';
     return 'Cliente Desconhecido';
   };
-
-  const isPendenteVenda = (venda: any) =>
-    venda.statusPagamento === 'pendente' || (!venda.statusPagamento && venda.metodoPagamento === 'prazo');
 
   const filteredVendas = useMemo(() => {
     return allVendas.filter((venda) => {
@@ -125,12 +138,16 @@ const VendasListScreen = ({ navigation }: any) => {
         !filterObs ||
         (venda.observacoes && venda.observacoes.toLowerCase().includes(filterObs.toLowerCase()));
 
-      const statusVenda = isPendenteVenda(venda) ? 'pendente' : 'pago';
+      const statusVenda = getFinancialStatus(venda);
       const matchStatus = filterStatus === 'todos' || statusVenda === filterStatus;
 
       let matchDate = true;
       const vendaData = getVendaData(venda);
-      if (vendaData) {
+      const hasDateFilter = !!startDate || !!endDate;
+
+      if (!vendaData && hasDateFilter) {
+        matchDate = false;
+      } else if (vendaData) {
         const dataVenda = vendaData.toDate ? vendaData.toDate() : new Date(vendaData.seconds * 1000);
         const dVenda = new Date(dataVenda.setHours(0, 0, 0, 0));
 
@@ -154,6 +171,7 @@ const VendasListScreen = ({ navigation }: any) => {
     const data = {
       totalValor: 0,
       totalItens: 0,
+      totalItensFinanceiros: 0,
       totalRecebido: 0,
       totalReceber: 0,
       ticketMedio: 0,
@@ -162,19 +180,24 @@ const VendasListScreen = ({ navigation }: any) => {
 
     filteredVendas.forEach((v) => {
       const val = getVendaTotal(v);
-      const pendente = isPendenteVenda(v);
+      const financialStatus = getFinancialStatus(v);
+      const ignorarFinanceiro = financialStatus === 'cancelado';
 
-      data.totalValor += val;
       data.totalItens += 1;
-      data.totalReceber += pendente ? val : 0;
-      data.totalRecebido += pendente ? 0 : val;
+      if (ignorarFinanceiro) return;
+
+      data.totalItensFinanceiros += 1;
+      data.totalValor += val;
+      data.totalReceber += financialStatus === 'pendente' ? val : 0;
+      data.totalRecebido += financialStatus === 'pago' ? val : 0;
 
       const metodo = v.metodoPagamento || 'não definido';
       const metodoKey = metodo.charAt(0).toUpperCase() + metodo.slice(1);
       data.porMetodo[metodoKey] = (data.porMetodo[metodoKey] || 0) + val;
     });
 
-    data.ticketMedio = data.totalItens > 0 ? data.totalValor / data.totalItens : 0;
+    data.ticketMedio =
+      data.totalItensFinanceiros > 0 ? data.totalValor / data.totalItensFinanceiros : 0;
     return data;
   }, [filteredVendas]);
 
@@ -273,10 +296,13 @@ const VendasListScreen = ({ navigation }: any) => {
       const totaisRelatorio = vendasParaRelatorio.reduce(
         (acc, item) => {
           const total = getVendaTotal(item);
-          const pendente = isPendenteVenda(item);
-          acc.totalVendido += total;
-          acc.totalRecebido += pendente ? 0 : total;
-          acc.totalReceber += pendente ? total : 0;
+          const financialStatus = getFinancialStatus(item);
+          const ignorarFinanceiro = financialStatus === 'cancelado';
+          if (!ignorarFinanceiro) {
+            acc.totalVendido += total;
+          }
+          acc.totalRecebido += financialStatus === 'pago' ? total : 0;
+          acc.totalReceber += financialStatus === 'pendente' ? total : 0;
           acc.totalRegistros += 1;
           return acc;
         },
@@ -285,13 +311,19 @@ const VendasListScreen = ({ navigation }: any) => {
 
       const detalhes = vendasParaRelatorio.map((item) => {
         const total = getVendaTotal(item);
+        const financialStatus = getFinancialStatus(item);
         return {
           codigo: item.id,
           data: formatDate(getVendaData(item)),
           cliente: getClienteNome(item.clienteId),
           estufa: estufasMap[item.estufaId] || 'Estufa não identificada',
           metodoPagamento: (item.metodoPagamento || item.formaPagamento || 'N/A').toUpperCase(),
-          status: isPendenteVenda(item) ? ('PENDENTE' as const) : ('PAGO' as const),
+          status:
+            financialStatus === 'pendente'
+              ? ('PENDENTE' as const)
+              : financialStatus === 'cancelado'
+              ? ('CANCELADO' as const)
+              : ('PAGO' as const),
           valor: total,
           observacoes: item.observacoes,
         };
@@ -377,15 +409,43 @@ const VendasListScreen = ({ navigation }: any) => {
     const precoUnitario = getVendaPrecoUnitario(item);
     const unidade = getVendaUnidade(item);
     const dataVenda = getVendaData(item);
-    const editTargetId = item.colheitaId || item.id;
     const clienteNome = getClienteNome(item.clienteId);
-    const isPendente = isPendenteVenda(item);
+    const financialStatus = getFinancialStatus(item);
+    const isHydroSale = item.originType === 'hydro_lote' || !!item.hydroLoteId;
+    const statusLabel =
+      financialStatus === 'pendente'
+        ? 'PENDENTE'
+        : financialStatus === 'cancelado'
+        ? 'CANCELADO'
+        : 'PAGO';
+    const statusTone =
+      financialStatus === 'pendente'
+        ? {
+            backgroundColor: theme.dangerBackground,
+            borderColor: COLORS.cFECACA,
+            textColor: COLORS.danger,
+          }
+        : financialStatus === 'cancelado'
+        ? {
+            backgroundColor: theme.surfaceMuted,
+            borderColor: theme.border,
+            textColor: theme.textSecondary,
+          }
+        : {
+            backgroundColor: theme.successBackground,
+            borderColor: COLORS.c86EFAC,
+            textColor: COLORS.success,
+          };
 
     return (
       <View style={[styles.card, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
         <TouchableOpacity
           style={styles.cardTouch}
-          onPress={() => navigation.navigate('ColheitaForm', { vendaId: editTargetId, isEdit: true })}
+          onPress={() =>
+            isHydroSale
+              ? navigation.navigate('HidroponiaVendaForm', { vendaId: item.id })
+              : navigation.navigate('ColheitaForm', { vendaId: item.id, isEdit: true })
+          }
           activeOpacity={0.88}
         >
           <View style={styles.cardHeader}>
@@ -394,18 +454,21 @@ const VendasListScreen = ({ navigation }: any) => {
                 {clienteNome}
               </Text>
               <Text style={[styles.dateText, { color: theme.textSecondary }]}>Venda em {formatDate(dataVenda)}</Text>
+              {isHydroSale ? (
+                <Text style={[styles.dateText, { color: theme.info }]}>Origem: Hidroponia</Text>
+              ) : null}
             </View>
             <View
               style={[
                 styles.badge,
                 {
-                  backgroundColor: isPendente ? theme.dangerBackground : theme.successBackground,
-                  borderColor: isPendente ? COLORS.cFECACA : COLORS.c86EFAC,
+                  backgroundColor: statusTone.backgroundColor,
+                  borderColor: statusTone.borderColor,
                 },
               ]}
             >
-              <Text style={[styles.badgeText, { color: isPendente ? COLORS.danger : COLORS.success }]}>
-                {isPendente ? 'PENDENTE' : 'PAGO'}
+              <Text style={[styles.badgeText, { color: statusTone.textColor }]}>
+                {statusLabel}
               </Text>
             </View>
           </View>
@@ -566,6 +629,7 @@ const VendasListScreen = ({ navigation }: any) => {
                   <Picker.Item label="Todos" value="todos" />
                   <Picker.Item label="Pagos" value="pago" />
                   <Picker.Item label="Pendentes" value="pendente" />
+                  <Picker.Item label="Cancelados" value="cancelado" />
                 </Picker>
               </View>
 
