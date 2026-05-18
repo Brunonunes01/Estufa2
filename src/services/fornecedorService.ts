@@ -16,6 +16,8 @@ import { Fornecedor } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { OfflineWriteOptions } from './offline/offlineStorage';
 import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWrite';
+import { isSupabaseBackend } from './backendConfig';
+import { getSupabaseClient } from './supabaseClient';
 
 // Dados que vêm do formulário
 export type FornecedorFormData = {
@@ -27,6 +29,158 @@ export type FornecedorFormData = {
   observacoes: string | null;
 };
 
+const mapSupabaseFornecedorToDomain = (row: any): Fornecedor => ({
+  id: row.id,
+  tenantId: row.tenant_id,
+  userId: row.created_by || row.tenant_id,
+  createdBy: row.created_by || row.tenant_id,
+  nome: row.nome,
+  contato: row.contato || undefined,
+  telefone: row.telefone || undefined,
+  email: row.email || undefined,
+  categoria: row.categoria || undefined,
+  observacoes: row.observacoes || undefined,
+  createdAt: new Date(row.created_at).getTime(),
+  updatedAt: new Date(row.updated_at).getTime(),
+});
+
+const buildSupabaseFornecedorPayload = (data: FornecedorFormData, tenantId: string) => ({
+  tenant_id: tenantId,
+  nome: data.nome,
+  contato: data.contato ?? null,
+  telefone: data.telefone ?? null,
+  email: data.email ?? null,
+  observacoes: data.observacoes ?? null,
+});
+
+const createFornecedorFirebase = async (data: FornecedorFormData, tenantId: string) => {
+  const novoFornecedor = {
+    ...data,
+    tenantId,
+    userId: tenantId,
+    createdBy: tenantId,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  };
+  const docRef = await addDoc(collection(db, 'fornecedores'), novoFornecedor);
+  return docRef.id;
+};
+
+const createFornecedorSupabase = async (data: FornecedorFormData, tenantId: string) => {
+  const supabase = getSupabaseClient();
+  const { data: inserted, error } = await supabase
+    .from('fornecedores')
+    .insert(buildSupabaseFornecedorPayload(data, tenantId))
+    .select('id')
+    .single();
+
+  if (error || !inserted?.id) {
+    throw new Error(`Não foi possível criar o fornecedor. ${error?.message || ''}`.trim());
+  }
+  return inserted.id as string;
+};
+
+const listFornecedoresFirebase = async (tenantId: string): Promise<Fornecedor[]> => {
+  const [tenantSnap, legacySnap] = await Promise.all([
+    getDocs(query(collection(db, 'fornecedores'), where('tenantId', '==', tenantId))),
+    getDocs(query(collection(db, 'fornecedores'), where('userId', '==', tenantId))),
+  ]);
+
+  const fornecedoresMap = new Map<string, Fornecedor>();
+  [tenantSnap, legacySnap].forEach((snap) => {
+    snap.forEach((document) => {
+      fornecedoresMap.set(document.id, { ...document.data(), id: document.id } as Fornecedor);
+    });
+  });
+
+  return Array.from(fornecedoresMap.values()).sort((a, b) =>
+    String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR')
+  );
+};
+
+const listFornecedoresSupabase = async (tenantId: string): Promise<Fornecedor[]> => {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('fornecedores')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('nome', { ascending: true });
+
+  if (error) {
+    throw new Error(`Não foi possível buscar os fornecedores. ${error.message}`);
+  }
+
+  return (data || []).map(mapSupabaseFornecedorToDomain);
+};
+
+const getFornecedorByIdFirebase = async (fornecedorId: string, tenantId: string): Promise<Fornecedor | null> => {
+  const docRef = doc(db, 'fornecedores', fornecedorId);
+  const docSnap = await getDoc(docRef);
+  if (!docSnap.exists()) return null;
+  const data = docSnap.data() as Fornecedor;
+  if (data.tenantId !== tenantId && data.userId !== tenantId) {
+    throw new Error('Acesso negado: este fornecedor não pertence ao seu tenant.');
+  }
+  return { ...data, id: docSnap.id };
+};
+
+const getFornecedorByIdSupabase = async (fornecedorId: string, tenantId: string): Promise<Fornecedor | null> => {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('fornecedores')
+    .select('*')
+    .eq('id', fornecedorId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Erro ao buscar fornecedor por ID: ${error.message}`);
+  }
+
+  return data ? mapSupabaseFornecedorToDomain(data) : null;
+};
+
+const updateFornecedorFirebase = async (fornecedorId: string, data: FornecedorFormData, tenantId: string) => {
+  const fornecedor = await getFornecedorByIdFirebase(fornecedorId, tenantId);
+  if (!fornecedor) throw new Error('Fornecedor não encontrado.');
+
+  const fornecedorRef = doc(db, 'fornecedores', fornecedorId);
+  await updateDoc(fornecedorRef, {
+    ...data,
+    updatedAt: Timestamp.now(),
+  });
+};
+
+const updateFornecedorSupabase = async (fornecedorId: string, data: FornecedorFormData, tenantId: string) => {
+  const supabase = getSupabaseClient();
+  const payload = {
+    ...buildSupabaseFornecedorPayload(data, tenantId),
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabase
+    .from('fornecedores')
+    .update(payload)
+    .eq('id', fornecedorId)
+    .eq('tenant_id', tenantId);
+  if (error) throw new Error(`Erro ao atualizar fornecedor: ${error.message}`);
+};
+
+const deleteFornecedorFirebase = async (fornecedorId: string, tenantId: string) => {
+  const fornecedor = await getFornecedorByIdFirebase(fornecedorId, tenantId);
+  if (!fornecedor) throw new Error('Fornecedor não encontrado para exclusão.');
+  await deleteDoc(doc(db, 'fornecedores', fornecedorId));
+};
+
+const deleteFornecedorSupabase = async (fornecedorId: string, tenantId: string) => {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('fornecedores')
+    .delete()
+    .eq('id', fornecedorId)
+    .eq('tenant_id', tenantId);
+  if (error) throw new Error(`Erro ao excluir fornecedor: ${error.message}`);
+};
+
 // 1. CRIAR FORNECEDOR
 export const createFornecedor = async (data: FornecedorFormData, userId: string, options?: OfflineWriteOptions) => {
   const tenantId = assertTenantId(userId);
@@ -36,18 +190,9 @@ export const createFornecedor = async (data: FornecedorFormData, userId: string,
     options,
     onQueuedValue: () => buildOfflinePlaceholderId(),
     write: async () => {
-      const novoFornecedor = {
-        ...data,
-        tenantId,
-        userId: tenantId,
-        createdBy: tenantId,
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-      };
-
       try {
-        const docRef = await addDoc(collection(db, 'fornecedores'), novoFornecedor);
-        return docRef.id;
+        if (isSupabaseBackend()) return await createFornecedorSupabase(data, tenantId);
+        return await createFornecedorFirebase(data, tenantId);
       } catch (error) {
         console.error("Erro ao criar fornecedor: ", error);
         throw new Error('Não foi possível criar o fornecedor.');
@@ -60,23 +205,8 @@ export const createFornecedor = async (data: FornecedorFormData, userId: string,
 export const listFornecedores = async (userId: string): Promise<Fornecedor[]> => {
   const tenantId = assertTenantId(userId);
   try {
-    const [tenantSnap, legacySnap] = await Promise.all([
-      getDocs(query(collection(db, 'fornecedores'), where("tenantId", "==", tenantId))),
-      getDocs(query(collection(db, 'fornecedores'), where("userId", "==", tenantId))),
-    ]);
-
-    const fornecedoresMap = new Map<string, Fornecedor>();
-    [tenantSnap, legacySnap].forEach((snap) => {
-      snap.forEach((document) => {
-        fornecedoresMap.set(document.id, { ...document.data(), id: document.id } as Fornecedor);
-      });
-    });
-
-    const fornecedores = Array.from(fornecedoresMap.values()).sort((a, b) =>
-      String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR')
-    );
-    
-    return fornecedores;
+    if (isSupabaseBackend()) return await listFornecedoresSupabase(tenantId);
+    return await listFornecedoresFirebase(tenantId);
 
   } catch (error) { 
     console.error("Erro ao listar fornecedores: ", error);
@@ -88,17 +218,8 @@ export const listFornecedores = async (userId: string): Promise<Fornecedor[]> =>
 export const getFornecedorById = async (fornecedorId: string, userId: string): Promise<Fornecedor | null> => {
   const tenantId = assertTenantId(userId);
   try {
-    const docRef = doc(db, 'fornecedores', fornecedorId);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      const data = docSnap.data() as Fornecedor;
-      if (data.tenantId !== tenantId && data.userId !== tenantId) {
-        throw new Error("Acesso negado: este fornecedor não pertence ao seu tenant.");
-      }
-      return { ...data , id: docSnap.id };
-    } else {
-      return null;
-    }
+    if (isSupabaseBackend()) return await getFornecedorByIdSupabase(fornecedorId, tenantId);
+    return await getFornecedorByIdFirebase(fornecedorId, tenantId);
   } catch (error) {
     console.error("Erro ao buscar fornecedor por ID: ", error);
     throw error;
@@ -120,14 +241,11 @@ export const updateFornecedor = async (
     onQueuedValue: () => undefined,
     write: async () => {
       try {
-        const fornecedor = await getFornecedorById(fornecedorId, tenantId);
-        if (!fornecedor) throw new Error("Fornecedor não encontrado.");
-
-        const fornecedorRef = doc(db, 'fornecedores', fornecedorId);
-        await updateDoc(fornecedorRef, {
-          ...data,
-          updatedAt: Timestamp.now(),
-        });
+        if (isSupabaseBackend()) {
+          await updateFornecedorSupabase(fornecedorId, data, tenantId);
+          return;
+        }
+        await updateFornecedorFirebase(fornecedorId, data, tenantId);
       } catch (error) {
         console.error("Erro ao atualizar fornecedor: ", error);
         throw error;
@@ -149,10 +267,11 @@ export const deleteFornecedor = async (
     onQueuedValue: () => undefined,
     write: async () => {
       try {
-        const fornecedor = await getFornecedorById(fornecedorId, tenantId);
-        if (!fornecedor) throw new Error("Fornecedor não encontrado para exclusão.");
-
-        await deleteDoc(doc(db, 'fornecedores', fornecedorId));
+        if (isSupabaseBackend()) {
+          await deleteFornecedorSupabase(fornecedorId, tenantId);
+          return;
+        }
+        await deleteFornecedorFirebase(fornecedorId, tenantId);
       } catch (error) {
         console.error("Erro ao excluir fornecedor: ", error);
         throw error;

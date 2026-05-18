@@ -3,6 +3,8 @@ import { db } from '../../../services/firebaseConfig';
 import { assertTenantId } from '../../../services/tenantGuard';
 import { createTraceabilityEventSafely } from '../../../services/traceabilityService';
 import { getEstufaById } from '../../../services/estufaService';
+import { isSupabaseBackend } from '../../../services/backendConfig';
+import { getSupabaseClient } from '../../../services/supabaseClient';
 import { getHydroLoteById, syncHydroLoteStatus } from './hidroponiaLoteService';
 import { listHydroOcupacoesByEstufa } from './hidroponiaOcupacaoService';
 import { HydroLoteStage, HydroMovimentacao, HydroOcupacao } from '../types';
@@ -81,6 +83,230 @@ export const createHydroMovimentacao = async (
   }
   if (!isExitStage && !cultura) {
     throw new Error('Informe a cultura/verdura da bancada de destino.');
+  }
+
+  if (isSupabaseBackend()) {
+    const supabase = getSupabaseClient();
+    const ocupacoesAtivasEstufa = await listHydroOcupacoesByEstufa(tenantId, lote.estufaId);
+    const estruturas = (estufa.setores || []).flatMap((setor) => setor.estruturas || []);
+    const estruturaDestino = data.toEstruturaId
+      ? estruturas.find((item) => item.id === data.toEstruturaId)
+      : null;
+    if (data.toEstruturaId && !estruturaDestino) {
+      throw new Error('A bancada de destino não pertence ao layout da estufa.');
+    }
+
+    const ocupacoesDestinoAtivas = data.toEstruturaId
+      ? ocupacoesAtivasEstufa.filter(
+          (item) => item.estruturaId === data.toEstruturaId && item.status === 'ativa'
+        )
+      : [];
+    const possuiOutroLoteNoDestino = ocupacoesDestinoAtivas.some((item) => item.loteId !== loteId);
+    if (!isExitStage && possuiOutroLoteNoDestino) {
+      throw new Error('A bancada de destino já está ocupada por outra produção.');
+    }
+
+    let fromEstruturaId: string | null = null;
+    let nextSaldoDisponivel = Number(lote.saldoDisponivel || 0);
+    let currentFromOcupacao: HydroOcupacao | null = null;
+
+    if (data.fromOcupacaoId) {
+      currentFromOcupacao = ocupacoesAtivasEstufa.find((item) => item.id === data.fromOcupacaoId) || null;
+      if (!currentFromOcupacao) throw new Error('Ocupação de origem não encontrada.');
+      if (currentFromOcupacao.loteId !== loteId) {
+        throw new Error('A ocupação de origem pertence a outra produção.');
+      }
+      if (currentFromOcupacao.status !== 'ativa') {
+        throw new Error('A ocupação de origem já está encerrada.');
+      }
+      if (currentFromOcupacao.fase === 'pronto_colheita' && !isExitStage) {
+        throw new Error('Produção em bancada final não pode ser movida. Realize a colheita nesta bancada.');
+      }
+      fromEstruturaId = currentFromOcupacao.estruturaId;
+      if (data.toEstruturaId && data.toEstruturaId === fromEstruturaId) {
+        throw new Error('A bancada de destino deve ser diferente da origem.');
+      }
+      if (quantidade > Number(currentFromOcupacao.quantidadeAlocada || 0)) {
+        throw new Error(
+          `Quantidade acima do saldo da origem (${Number(currentFromOcupacao.quantidadeAlocada || 0)} unidades).`
+        );
+      }
+    } else {
+      if (quantidade > nextSaldoDisponivel) {
+        throw new Error(
+          `Quantidade acima do saldo livre da produção (${nextSaldoDisponivel} unidades).`
+        );
+      }
+      nextSaldoDisponivel = Math.max(0, nextSaldoDisponivel - quantidade);
+    }
+
+    if (estruturaDestino && movedNet > 0) {
+      const capacidade = Number(
+        estruturaDestino.capacidadePlantas || estruturaDestino.quantidadeFuros || 0
+      );
+      const ocupadoAtual = ocupacoesDestinoAtivas.reduce(
+        (sum, item) => sum + Number(item.quantidadeAlocada || 0),
+        0
+      );
+      if (capacidade > 0 && ocupadoAtual + movedNet > capacidade) {
+        throw new Error(
+          `Movimentação excede a capacidade da bancada (capacidade: ${capacidade}, ocupado: ${ocupadoAtual}).`
+        );
+      }
+    }
+
+    if (currentFromOcupacao) {
+      const novaQtdOrigem = Math.max(0, Number(currentFromOcupacao.quantidadeAlocada || 0) - quantidade);
+      const { error: fromError } = await supabase
+        .from('hidro_ocupacoes')
+        .update(
+          novaQtdOrigem <= 0
+            ? {
+                status: 'encerrada',
+                quantidade_alocada: 0,
+                data_fim: now.toDate().toISOString(),
+                updated_at: now.toDate().toISOString(),
+              }
+            : {
+                quantidade_alocada: novaQtdOrigem,
+                updated_at: now.toDate().toISOString(),
+              }
+        )
+        .eq('id', currentFromOcupacao.id)
+        .eq('tenant_id', tenantId);
+      if (fromError) throw new Error(`Erro ao atualizar ocupação de origem. ${fromError.message}`);
+    }
+
+    if (!isExitStage && data.toEstruturaId && movedNet > 0) {
+      const isBercarioDestino = estruturaDestino?.tipo === 'bercario';
+      const ocupacaoDestino = isBercarioDestino
+        ? ocupacoesDestinoAtivas.find(
+            (item) =>
+              item.loteId === loteId &&
+              isSameBercarioProfile(item, { cultura, variedade, verduraId })
+          ) || null
+        : ocupacoesDestinoAtivas.find((item) => item.loteId === loteId) || null;
+
+      if (ocupacaoDestino?.id) {
+        const { error: occUpdateError } = await supabase
+          .from('hidro_ocupacoes')
+          .update({
+            setor_id: data.toSetorId || ocupacaoDestino.setorId || lote.setorId || null,
+            cultura: cultura || ocupacaoDestino.cultura || 'Não informada',
+            variedade: variedade || ocupacaoDestino.variedade || null,
+            verdura_id: verduraId || ocupacaoDestino.verduraId || null,
+            fase: data.toStage,
+            quantidade_alocada: Number(ocupacaoDestino.quantidadeAlocada || 0) + movedNet,
+            quantidade_perdida: Number(ocupacaoDestino.quantidadePerdida || 0) + perda,
+            updated_at: now.toDate().toISOString(),
+          })
+          .eq('id', ocupacaoDestino.id)
+          .eq('tenant_id', tenantId);
+        if (occUpdateError) throw new Error(`Erro ao atualizar ocupação de destino. ${occUpdateError.message}`);
+      } else {
+        const { error: occInsertError } = await supabase.from('hidro_ocupacoes').insert({
+          tenant_id: tenantId,
+          lote_id: loteId,
+          estufa_id: lote.estufaId,
+          setor_id: data.toSetorId || lote.setorId || null,
+          estrutura_id: data.toEstruturaId,
+          cultura: cultura || 'Não informada',
+          variedade,
+          verdura_id: verduraId,
+          fase: data.toStage,
+          quantidade_alocada: movedNet,
+          quantidade_perdida: perda,
+          data_inicio: movedAt.toDate().toISOString(),
+          data_fim: null,
+          status: 'ativa',
+        });
+        if (occInsertError) throw new Error(`Erro ao criar ocupação de destino. ${occInsertError.message}`);
+      }
+    }
+
+    const { data: movimentacaoInserted, error: movError } = await supabase
+      .from('hidro_movimentacoes')
+      .insert({
+        tenant_id: tenantId,
+        lote_id: loteId,
+        estufa_id: lote.estufaId,
+        from_estrutura_id: fromEstruturaId,
+        to_estrutura_id: data.toEstruturaId || null,
+        tipo: data.toStage === 'colhido' ? 'saida' : data.toStage === 'cancelado' ? 'perda' : 'movimento',
+        quantidade,
+        cultura: cultura || null,
+        variedade,
+        verdura_id: verduraId,
+        fase: data.toStage,
+        moved_at: movedAt.toDate().toISOString(),
+      })
+      .select('id')
+      .single();
+    if (movError || !movimentacaoInserted?.id) {
+      throw new Error(`Erro ao registrar movimentação hidropônica. ${movError?.message || ''}`.trim());
+    }
+
+    const { error: loteUpdateError } = await supabase
+      .from('hidro_lotes')
+      .update({
+        saldo_disponivel: nextSaldoDisponivel,
+        updated_at: now.toDate().toISOString(),
+      })
+      .eq('id', loteId)
+      .eq('tenant_id', tenantId);
+    if (loteUpdateError) throw new Error(`Erro ao atualizar saldo da produção. ${loteUpdateError.message}`);
+
+    await syncHydroLoteStatus(loteId, tenantId);
+
+    await createTraceabilityEventSafely(tenantId, {
+      hydroLoteId: loteId,
+      estufaId: lote.estufaId,
+      entidade: 'hydro_movimentacao',
+      entidadeId: movimentacaoInserted.id,
+      acao: 'movido',
+      descricao: isExitStage
+        ? `Produção ${lote.codigoLote} finalizada na bancada ${fromEstruturaId || '-'} (${quantidade} plantas).`
+        : isTransfer
+        ? `Produção ${lote.codigoLote} transferida da bancada ${fromEstruturaId || '-'} para ${
+            data.toEstruturaId || '-'
+          } (${quantidade} plantas).`
+        : `Produção ${lote.codigoLote} alocada do saldo para bancada ${data.toEstruturaId || '-'} (${quantidade} plantas).`,
+      actorUid: tenantId,
+      metadata: {
+        toStage: data.toStage,
+        quantidade,
+        perda,
+        cultura: data.cultura,
+        verduraId,
+        responsavel: data.responsavel?.trim() || null,
+        observacoes: data.observacoes?.trim() || null,
+        origemTipo: isTransfer ? 'bancada' : 'saldo_lote',
+        saldoDisponivelAntes: Number(lote.saldoDisponivel || 0),
+        saldoDisponivelDepois: nextSaldoDisponivel,
+        produto: {
+          codigoRastreio: lote.codigoLote,
+          nome: lote.nomeOperacional || lote.codigoLote,
+          cultura: cultura || null,
+          variedade,
+          quantidade,
+          unidade: 'unidade',
+        },
+        enteAnterior: {
+          nome: isTransfer
+            ? `Bancada ${fromEstruturaId || 'desconhecida'}`
+            : lote.origemMaterialNome || lote.nomeOperacional || lote.codigoLote,
+          documento: isTransfer ? data.fromOcupacaoId || null : lote.origemMaterialDocumento || null,
+          tipo: isTransfer ? 'bancada_origem' : 'origem_material',
+        },
+        entePosterior: {
+          nome: data.toEstruturaId ? `Bancada ${data.toEstruturaId}` : 'Saída da produção',
+          documento: data.toEstruturaId || null,
+          tipo: data.toEstruturaId ? 'bancada_destino' : 'saida',
+        },
+      },
+    });
+
+    return movimentacaoInserted.id as string;
   }
 
   const movimentacaoRef = doc(collection(db, 'hidroponia_movimentacoes'));
@@ -365,6 +591,33 @@ export const listHydroMovimentacoesByLote = async (
   loteId: string
 ): Promise<HydroMovimentacao[]> => {
   const tenantId = assertTenantId(userId);
+  if (isSupabaseBackend()) {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('hidro_movimentacoes')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('lote_id', loteId)
+      .order('moved_at', { ascending: false });
+    if (error) throw new Error(`Erro ao listar movimentações hidropônicas. ${error.message}`);
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      tenantId: row.tenant_id,
+      loteId: row.lote_id,
+      estufaId: row.estufa_id,
+      fromEstruturaId: row.from_estrutura_id || null,
+      toEstruturaId: row.to_estrutura_id || null,
+      tipo: row.tipo,
+      quantidade: Number(row.quantidade || 0),
+      cultura: row.cultura || null,
+      variedade: row.variedade || null,
+      verduraId: row.verdura_id || null,
+      fase: row.fase,
+      movedAt: Timestamp.fromDate(new Date(row.moved_at)),
+      createdAt: Timestamp.fromDate(new Date(row.created_at)),
+    } as HydroMovimentacao));
+  }
+
   const snap = await getDocs(
     query(
       collection(db, 'hidroponia_movimentacoes'),

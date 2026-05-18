@@ -2,6 +2,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { waitForPendingWrites } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { flushOfflineQueue, getOfflineQueueSize, isOnlineNow } from './offlineStorage';
+import { isSupabaseBackend } from '../backendConfig';
 
 export type OfflineSyncState = {
   syncing: boolean;
@@ -53,8 +54,10 @@ const syncInternal = async () => {
     state.failed = flushResult.failed;
     state.queued = flushResult.pending;
 
-    // Também aguardamos pendências internas do Firestore local cache.
-    await waitForPendingWrites(db);
+    // Em Firebase aguardamos pendências internas do cache local.
+    if (!isSupabaseBackend()) {
+      await waitForPendingWrites(db);
+    }
 
     state.lastSyncAt = Date.now();
     state.lastError = null;
@@ -97,4 +100,3 @@ export const startOfflineSyncListener = () => {
   void refreshQueuedCount();
   return stopListener;
 };
-

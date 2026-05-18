@@ -6,6 +6,7 @@ import * as Google from 'expo-auth-session/providers/google';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { Timestamp, doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebaseConfig';
+import { isSupabaseBackend } from '../services/backendConfig';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -21,6 +22,7 @@ const GOOGLE_IOS_CLIENT_ID =
 const APP_SCHEME = 'estufapro';
 
 export const useGoogleAuth = ({ onError }: UseGoogleAuthOptions = {}) => {
+  const supabaseMode = isSupabaseBackend();
   const [isLoading, setIsLoading] = useState(false);
   const redirectUri = useMemo(
     () =>
@@ -107,6 +109,11 @@ export const useGoogleAuth = ({ onError }: UseGoogleAuthOptions = {}) => {
   }, [ensureUserDocument, onError, response]);
 
   const signInWithGoogle = useCallback(async () => {
+    if (supabaseMode) {
+      onError?.('Login com Google ainda não migrado para Supabase nesta versão.');
+      return;
+    }
+
     if (!hasClientId) {
       onError?.('Configure EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID (e preferencialmente Android/iOS também).');
       return;
@@ -122,9 +129,9 @@ export const useGoogleAuth = ({ onError }: UseGoogleAuthOptions = {}) => {
       setIsLoading(false);
       onError?.('Falha ao abrir o login do Google.');
     }
-  }, [hasClientId, onError, promptAsync]);
+  }, [hasClientId, onError, promptAsync, supabaseMode]);
 
-  const disabled = isLoading || !request;
+  const disabled = supabaseMode || isLoading || !request;
 
   return {
     signInWithGoogle,

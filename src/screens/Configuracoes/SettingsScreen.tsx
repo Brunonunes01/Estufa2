@@ -29,6 +29,8 @@ import {
   syncPendingDataNow,
   type OfflineSyncState,
 } from '../../services/offline/syncService';
+import { isSupabaseBackend } from '../../services/backendConfig';
+import { getSupabaseClient } from '../../services/supabaseClient';
 
 const SettingsScreen = () => {
   const { user, isAdmin, refreshUserProfile } = useAuth();
@@ -51,12 +53,23 @@ const SettingsScreen = () => {
 
   const roleLabel = useMemo(() => (isAdmin ? 'Administrador' : 'Operador'), [isAdmin]);
   const appVersion = Constants.expoConfig?.version || '1.0.0';
+  const supabaseMode = isSupabaseBackend();
 
   useEffect(() => {
     const load = async () => {
       if (!user?.uid) return;
       setLoadingProfile(true);
       try {
+        if (supabaseMode) {
+          const supabase = getSupabaseClient();
+          const { data, error } = await supabase.from('profiles').select('*').eq('id', user.uid).maybeSingle();
+          if (!error && data) {
+            setNome(data.name || user.name || '');
+            setEmail(data.email || user.email || '');
+          }
+          return;
+        }
+
         const snap = await getDoc(doc(db, 'users', user.uid));
         if (snap.exists()) {
           const data = snap.data();
@@ -71,7 +84,7 @@ const SettingsScreen = () => {
     };
 
     load();
-  }, [user?.uid]);
+  }, [supabaseMode, user?.email, user?.name, user?.uid]);
 
   useEffect(() => {
     const unsubscribe = subscribeOfflineSyncState(setSyncState);
@@ -86,12 +99,31 @@ const SettingsScreen = () => {
     }
     setSavingProfile(true);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        name: nome.trim(),
-        updatedAt: Timestamp.now(),
-      });
-      if (auth.currentUser) {
-        await updateProfile(auth.currentUser, { displayName: nome.trim() });
+      if (supabaseMode) {
+        const supabase = getSupabaseClient();
+        const { error: profileError } = await supabase.from('profiles').upsert(
+          {
+            id: user.uid,
+            name: nome.trim(),
+            email: user.email || email || '',
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' }
+        );
+        if (profileError) throw profileError;
+
+        const { error: authError } = await supabase.auth.updateUser({
+          data: { display_name: nome.trim() },
+        });
+        if (authError) throw authError;
+      } else {
+        await updateDoc(doc(db, 'users', user.uid), {
+          name: nome.trim(),
+          updatedAt: Timestamp.now(),
+        });
+        if (auth.currentUser) {
+          await updateProfile(auth.currentUser, { displayName: nome.trim() });
+        }
       }
       await refreshUserProfile();
       if (netInfo.isConnected === false) {

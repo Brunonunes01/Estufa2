@@ -5,11 +5,11 @@ import {
   KeyboardAvoidingView, Platform, ScrollView, Alert, StatusBar
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../../services/firebaseConfig';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import useGoogleAuth from '../../hooks/useGoogleAuth';
+import { signInWithPasswordBridge } from '../../services/authBridge';
+import { isSupabaseBackend } from '../../services/backendConfig';
 
 const LoginScreen = ({ navigation }: any) => {
   const insets = useSafeAreaInsets();
@@ -17,6 +17,7 @@ const LoginScreen = ({ navigation }: any) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false); 
+  const supabaseMode = isSupabaseBackend();
   const { signInWithGoogle, loadingGoogle, googleDisabled } = useGoogleAuth({
     onError: (message) => {
       setError(message);
@@ -35,10 +36,15 @@ const LoginScreen = ({ navigation }: any) => {
     }
     
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
+      await signInWithPasswordBridge(email.trim(), password);
     } catch (err: any) {
       let msg = 'Erro ao tentar logar.';
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+      if (
+        err?.code === 'auth/invalid-credential' ||
+        err?.code === 'auth/user-not-found' ||
+        err?.code === 'auth/wrong-password' ||
+        err?.message?.toLowerCase?.().includes('invalid login credentials')
+      ) {
         msg = 'Credenciais inválidas. Verifique e-mail e senha.';
       }
       setError(msg);
@@ -113,26 +119,30 @@ const LoginScreen = ({ navigation }: any) => {
                     {loading ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.loginBtnText}>ENTRAR</Text>}
                 </TouchableOpacity>
 
-                <View style={styles.dividerRow}>
-                    <View style={styles.dividerLine} />
-                    <Text style={styles.dividerText}>ou</Text>
-                    <View style={styles.dividerLine} />
-                </View>
+                {!supabaseMode ? (
+                  <>
+                    <View style={styles.dividerRow}>
+                        <View style={styles.dividerLine} />
+                        <Text style={styles.dividerText}>ou</Text>
+                        <View style={styles.dividerLine} />
+                    </View>
 
-                <TouchableOpacity
-                  style={[styles.googleBtn, (loading || loadingGoogle || googleDisabled) && styles.googleBtnDisabled]}
-                  onPress={signInWithGoogle}
-                  disabled={loading || loadingGoogle || googleDisabled}
-                >
-                  {loadingGoogle ? (
-                    <ActivityIndicator color={COLORS.textPrimary} />
-                  ) : (
-                    <>
-                      <MaterialCommunityIcons name="google" size={20} color={COLORS.textPrimary} />
-                      <Text style={styles.googleBtnText}>Entrar com Google</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.googleBtn, (loading || loadingGoogle || googleDisabled) && styles.googleBtnDisabled]}
+                      onPress={signInWithGoogle}
+                      disabled={loading || loadingGoogle || googleDisabled}
+                    >
+                      {loadingGoogle ? (
+                        <ActivityIndicator color={COLORS.textPrimary} />
+                      ) : (
+                        <>
+                          <MaterialCommunityIcons name="google" size={20} color={COLORS.textPrimary} />
+                          <Text style={styles.googleBtnText}>Entrar com Google</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </>
+                ) : null}
             </View>
 
             <TouchableOpacity style={styles.registerBtn} onPress={() => navigation.navigate('Register')}>

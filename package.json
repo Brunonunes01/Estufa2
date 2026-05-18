@@ -8,7 +8,11 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "support:portal": "node support-portal/server.mjs 4173",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "supabase:start": "npx supabase start",
+    "supabase:stop": "npx supabase stop",
+    "supabase:db:push": "npx supabase db push",
+    "supabase:types": "npx supabase gen types typescript --linked --schema public > src/types/supabase.ts"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -20,6 +24,7 @@
     "@react-navigation/bottom-tabs": "^7.16.1",
     "@react-navigation/native": "^7.1.20",
     "@react-navigation/native-stack": "^7.6.3",
+    "@supabase/supabase-js": "^2.106.0",
     "@tanstack/react-query": "^5.96.0",
     "expo": "~54.0.23",
     "expo-auth-session": "~7.0.10",

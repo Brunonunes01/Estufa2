@@ -1,12 +1,11 @@
 // src/screens/Auth/RegisterScreen.tsx
 import React, { useState } from 'react';
 import { View, TextInput, Text, Alert, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, StatusBar } from 'react-native';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'; 
-import { doc, setDoc, Timestamp } from 'firebase/firestore';
-import { auth, db } from '../../services/firebaseConfig';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import useGoogleAuth from '../../hooks/useGoogleAuth';
+import { signUpWithPasswordBridge } from '../../services/authBridge';
+import { isSupabaseBackend } from '../../services/backendConfig';
 
 const RegisterScreen = ({ navigation }: any) => {
   const [name, setName] = useState('');
@@ -14,6 +13,7 @@ const RegisterScreen = ({ navigation }: any) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const supabaseMode = isSupabaseBackend();
   const { signInWithGoogle, loadingGoogle, googleDisabled } = useGoogleAuth({
     onError: (message) => {
       setError(message);
@@ -27,17 +27,16 @@ const RegisterScreen = ({ navigation }: any) => {
     if (password.length < 6) { setError('A senha deve ter no mínimo 6 caracteres.'); setLoading(false); return; }
     
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-      await updateProfile(userCredential.user, { displayName: name });
-      await setDoc(doc(db, 'users', userCredential.user.uid), {
-        name, email, role: "admin", createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
-      });
+      await signUpWithPasswordBridge(name.trim(), email.trim(), password);
       setLoading(false);
       Alert.alert('Bem-vindo!', 'Conta criada com sucesso.');
     } catch (err: any) {
       setLoading(false);
-      if (err.code === 'auth/email-already-in-use') setError('Este e-mail já está em uso.');
-      else if (err.code === 'auth/invalid-email') setError('Formato de e-mail inválido.');
+      if (
+        err?.code === 'auth/email-already-in-use' ||
+        err?.message?.toLowerCase?.().includes('already registered')
+      ) setError('Este e-mail já está em uso.');
+      else if (err?.code === 'auth/invalid-email') setError('Formato de e-mail inválido.');
       else setError('Ocorreu um erro ao criar a conta.');
     }
   };
@@ -82,26 +81,30 @@ const RegisterScreen = ({ navigation }: any) => {
                     {loading ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.registerBtnText}>Criar Conta</Text>}
                 </TouchableOpacity>
 
-                <View style={styles.dividerRow}>
-                    <View style={styles.dividerLine} />
-                    <Text style={styles.dividerText}>ou</Text>
-                    <View style={styles.dividerLine} />
-                </View>
+                {!supabaseMode ? (
+                  <>
+                    <View style={styles.dividerRow}>
+                        <View style={styles.dividerLine} />
+                        <Text style={styles.dividerText}>ou</Text>
+                        <View style={styles.dividerLine} />
+                    </View>
 
-                <TouchableOpacity
-                  style={styles.googleBtn}
-                  onPress={signInWithGoogle}
-                  disabled={loading || loadingGoogle || googleDisabled}
-                >
-                  {loadingGoogle ? (
-                    <ActivityIndicator color={COLORS.textPrimary} />
-                  ) : (
-                    <>
-                      <MaterialCommunityIcons name="google" size={20} color={COLORS.textPrimary} />
-                      <Text style={styles.googleBtnText}>Entrar com Google</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.googleBtn}
+                      onPress={signInWithGoogle}
+                      disabled={loading || loadingGoogle || googleDisabled}
+                    >
+                      {loadingGoogle ? (
+                        <ActivityIndicator color={COLORS.textPrimary} />
+                      ) : (
+                        <>
+                          <MaterialCommunityIcons name="google" size={20} color={COLORS.textPrimary} />
+                          <Text style={styles.googleBtnText}>Entrar com Google</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </>
+                ) : null}
 
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>Já tem uma conta?</Text>

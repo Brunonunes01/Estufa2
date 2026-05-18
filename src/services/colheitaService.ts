@@ -31,6 +31,8 @@ import {
   buildPublicTraceabilityLookupUrl,
   createTraceabilityPublicTokenFromId,
 } from './publicTraceabilityService';
+import { isSupabaseBackend } from './backendConfig';
+import { getSupabaseClient } from './supabaseClient';
 
 export type ColheitaFormData = {
   quantidade: number;
@@ -56,7 +58,93 @@ type ColheitaSaveOptions = {
   } | null;
 };
 
+const toIsoFromTsOrDate = (value?: any) => {
+  if (!value) return null;
+  if (typeof value?.toDate === 'function') return value.toDate().toISOString();
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+};
+
+const mapSupabaseColheitaToDomain = (row: any): Colheita => ({
+  id: row.id,
+  tenantId: row.tenant_id,
+  userId: row.created_by || row.tenant_id,
+  createdBy: row.created_by || row.tenant_id,
+  plantioId: row.plantio_id,
+  estufaId: row.estufa_id || undefined,
+  safraId: row.safra_id || undefined,
+  dataColheita: Timestamp.fromDate(new Date(row.data_colheita)),
+  quantidade: Number(row.quantidade || 0),
+  unidadeMedida: row.unidade_medida || undefined,
+  unidade: row.unidade || undefined,
+  qualidade: row.qualidade || undefined,
+  loteColheita: row.lote_colheita || undefined,
+  destino: row.destino,
+  observacoes: row.observacoes || undefined,
+  pesoBruto: row.peso_bruto != null ? Number(row.peso_bruto) : undefined,
+  pesoLiquido: row.peso_liquido != null ? Number(row.peso_liquido) : undefined,
+  precoUnitario: row.preco_unitario != null ? Number(row.preco_unitario) : undefined,
+  clienteId: row.cliente_id || null,
+  metodoPagamento: row.metodo_pagamento || null,
+  statusPagamento: row.status_pagamento || undefined,
+  dataPagamento: row.data_pagamento ? Timestamp.fromDate(new Date(row.data_pagamento)) : null,
+  cicloDesbloqueadoPorAdmin: !!row.ciclo_desbloqueado_por_admin,
+  desbloqueioAdminByUid: row.desbloqueio_admin_by_uid || null,
+  desbloqueioAdminByName: row.desbloqueio_admin_by_name || null,
+  desbloqueioAdminAt: row.desbloqueio_admin_at ? Timestamp.fromDate(new Date(row.desbloqueio_admin_at)) : null,
+  desbloqueioAdminReason: row.desbloqueio_admin_reason || null,
+  createdAt: new Date(row.created_at).getTime(),
+  updatedAt: new Date(row.updated_at).getTime(),
+});
+
 const findVendaByColheitaId = async (tenantId: string, colheitaId: string): Promise<Venda | null> => {
+  if (isSupabaseBackend()) {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('vendas')
+      .select('*, venda_itens(*)')
+      .eq('tenant_id', tenantId)
+      .eq('colheita_id', colheitaId)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(`Erro ao buscar venda da colheita. ${error.message}`);
+    if (!data) return null;
+    const item = Array.isArray(data.venda_itens) ? data.venda_itens[0] : null;
+    return {
+      id: data.id,
+      tenantId: data.tenant_id,
+      userId: data.created_by || data.tenant_id,
+      createdBy: data.created_by || data.tenant_id,
+      plantioId: data.plantio_id || undefined,
+      originType: data.origin_type || undefined,
+      originId: data.origin_id || null,
+      hydroLoteId: data.hydro_lote_id || null,
+      estufaId: data.estufa_id || undefined,
+      colheitaId: data.colheita_id || undefined,
+      clienteId: data.cliente_id || null,
+      dataVenda: Timestamp.fromDate(new Date(data.data_venda)),
+      dataVencimento: data.data_vencimento ? Timestamp.fromDate(new Date(data.data_vencimento)) : null,
+      itens: Array.isArray(data.venda_itens)
+        ? data.venda_itens.map((vi: any) => ({
+            colheitaId: vi.colheita_id || undefined,
+            descricao: vi.descricao,
+            quantidade: Number(vi.quantidade || 0),
+            unidade: vi.unidade || undefined,
+            valorUnitario: Number(vi.valor_unitario || 0),
+          }))
+        : [],
+      valorTotal: Number(data.valor_total || 0),
+      statusPagamento: data.status_pagamento,
+      formaPagamento: data.forma_pagamento || undefined,
+      metodoPagamento: data.metodo_pagamento || null,
+      observacoes: data.observacoes || undefined,
+      quantidade: data.quantidade != null ? Number(data.quantidade) : Number(item?.quantidade || 0),
+      unidade: item?.unidade || undefined,
+      createdAt: new Date(data.created_at).getTime(),
+      updatedAt: new Date(data.updated_at).getTime(),
+    } as Venda;
+  }
+
   const q = query(
     collection(db, 'vendas'),
     where('tenantId', '==', tenantId),
@@ -148,6 +236,132 @@ export const createColheita = async (
   const hasCycleUnlock = options.allowBeforeCycleDays || !!plantio.cicloDesbloqueadoPorAdmin;
   if (isEarlyCycleSale && !hasCycleUnlock) {
     validateSaleDateByCycle(plantio, dataOperacao);
+  }
+
+  if (isSupabaseBackend()) {
+    const supabase = getSupabaseClient();
+    const overrideAudit = isEarlyCycleSale
+      ? buildOverrideAudit(options, now) || buildPlantioUnlockAudit(plantio)
+      : null;
+
+    const { data: inserted, error } = await supabase
+      .from('colheitas')
+      .insert({
+        tenant_id: tenantId,
+        plantio_id: plantioId,
+        estufa_id: estufaId || null,
+        data_colheita: dataOperacao.toDate().toISOString(),
+        quantidade: Number(data.quantidade || 0),
+        unidade: data.unidade,
+        unidade_medida: data.unidade as Colheita['unidadeMedida'],
+        qualidade: 'padrao',
+        lote_colheita: `COL-${plantioId.slice(0, 6)}-${dataOperacao.toMillis()}`,
+        destino: data.destino || 'venda_direta',
+        observacoes: data.observacoes || '',
+        peso_bruto: Number(data.pesoBruto || 0),
+        peso_liquido: Number(data.pesoLiquido || 0),
+        preco_unitario: Number(data.precoUnitario || 0),
+        cliente_id: data.clienteId || null,
+        metodo_pagamento: data.metodoPagamento || null,
+        status_pagamento: data.metodoPagamento === 'prazo' ? 'pendente' : 'pago',
+        ...(overrideAudit
+          ? {
+              ciclo_desbloqueado_por_admin: true,
+              desbloqueio_admin_by_uid: overrideAudit.desbloqueioAdminByUid || null,
+              desbloqueio_admin_by_name: overrideAudit.desbloqueioAdminByName || null,
+              desbloqueio_admin_at: toIsoFromTsOrDate(overrideAudit.desbloqueioAdminAt),
+              desbloqueio_admin_reason: overrideAudit.desbloqueioAdminReason || null,
+            }
+          : {}),
+      })
+      .select('id')
+      .single();
+    if (error || !inserted?.id) throw new Error(`Erro ao criar colheita. ${error?.message || ''}`.trim());
+
+    const nextStatus = data.isFinalHarvest ? 'finalizado' : 'em_colheita';
+    const { error: plantioUpdateError } = await supabase
+      .from('plantios')
+      .update({ status: nextStatus, updated_at: new Date().toISOString() })
+      .eq('id', plantioId)
+      .eq('tenant_id', tenantId);
+    if (plantioUpdateError) throw new Error(`Erro ao atualizar status do plantio. ${plantioUpdateError.message}`);
+
+    const vendaStatusPagamento = data.metodoPagamento === 'prazo' ? 'pendente' : 'pago';
+    let vendaCriadaId: string | null = null;
+    if (data.destino === 'venda_direta') {
+      const vendaData: VendaFormData = {
+        plantioId,
+        originType: 'plantio',
+        originId: plantioId,
+        estufaId,
+        colheitaId: inserted.id,
+        clienteId: data.clienteId || null,
+        quantidade: Number(data.quantidade || 0),
+        unidade: data.unidade,
+        precoUnitario: Number(data.precoUnitario || 0),
+        metodoPagamento: data.metodoPagamento || 'pix',
+        dataVenda: data.dataVenda,
+        observacoes: data.observacoes || '',
+        cycleOverrideAudit: overrideAudit
+          ? {
+              byUid: overrideAudit.desbloqueioAdminByUid || tenantId,
+              byName: overrideAudit.desbloqueioAdminByName || null,
+              at: now.toDate(),
+              reason: overrideAudit.desbloqueioAdminReason || null,
+            }
+          : null,
+      };
+      vendaCriadaId = await createVenda(vendaData, tenantId);
+    }
+
+    await createTraceabilityEventSafely(tenantId, {
+      plantioId,
+      estufaId: estufaId || null,
+      entidade: 'colheita',
+      entidadeId: inserted.id,
+      acao: overrideAudit ? 'desbloqueio_ciclo' : 'criado',
+      descricao: overrideAudit
+        ? 'Venda/colheita registrada com desbloqueio administrativo de ciclo.'
+        : 'Colheita registrada.',
+      motivo: overrideAudit?.desbloqueioAdminReason || null,
+      actorUid: overrideAudit?.desbloqueioAdminByUid || tenantId,
+      actorName: overrideAudit?.desbloqueioAdminByName || null,
+      metadata: {
+        quantidade: Number(data.quantidade || 0),
+        unidade: data.unidade,
+        destino: data.destino || 'venda_direta',
+        loteColheita: `COL-${plantioId.slice(0, 6)}-${dataOperacao.toMillis()}`,
+        precoUnitario: Number(data.precoUnitario || 0),
+        clienteId: data.clienteId || null,
+        metodoPagamento: data.metodoPagamento || null,
+        cicloDesbloqueadoPorAdmin: !!overrideAudit,
+      },
+    });
+
+    if (vendaCriadaId) {
+      await createTraceabilityEventSafely(tenantId, {
+        plantioId,
+        estufaId: estufaId || null,
+        entidade: 'venda',
+        entidadeId: vendaCriadaId,
+        acao: overrideAudit ? 'desbloqueio_ciclo' : 'criado',
+        descricao: 'Venda criada a partir da colheita.',
+        motivo: overrideAudit?.desbloqueioAdminReason || null,
+        actorUid: overrideAudit?.desbloqueioAdminByUid || tenantId,
+        actorName: overrideAudit?.desbloqueioAdminByName || null,
+        metadata: {
+          colheitaId: inserted.id,
+          quantidade: Number(data.quantidade || 0),
+          unidade: data.unidade,
+          precoUnitario: Number(data.precoUnitario || 0),
+          clienteId: data.clienteId || null,
+          metodoPagamento: data.metodoPagamento || 'pix',
+          statusPagamento: vendaStatusPagamento,
+        },
+      });
+    }
+
+    return inserted.id as string;
   }
 
   const batch = writeBatch(db);
@@ -289,6 +503,18 @@ export const createColheita = async (
 
 export const listColheitasByPlantio = async (userId: string, plantioId: string): Promise<Colheita[]> => {
   const tenantId = assertTenantId(userId);
+  if (isSupabaseBackend()) {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('colheitas')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('plantio_id', plantioId)
+      .order('data_colheita', { ascending: false });
+    if (error) throw new Error(`Erro ao listar colheitas do plantio. ${error.message}`);
+    return (data || []).map(mapSupabaseColheitaToDomain);
+  }
+
   const q = query(
     collection(db, 'colheitas'),
     where('tenantId', '==', tenantId),
@@ -303,6 +529,17 @@ export const listColheitasByPlantio = async (userId: string, plantioId: string):
 
 export const listAllColheitas = async (userId: string): Promise<Colheita[]> => {
   const tenantId = assertTenantId(userId);
+  if (isSupabaseBackend()) {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('colheitas')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('data_colheita', { ascending: false });
+    if (error) throw new Error(`Erro ao listar colheitas. ${error.message}`);
+    return (data || []).map(mapSupabaseColheitaToDomain);
+  }
+
   const q = query(collection(db, 'colheitas'), where('tenantId', '==', tenantId));
   const snap = await getDocs(q);
 
@@ -313,6 +550,27 @@ export const listAllColheitas = async (userId: string): Promise<Colheita[]> => {
 
 export const getColheitaById = async (id: string, userId: string): Promise<Colheita & { precoUnitario?: number; clienteId?: string | null; statusPagamento?: string } | null> => {
   const tenantId = assertTenantId(userId);
+  if (isSupabaseBackend()) {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('colheitas')
+      .select('*')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    if (error) throw new Error(`Erro ao buscar colheita. ${error.message}`);
+    if (!data) return null;
+
+    const row = mapSupabaseColheitaToDomain(data);
+    const linkedVenda = await findVendaByColheitaId(tenantId, id);
+    return {
+      ...row,
+      precoUnitario: linkedVenda?.itens?.[0]?.valorUnitario || row.precoUnitario || 0,
+      clienteId: linkedVenda?.clienteId || row.clienteId || null,
+      statusPagamento: linkedVenda?.statusPagamento || row.statusPagamento,
+    };
+  }
+
   const docRef = doc(db, 'colheitas', id);
   const docSnap = await getDoc(docRef);
 
@@ -336,6 +594,45 @@ export const getColheitaById = async (id: string, userId: string): Promise<Colhe
 
 export const deleteColheita = async (colheitaId: string, userId: string) => {
   const tenantId = assertTenantId(userId);
+  if (isSupabaseBackend()) {
+    const supabase = getSupabaseClient();
+    const colheita = await getColheitaById(colheitaId, tenantId);
+    if (!colheita) throw new Error('Colheita não encontrada.');
+
+    const { data: linkedVendasData, error: vendasError } = await supabase
+      .from('vendas')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('colheita_id', colheitaId);
+    if (vendasError) throw new Error(`Erro ao buscar vendas vinculadas. ${vendasError.message}`);
+
+    const linkedVendas = linkedVendasData || [];
+    for (const venda of linkedVendas) {
+      await deleteVenda(venda.id, tenantId);
+    }
+
+    const { error } = await supabase
+      .from('colheitas')
+      .delete()
+      .eq('id', colheitaId)
+      .eq('tenant_id', tenantId);
+    if (error) throw new Error(`Erro ao excluir colheita. ${error.message}`);
+
+    await createTraceabilityEventSafely(tenantId, {
+      plantioId: colheita.plantioId,
+      estufaId: colheita.estufaId || null,
+      entidade: 'colheita',
+      entidadeId: colheitaId,
+      acao: 'excluido',
+      descricao: 'Colheita excluída.',
+      actorUid: tenantId,
+      metadata: {
+        linkedVendasDeleted: linkedVendas.length,
+      },
+    });
+    return;
+  }
+
   let deletedColheitaPlantioId: string | null = null;
   let deletedColheitaEstufaId: string | null = null;
   const linkedVendasDeleted: Array<{
@@ -454,6 +751,108 @@ export const updateColheita = async (
   const overrideAudit = isEarlyCycleSale
     ? buildOverrideAudit(options, now) || buildPlantioUnlockAudit(plantio)
     : null;
+
+  if (isSupabaseBackend()) {
+    const supabase = getSupabaseClient();
+    const { error: updateError } = await supabase
+      .from('colheitas')
+      .update({
+        data_colheita: dataOperacao.toDate().toISOString(),
+        quantidade: Number(data.quantidade || 0),
+        unidade: data.unidade,
+        unidade_medida: data.unidade as Colheita['unidadeMedida'],
+        destino: data.destino || 'venda_direta',
+        observacoes: data.observacoes || '',
+        peso_bruto: Number(data.pesoBruto || 0),
+        peso_liquido: Number(data.pesoLiquido || 0),
+        preco_unitario: Number(data.precoUnitario || 0),
+        cliente_id: data.clienteId || null,
+        metodo_pagamento: data.metodoPagamento || null,
+        status_pagamento: data.metodoPagamento === 'prazo' ? 'pendente' : 'pago',
+        ...(overrideAudit
+          ? {
+              ciclo_desbloqueado_por_admin: true,
+              desbloqueio_admin_by_uid: overrideAudit.desbloqueioAdminByUid || null,
+              desbloqueio_admin_by_name: overrideAudit.desbloqueioAdminByName || null,
+              desbloqueio_admin_at: toIsoFromTsOrDate(overrideAudit.desbloqueioAdminAt),
+              desbloqueio_admin_reason: overrideAudit.desbloqueioAdminReason || null,
+            }
+          : {
+              ciclo_desbloqueado_por_admin: false,
+              desbloqueio_admin_by_uid: null,
+              desbloqueio_admin_by_name: null,
+              desbloqueio_admin_at: null,
+              desbloqueio_admin_reason: null,
+            }),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('tenant_id', tenantId);
+    if (updateError) throw new Error(`Erro ao atualizar colheita. ${updateError.message}`);
+
+    await createTraceabilityEventSafely(tenantId, {
+      plantioId: colheita.plantioId,
+      estufaId: colheita.estufaId || null,
+      entidade: 'colheita',
+      entidadeId: id,
+      acao: overrideAudit ? 'desbloqueio_ciclo' : 'atualizado',
+      descricao: overrideAudit
+        ? 'Colheita atualizada com desbloqueio administrativo de ciclo.'
+        : 'Colheita atualizada.',
+      motivo: overrideAudit?.desbloqueioAdminReason || null,
+      actorUid: overrideAudit?.desbloqueioAdminByUid || tenantId,
+      actorName: overrideAudit?.desbloqueioAdminByName || null,
+      metadata: {
+        previousQuantidade: Number(colheita.quantidade || 0),
+        previousUnidade: colheita.unidade || null,
+        previousDestino: colheita.destino || null,
+        quantidade: Number(data.quantidade || 0),
+        unidade: data.unidade,
+        destino: data.destino || 'venda_direta',
+        precoUnitario: Number(data.precoUnitario || 0),
+        clienteId: data.clienteId || null,
+        metodoPagamento: data.metodoPagamento || null,
+        cicloDesbloqueadoPorAdmin: !!overrideAudit,
+      },
+    });
+
+    const linkedVenda = await findVendaByColheitaId(tenantId, id);
+
+    if (data.destino === 'venda_direta') {
+      const vendaData: VendaFormData = {
+        plantioId: colheita.plantioId,
+        estufaId: colheita.estufaId,
+        colheitaId: id,
+        clienteId: data.clienteId || null,
+        quantidade: Number(data.quantidade || 0),
+        unidade: data.unidade,
+        precoUnitario: Number(data.precoUnitario || 0),
+        metodoPagamento: data.metodoPagamento || 'pix',
+        dataVenda: data.dataVenda,
+        observacoes: data.observacoes || '',
+        cycleOverrideAudit: overrideAudit
+          ? {
+              byUid: overrideAudit.desbloqueioAdminByUid || tenantId,
+              byName: overrideAudit.desbloqueioAdminByName || null,
+              at: now.toDate(),
+              reason: overrideAudit.desbloqueioAdminReason || null,
+            }
+          : null,
+      };
+
+      if (linkedVenda) {
+        await updateVenda(linkedVenda.id, vendaData, tenantId);
+      } else {
+        await createVenda(vendaData, tenantId);
+      }
+      return;
+    }
+
+    if (linkedVenda) {
+      await deleteVenda(linkedVenda.id, tenantId);
+    }
+    return;
+  }
 
   await updateDoc(doc(db, 'colheitas', id), {
     dataColheita: dataOperacao,

@@ -1,9 +1,9 @@
 import { useCallback } from 'react';
-import { auth } from '../services/firebaseConfig';
+import { signOutBridge } from '../services/authBridge';
 
 export const useDashboardActions = () => {
   const signOut = useCallback(async () => {
-    await auth.signOut();
+    await signOutBridge();
   }, []);
 
   return { signOut };

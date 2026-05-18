@@ -9,6 +9,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { COLORS } from '../../constants/theme';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../services/firebaseConfig';
+import { isSupabaseBackend } from '../../services/backendConfig';
+import { getSupabaseClient } from '../../services/supabaseClient';
 
 export default function PerfilScreen({ navigation }: any) {
   const { user } = useAuth();
@@ -29,6 +31,23 @@ export default function PerfilScreen({ navigation }: any) {
     if (!user?.uid) return;
     const loadProfile = async () => {
         try {
+            if (isSupabaseBackend()) {
+                const supabase = getSupabaseClient();
+                const { data, error } = await supabase
+                  .from('profiles')
+                  .select('name, nome_propriedade, tamanho_hectares, cidade_estado, latitude, longitude')
+                  .eq('id', user.uid)
+                  .maybeSingle();
+                if (!error && data) {
+                  setNomeProdutor(data.name || '');
+                  setNomePropriedade(data.nome_propriedade || '');
+                  setTamanhoHectares(data.tamanho_hectares || '');
+                  setCidadeEstado(data.cidade_estado || '');
+                  setLatitude(data.latitude || '');
+                  setLongitude(data.longitude || '');
+                }
+                return;
+            }
             const docRef = doc(db, 'users', user.uid);
             const docSnap = await getDoc(docRef);
             if (docSnap.exists()) {
@@ -95,6 +114,26 @@ export default function PerfilScreen({ navigation }: any) {
     if (!user?.uid) return;
     setSaving(true);
     try {
+      if (isSupabaseBackend()) {
+        const supabase = getSupabaseClient();
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            name: nomeProdutor,
+            nome_propriedade: nomePropriedade || null,
+            tamanho_hectares: tamanhoHectares || null,
+            cidade_estado: cidadeEstado || null,
+            latitude: latitude || null,
+            longitude: longitude || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', user.uid);
+        if (error) throw error;
+        Alert.alert('Sucesso', 'Dados da propriedade atualizados com sucesso!');
+        navigation.goBack();
+        return;
+      }
+
       const userRef = doc(db, 'users', user.uid);
       await updateDoc(userRef, {
         name: nomeProdutor,

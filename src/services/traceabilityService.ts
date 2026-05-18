@@ -2,6 +2,8 @@ import { addDoc, collection, getDocs, limit, orderBy, query, Timestamp, where } 
 import { db } from './firebaseConfig';
 import { assertTenantId } from './tenantGuard';
 import { RastreabilidadeEvento } from '../types/domain';
+import { isSupabaseBackend } from './backendConfig';
+import { getSupabaseClient } from './supabaseClient';
 
 export type TraceabilityEntityType =
   | 'plantio'
@@ -45,8 +47,59 @@ export interface CreateTraceabilityEventInput {
   actorName?: string | null;
 }
 
+const mapSupabaseTraceabilityToDomain = (row: any): RastreabilidadeEvento => ({
+  id: row.id,
+  tenantId: row.tenant_id,
+  userId: row.created_by || row.tenant_id,
+  createdBy: row.created_by || row.tenant_id,
+  plantioId: row.plantio_id || undefined,
+  estufaId: row.estufa_id || undefined,
+  hydroLoteId: row.hydro_lote_id || undefined,
+  entidade: row.entidade,
+  entidadeId: row.entidade_id,
+  acao: row.acao,
+  descricao: row.descricao,
+  motivo: row.motivo || undefined,
+  actorUid: row.actor_uid || undefined,
+  actorName: row.actor_name || undefined,
+  metadata: row.metadata || undefined,
+  eventAt: Timestamp.fromDate(new Date(row.event_at)),
+  createdAt: new Date(row.created_at).getTime(),
+  updatedAt: new Date(row.updated_at).getTime(),
+});
+
 export const createTraceabilityEvent = async (userId: string, data: CreateTraceabilityEventInput) => {
   const tenantId = assertTenantId(userId);
+
+  if (isSupabaseBackend()) {
+    const supabase = getSupabaseClient();
+    const now = new Date().toISOString();
+    const { data: inserted, error } = await supabase
+      .from('rastreabilidade_eventos')
+      .insert({
+        tenant_id: tenantId,
+        plantio_id: data.plantioId || null,
+        hydro_lote_id: data.hydroLoteId || null,
+        estufa_id: data.estufaId || null,
+        entidade: data.entidade,
+        entidade_id: data.entidadeId,
+        acao: data.acao,
+        descricao: data.descricao,
+        motivo: data.motivo || null,
+        actor_uid: data.actorUid || null,
+        actor_name: data.actorName || null,
+        metadata: data.metadata || {},
+        event_at: now,
+      })
+      .select('id')
+      .single();
+
+    if (error || !inserted?.id) {
+      throw new Error(`Falha ao registrar rastreabilidade: ${error?.message || ''}`.trim());
+    }
+    return inserted.id as string;
+  }
+
   const now = Timestamp.now();
 
   const payload: Omit<RastreabilidadeEvento, 'id'> = {
@@ -87,6 +140,20 @@ export const listTraceabilityEventsByPlantio = async (
   maxItems = 100
 ): Promise<RastreabilidadeEvento[]> => {
   const tenantId = assertTenantId(userId);
+
+  if (isSupabaseBackend()) {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('rastreabilidade_eventos')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('plantio_id', plantioId)
+      .order('event_at', { ascending: false })
+      .limit(maxItems);
+    if (error) throw new Error(`Erro ao listar rastreabilidade do plantio. ${error.message}`);
+    return (data || []).map(mapSupabaseTraceabilityToDomain);
+  }
+
   const q = query(
     collection(db, 'rastreabilidade_eventos'),
     where('tenantId', '==', tenantId),
@@ -105,6 +172,20 @@ export const listTraceabilityEventsByHydroLote = async (
   maxItems = 100
 ): Promise<RastreabilidadeEvento[]> => {
   const tenantId = assertTenantId(userId);
+
+  if (isSupabaseBackend()) {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('rastreabilidade_eventos')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('hydro_lote_id', hydroLoteId)
+      .order('event_at', { ascending: false })
+      .limit(maxItems);
+    if (error) throw new Error(`Erro ao listar rastreabilidade do lote hidropônico. ${error.message}`);
+    return (data || []).map(mapSupabaseTraceabilityToDomain);
+  }
+
   const q = query(
     collection(db, 'rastreabilidade_eventos'),
     where('tenantId', '==', tenantId),

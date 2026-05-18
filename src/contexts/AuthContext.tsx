@@ -1,9 +1,11 @@
-// src/contexts/AuthContext.tsx
-import React, { createContext, useState, useEffect, ReactNode } from 'react';
-import { auth, db } from '../services/firebaseConfig';
-import { doc, getDoc, collection, onSnapshot, Unsubscribe, setDoc, Timestamp } from 'firebase/firestore'; 
-import { signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth';
+import React, { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { doc, getDoc, collection, onSnapshot, Unsubscribe, setDoc, Timestamp } from 'firebase/firestore';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth as firebaseAuth, db as firebaseDb } from '../services/firebaseConfig';
 import { User } from '../types/domain';
+import { isSupabaseBackend } from '../services/backendConfig';
+import { getSupabaseClient, isSupabaseConfigured } from '../services/supabaseClient';
+import { onAuthStateChangedBridge, signInWithPasswordBridge } from '../services/authBridge';
 
 interface AuthContextData {
   user: User | null;
@@ -17,85 +19,167 @@ interface AuthContextData {
 
 export const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
+const normalizeOwnerName = (value: unknown) => {
+  if (typeof value !== 'string') return 'Parceiro';
+  const clean = value.trim();
+  return clean || 'Parceiro';
+};
+
+const supabaseEnabled = () => isSupabaseBackend() && isSupabaseConfigured();
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
-  const [availableTenants, setAvailableTenants] = useState<{ uid: string; name: string; type?: 'owner' | 'shared'; ownerName?: string }[]>([]);
+  const [availableTenants, setAvailableTenants] = useState<
+    { uid: string; name: string; type?: 'owner' | 'shared'; ownerName?: string }[]
+  >([]);
 
-  const normalizeOwnerName = (value: unknown) => {
-    if (typeof value !== 'string') return 'Parceiro';
-    const clean = value.trim();
-    return clean || 'Parceiro';
-  };
+  const ensureSupabaseProfileAndTenants = useCallback(
+    async (authUser: { id: string; email?: string | null; displayName?: string | null }) => {
+      const supabase = getSupabaseClient();
+      const fallbackName = authUser.displayName?.trim() || authUser.email?.split('@')[0] || 'Usuário';
 
-  const loadUserProfile = async (uid: string) => {
-    const userDocRef = doc(db, 'users', uid);
-    const userDoc = await getDoc(userDocRef);
+      await supabase.from('profiles').upsert(
+        {
+          id: authUser.id,
+          email: authUser.email || '',
+          name: fallbackName,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
 
-    if (!userDoc.exists()) {
-      const firebaseUser = auth.currentUser;
-      const fallbackName = firebaseUser?.displayName?.trim() || firebaseUser?.email?.split('@')[0] || 'Usuário';
-      const now = Timestamp.now();
+      let { data: memberships } = await supabase
+        .from('tenant_memberships')
+        .select('tenant_id, role, tenants(id, name, owner_user_id)')
+        .eq('user_id', authUser.id);
 
-      await setDoc(userDocRef, {
-        name: fallbackName,
-        email: firebaseUser?.email || '',
-        role: 'admin',
-        createdAt: now,
-        updatedAt: now,
-      });
+      if (!memberships || memberships.length === 0) {
+        const tenantName = `Estufa de ${fallbackName.split(' ')[0] || 'Usuário'}`;
+        const { error: tenantError } = await supabase.from('tenants').insert({
+          owner_user_id: authUser.id,
+          name: tenantName,
+        });
 
-      const createdDoc = await getDoc(userDocRef);
-      if (!createdDoc.exists()) {
-        setUser(null);
-        return null;
+        if (tenantError && !String(tenantError.message || '').toLowerCase().includes('duplicate')) {
+          throw tenantError;
+        }
+
+        const reload = await supabase
+          .from('tenant_memberships')
+          .select('tenant_id, role, tenants(id, name, owner_user_id)')
+          .eq('user_id', authUser.id);
+        memberships = reload.data || [];
       }
 
-      const createdRaw = createdDoc.data();
-      const createdUserData = {
+      const { data: profile } = await supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
+
+      const tenantOptions = (memberships || []).map((m: any) => {
+        const tenant = m.tenants;
+        const isOwner = tenant?.owner_user_id === authUser.id;
+        return {
+          uid: m.tenant_id,
+          name: isOwner ? 'Minha Estufa (Principal)' : tenant?.name || 'Estufa Compartilhada',
+          type: (isOwner ? 'owner' : 'shared') as 'owner' | 'shared',
+          ownerName: isOwner ? fallbackName : undefined,
+        };
+      });
+
+      setAvailableTenants(tenantOptions);
+      setSelectedTenantId((prev) => {
+        if (prev && tenantOptions.some((t) => t.uid === prev)) return prev;
+        return tenantOptions[0]?.uid || '';
+      });
+
+      const role = (profile?.role as User['role']) || ((memberships || []).some((m: any) => m.role === 'admin') ? 'admin' : 'operator');
+
+      setUser({
+        uid: authUser.id,
+        email: authUser.email || '',
+        name: profile?.name || fallbackName,
+        displayName: profile?.name || fallbackName,
+        role,
+      } as User);
+    },
+    []
+  );
+
+  const loadUserProfileFirebase = useCallback(
+    async (uid: string) => {
+      const userDocRef = doc(firebaseDb, 'users', uid);
+      const userDoc = await getDoc(userDocRef);
+
+      if (!userDoc.exists()) {
+        const firebaseUser = firebaseAuth.currentUser;
+        const fallbackName = firebaseUser?.displayName?.trim() || firebaseUser?.email?.split('@')[0] || 'Usuário';
+        const now = Timestamp.now();
+
+        await setDoc(userDocRef, {
+          name: fallbackName,
+          email: firebaseUser?.email || '',
+          role: 'admin',
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        const createdDoc = await getDoc(userDocRef);
+        if (!createdDoc.exists()) {
+          setUser(null);
+          return null;
+        }
+
+        const createdRaw = createdDoc.data();
+        const createdUserData = {
+          uid,
+          ...createdRaw,
+          role: createdRaw.role || 'admin',
+        } as User;
+
+        setUser(createdUserData);
+        if (!selectedTenantId) setSelectedTenantId(createdUserData.uid);
+        return createdUserData;
+      }
+
+      const raw = userDoc.data();
+      const userData = {
         uid,
-        ...createdRaw,
-        role: createdRaw.role || 'admin',
+        ...raw,
+        role: raw.role || 'admin',
       } as User;
 
-      setUser(createdUserData);
-      if (!selectedTenantId) setSelectedTenantId(createdUserData.uid);
-      return createdUserData;
-    }
-
-    const raw = userDoc.data();
-    const userData = {
-      uid,
-      ...raw,
-      role: raw.role || 'admin',
-    } as User;
-
-    setUser(userData);
-    if (!selectedTenantId) setSelectedTenantId(userData.uid);
-    return userData;
-  };
+      setUser(userData);
+      if (!selectedTenantId) setSelectedTenantId(userData.uid);
+      return userData;
+    },
+    [selectedTenantId]
+  );
 
   useEffect(() => {
     let unsubscribeShares: Unsubscribe | undefined;
 
-    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        try {
-          const userData = await loadUserProfile(firebaseUser.uid);
-          if (userData) {
-            setUser(userData);
-            
-            // Se não tiver selecionado, seleciona a própria conta
-            if (!selectedTenantId) setSelectedTenantId(userData.uid);
+    const bootstrap = async () => {
+      const unsubscribeAuth = onAuthStateChangedBridge(async (authUser) => {
+        if (authUser) {
+          try {
+            if (supabaseEnabled()) {
+              await ensureSupabaseProfileAndTenants(authUser);
+            } else {
+              const userData = await loadUserProfileFirebase(authUser.id);
+              if (userData) {
+                setUser(userData);
+                if (!selectedTenantId) setSelectedTenantId(userData.uid);
 
-            // 1. Sua conta principal (Sempre clara)
-            const myAccount = { uid: userData.uid, name: 'Minha Estufa (Principal)', type: 'owner' as const, ownerName: userData.name };
-            
-            // 2. Acessos antigos (Fallback)
-            const legacyShares: { uid: string; name: string; type: 'shared'; ownerName: string }[] = [];
-            if (userData.sharedAccess && Array.isArray(userData.sharedAccess)) {
-                userData.sharedAccess.forEach((access: any) => {
+                const myAccount = {
+                  uid: userData.uid,
+                  name: 'Minha Estufa (Principal)',
+                  type: 'owner' as const,
+                  ownerName: userData.name,
+                };
+
+                const legacyShares: { uid: string; name: string; type: 'shared'; ownerName: string }[] = [];
+                if (userData.sharedAccess && Array.isArray(userData.sharedAccess)) {
+                  userData.sharedAccess.forEach((access: any) => {
                     const ownerName = normalizeOwnerName(access?.ownerName || access?.sharedBy || access?.name);
                     const legacyTenantId = access?.tenantId || access?.uid;
                     if (!legacyTenantId) return;
@@ -105,81 +189,103 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                       type: 'shared',
                       ownerName,
                     });
-                });
-            }
+                  });
+                }
 
-            // 3. Monitoramento em TEMPO REAL dos novos convites
-            unsubscribeShares = onSnapshot(collection(db, 'users', firebaseUser.uid, 'accessible_tenants'), (snapshot) => {
-                const newShares = snapshot.docs.map(doc => {
-                    const data = doc.data();
-                    
-                    // A MÁGICA AQUI: Pegamos o nome exato de quem compartilhou (sharedBy)
-                    // Se não tiver, usamos o nome salvo ou 'Parceiro' como plano B
-                    const ownerName = normalizeOwnerName(
-                      data.ownerName || data.sharedByName || data.sharedBy || data.name
-                    );
+                unsubscribeShares = onSnapshot(
+                  collection(firebaseDb, 'users', authUser.id, 'accessible_tenants'),
+                  (snapshot) => {
+                    const newShares = snapshot.docs.map((item) => {
+                      const data = item.data();
+                      const ownerName = normalizeOwnerName(
+                        data.ownerName || data.sharedByName || data.sharedBy || data.name
+                      );
 
-                    return {
+                      return {
                         uid: data.tenantId,
                         name: `Estufa de ${ownerName}`,
                         type: 'shared' as const,
                         ownerName,
-                    };
-                });
+                      };
+                    });
 
-                // Junta tudo e remove duplicatas
-                const allTenants = [myAccount, ...legacyShares, ...newShares];
-                const uniqueTenants = allTenants.filter((item, index, self) =>
-                    index === self.findIndex((t) => t.uid === item.uid)
+                    const allTenants = [myAccount, ...legacyShares, ...newShares];
+                    const uniqueTenants = allTenants.filter(
+                      (item, index, self) => index === self.findIndex((t) => t.uid === item.uid)
+                    );
+
+                    setAvailableTenants(uniqueTenants);
+                  }
                 );
-
-                setAvailableTenants(uniqueTenants);
-            });
-
-          } 
-        } catch (error) {
-           console.error('AuthContext Error:', error);
-           setUser(null);
+              }
+            }
+          } catch (error) {
+            console.error('AuthContext Error:', error);
+            setUser(null);
+          }
+        } else {
+          setUser(null);
+          setAvailableTenants([]);
+          setSelectedTenantId('');
+          if (unsubscribeShares) unsubscribeShares();
         }
-      } else {
-        // Logout
-        setUser(null);
-        setAvailableTenants([]);
-        setSelectedTenantId('');
-        if (unsubscribeShares) unsubscribeShares();
-      }
-      setLoading(false);
+        setLoading(false);
+      });
+
+      return unsubscribeAuth;
+    };
+
+    let authUnsubscribe: (() => void) | null = null;
+
+    bootstrap().then((unsub) => {
+      authUnsubscribe = unsub;
     });
 
     return () => {
-        unsubscribeAuth();
-        if (unsubscribeShares) unsubscribeShares();
+      if (authUnsubscribe) authUnsubscribe();
+      if (unsubscribeShares) unsubscribeShares();
     };
-  }, []);
+  }, [ensureSupabaseProfileAndTenants, loadUserProfileFirebase, selectedTenantId]);
 
   const changeTenant = (uid: string) => {
-      setSelectedTenantId(uid);
+    setSelectedTenantId(uid);
   };
 
   const signIn = async (email: string, password: string) => {
-      await signInWithEmailAndPassword(auth, email, password);
+    if (supabaseEnabled()) {
+      await signInWithPasswordBridge(email, password);
+      return;
+    }
+    await signInWithEmailAndPassword(firebaseAuth, email, password);
   };
 
   const refreshUserProfile = async () => {
     if (!user?.uid) return;
-    await loadUserProfile(user.uid);
+
+    if (supabaseEnabled()) {
+      await ensureSupabaseProfileAndTenants({
+        id: user.uid,
+        email: user.email,
+        displayName: user.displayName,
+      });
+      return;
+    }
+
+    await loadUserProfileFirebase(user.uid);
   };
 
   return (
-    <AuthContext.Provider value={{ 
-        user, 
-        loading, 
-        selectedTenantId: selectedTenantId || (user?.uid || ''), 
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        selectedTenantId: selectedTenantId || user?.uid || '',
         changeTenant,
         availableTenants,
         signIn,
-        refreshUserProfile
-    }}>
+        refreshUserProfile,
+      }}
+    >
       {!loading && children}
     </AuthContext.Provider>
   );

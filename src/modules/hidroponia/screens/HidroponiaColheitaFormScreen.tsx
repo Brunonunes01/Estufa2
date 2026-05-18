@@ -16,10 +16,9 @@ import { useAuth } from '../../../hooks/useAuth';
 import { useClientesList } from '../../../hooks/useClientesList';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../../constants/theme';
 import { RootStackParamList } from '../../../navigation/types';
-import { db } from '../../../services/firebaseConfig';
-import { doc, getDoc } from 'firebase/firestore';
 import { HydroOcupacao } from '../types';
 import { registrarColheitaHidroponica } from '../services/hidroponiaColheitaService';
+import { getHydroOcupacaoById } from '../services/hidroponiaOcupacaoService';
 import { toNumber } from '../utils';
 import { useAppSettings } from '../../../hooks/useAppSettings';
 
@@ -65,9 +64,8 @@ const HidroponiaColheitaFormScreen = ({ navigation, route }: Props) => {
     const load = async () => {
       if (!targetId) return;
       try {
-        const snap = await getDoc(doc(db, 'hidroponia_ocupacoes', ocupacaoId));
-        if (snap.exists()) {
-          const data = snap.data() as HydroOcupacao;
+        const data = (await getHydroOcupacaoById(ocupacaoId, targetId)) as HydroOcupacao | null;
+        if (data) {
           setOcupacao(data);
           setQuantidade(String(data.quantidadeAlocada || ''));
         }

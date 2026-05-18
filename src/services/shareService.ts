@@ -5,6 +5,8 @@ import {
 } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ShareCode, Tenant } from '../types/domain';
+import { isSupabaseBackend } from './backendConfig';
+import { getSupabaseClient } from './supabaseClient';
 
 const REDEEM_RATE_KEY = 'share_redeem_rate_v1';
 const REDEEM_WINDOW_MS = 10 * 60 * 1000;
@@ -40,6 +42,22 @@ const generateSecureShareCode = () => {
         .id
         .replace(/[^A-Za-z0-9]/g, '')
         .toUpperCase();
+};
+
+const ensureSupabaseSharePermission = async (tenantId: string, currentUid: string) => {
+    const supabase = getSupabaseClient();
+    const { data: membership, error } = await supabase
+        .from('tenant_memberships')
+        .select('can_manage_sharing')
+        .eq('tenant_id', tenantId)
+        .eq('user_id', currentUid)
+        .maybeSingle();
+    if (error) {
+        throw new Error(`Falha ao validar permissão de compartilhamento. ${error.message}`);
+    }
+    if (!membership?.can_manage_sharing) {
+        throw new Error('Somente administradores do tenant podem gerar convite.');
+    }
 };
 
 type RedeemRateState = {
@@ -104,7 +122,40 @@ const registerRedeemAttempt = async (success: boolean) => {
 export const generateShareCode = async (tenantId: string, tenantName: string, ownerName: string) => {
     const currentUid = auth.currentUser?.uid;
     if (!currentUid || currentUid !== tenantId) {
-        throw new Error('Somente o dono do tenant pode gerar convite desta conta.');
+        if (!isSupabaseBackend()) {
+            throw new Error('Somente o dono do tenant pode gerar convite desta conta.');
+        }
+    }
+
+    if (isSupabaseBackend()) {
+        const supabase = getSupabaseClient();
+        const supabaseUid = supabase.auth.getUser ? (await supabase.auth.getUser()).data.user?.id : null;
+        if (!supabaseUid) throw new Error('Usuário não autenticado.');
+
+        await ensureSupabaseSharePermission(tenantId, supabaseUid);
+
+        const expiresAtIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+            const code = generateSecureShareCode();
+            const { error } = await supabase.from('share_codes').insert({
+                tenant_id: tenantId,
+                code,
+                tenant_name: tenantName || null,
+                owner_name: ownerName || null,
+                grant_role: 'operator',
+                permissions: defaultSharePermissions,
+                created_by: supabaseUid,
+                expires_at: expiresAtIso,
+                used_by: [],
+            });
+            if (!error) return code;
+            if (!String(error.message || '').toLowerCase().includes('duplicate')) {
+                throw new Error(`Não foi possível gerar convite. ${error.message}`);
+            }
+        }
+
+        throw new Error('Não foi possível gerar um código de compartilhamento. Tente novamente.');
     }
 
     const expiresAt = Timestamp.fromMillis(Date.now() + (24 * 60 * 60 * 1000)); // 24 horas
@@ -144,6 +195,23 @@ export const redeemShareCode = async (code: string, userId: string): Promise<boo
         if (!normalizedCode) throw new Error("Código inválido.");
         if (normalizedCode.length < SHARE_CODE_MIN_LENGTH) {
             throw new Error(`Código inválido. Use o código completo (${SHARE_CODE_MIN_LENGTH}+ caracteres).`);
+        }
+
+        if (isSupabaseBackend()) {
+            const supabase = getSupabaseClient();
+            const authUser = (await supabase.auth.getUser()).data.user;
+            if (!authUser?.id || authUser.id !== userId) {
+                throw new Error('Sessão inválida para resgatar convite.');
+            }
+
+            const { data, error } = await supabase.rpc('redeem_share_code', {
+                p_code: normalizedCode,
+            });
+            if (error) {
+                throw new Error(error.message || 'Falha ao resgatar convite.');
+            }
+            await registerRedeemAttempt(true);
+            return Boolean(data);
         }
 
         // Busca o código pelo ID do documento
@@ -203,6 +271,51 @@ export const redeemShareCode = async (code: string, userId: string): Promise<boo
 // Busca os tenants compartilhados com o usuário
 export const getSharedTenants = async (userId: string): Promise<Tenant[]> => {
     try {
+        if (isSupabaseBackend()) {
+            const supabase = getSupabaseClient();
+            const { data: memberships, error } = await supabase
+                .from('tenant_memberships')
+                .select('tenant_id, role, can_read, can_write, can_delete, can_manage_sharing, tenants(id, name, owner_user_id)')
+                .eq('user_id', userId);
+            if (error) {
+                console.error(error);
+                return [];
+            }
+
+            const filtered = (memberships || []).filter((item: any) => item.tenants?.owner_user_id !== userId);
+            const ownerIds = Array.from(
+                new Set(filtered.map((item: any) => item.tenants?.owner_user_id).filter(Boolean))
+            ) as string[];
+
+            const ownerNamesMap = new Map<string, string>();
+            if (ownerIds.length > 0) {
+                const { data: profiles } = await supabase
+                    .from('profiles')
+                    .select('id, name')
+                    .in('id', ownerIds);
+                (profiles || []).forEach((profile: any) => {
+                    ownerNamesMap.set(profile.id, profile.name || 'Parceiro');
+                });
+            }
+
+            return filtered.map((item: any) => {
+                const ownerId = item.tenants?.owner_user_id;
+                return {
+                    uid: item.tenant_id,
+                    name: item.tenants?.name || 'Estufa Compartilhada',
+                    ownerId: ownerId || '',
+                    sharedBy: ownerNamesMap.get(ownerId) || 'Parceiro',
+                    role: item.role || 'guest',
+                    permissions: {
+                        canRead: !!item.can_read,
+                        canWrite: !!item.can_write,
+                        canDelete: !!item.can_delete,
+                        canManageSharing: !!item.can_manage_sharing,
+                    },
+                } as Tenant;
+            });
+        }
+
         const snapshot = await getDocs(collection(db, 'users', userId, 'accessible_tenants'));
         return snapshot.docs.map(doc => ({
             uid: doc.data().tenantId,
