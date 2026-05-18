@@ -2,12 +2,14 @@ import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ScreenHeaderCard from '../../../components/ui/ScreenHeaderCard';
 import EmptyState from '../../../components/ui/EmptyState';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../../constants/theme';
 import { RootStackParamList } from '../../../navigation/types';
 import HidroponiaStageChip from '../components/HidroponiaStageChip';
 import { useHidroponiaLotes } from '../hooks/useHidroponiaLotes';
+import { useAppSettings } from '../../../hooks/useAppSettings';
 import { HydroLoteStage, HydroLoteStatus } from '../types';
 import { formatHydroDate } from '../utils';
 
@@ -25,6 +27,8 @@ const stageFromStatus = (status: HydroLoteStatus): HydroLoteStage =>
   status === 'concluido' ? 'colhido' : status === 'cancelado' ? 'cancelado' : 'crescimento_final';
 
 const HidroponiaLotesScreen = ({ navigation, route }: Props) => {
+  const { settings } = useAppSettings();
+  const insets = useSafeAreaInsets();
   const estufaId = route.params?.estufaId;
   const { lotes, loading, error, refetch } = useHidroponiaLotes(estufaId);
   const [filter, setFilter] = useState<Filter>('all');
@@ -76,6 +80,24 @@ const HidroponiaLotesScreen = ({ navigation, route }: Props) => {
         </View>
       </ScreenHeaderCard>
 
+      <View style={styles.moduleLinksRow}>
+        <TouchableOpacity style={[styles.moduleLink, styles.moduleLinkActive]}>
+          <Text style={[styles.moduleLinkText, { color: COLORS.info }]}>Hidroponia</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.moduleLink}
+          onPress={() => navigation.navigate('HidroponiaMotores', estufaId ? { estufaId } : undefined)}
+        >
+          <Text style={styles.moduleLinkText}>Motores</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.moduleLink}
+          onPress={() => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' })}
+        >
+          <Text style={styles.moduleLinkText}>Financeiro</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.filters}>
         {STATUS_FILTERS.map((item) => (
           <TouchableOpacity
@@ -100,7 +122,10 @@ const HidroponiaLotesScreen = ({ navigation, route }: Props) => {
       <FlatList
         data={filteredLotes}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: (settings.uiV2Enabled ? 138 : SPACING.xxl) + insets.bottom },
+        ]}
         ListEmptyComponent={
           <EmptyState
             icon="sprout-outline"
@@ -150,12 +175,38 @@ const styles = StyleSheet.create({
   readingBtn: { height: 48, borderRadius: RADIUS.md, paddingHorizontal: 14, backgroundColor: COLORS.primary, flexDirection: 'row', alignItems: 'center', gap: 6 },
   readingBtnText: { color: COLORS.textLight, fontWeight: '800' },
   layoutBtn: { width: 48, height: 48, borderRadius: RADIUS.md, backgroundColor: COLORS.success, alignItems: 'center', justifyContent: 'center' },
+  moduleLinksRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.xs,
+  },
+  moduleLink: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.pill,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moduleLinkActive: {
+    borderColor: COLORS.info,
+    backgroundColor: COLORS.infoSoft,
+  },
+  moduleLinkText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.textSecondary,
+  },
   filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: SPACING.lg, paddingBottom: SPACING.sm },
   filterChip: { borderRadius: RADIUS.pill, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, paddingHorizontal: 10, paddingVertical: 7 },
   filterChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   filterText: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary },
   filterTextActive: { color: COLORS.textLight },
-  listContent: { padding: SPACING.lg, paddingTop: SPACING.sm, paddingBottom: SPACING.xxl },
+  listContent: { padding: SPACING.lg, paddingTop: SPACING.sm },
   card: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg, marginBottom: 12, ...SHADOWS.card },
   cardTop: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
   cardTitle: { fontSize: TYPOGRAPHY.title, fontWeight: '900', color: COLORS.textPrimary },

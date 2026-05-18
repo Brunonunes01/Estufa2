@@ -3,13 +3,17 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, ScrollView, Alert, StyleSheet, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Contacts from 'expo-contacts';
 import { createCliente, updateCliente, getClienteById, ClienteFormData } from '../../services/clienteService';
 import { useAuth } from '../../hooks/useAuth';
+import { useAppSettings } from '../../hooks/useAppSettings';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const ClienteFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const { settings } = useAppSettings();
+  const insets = useSafeAreaInsets();
   const clienteId = route.params?.clienteId;
   const isEditMode = !!clienteId;
   
@@ -150,7 +154,12 @@ const ClienteFormScreen = ({ route, navigation }: any) => {
 
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: (settings.uiV2Enabled ? 138 : SPACING.xl) + insets.bottom },
+        ]}
+      >
         <View style={styles.card}>
           <Text style={styles.sectionHeader}>Identificação</Text>
 

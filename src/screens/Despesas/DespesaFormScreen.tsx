@@ -4,13 +4,17 @@ import { View, Text, TextInput, ScrollView, Alert, StyleSheet, TouchableOpacity,
 import { Picker } from '@react-native-picker/picker'; 
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createDespesa } from '../../services/despesaService';
 import { useAuth } from '../../hooks/useAuth';
+import { useAppSettings } from '../../hooks/useAppSettings';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { queryClient, queryKeys } from '../../lib/queryClient';
 
 const DespesaFormScreen = ({ navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const { settings } = useAppSettings();
+  const insets = useSafeAreaInsets();
   const targetId = selectedTenantId || user?.uid;
   
   const [descricao, setDescricao] = useState('');
@@ -61,7 +65,12 @@ const DespesaFormScreen = ({ navigation }: any) => {
 
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: (settings.uiV2Enabled ? 138 : SPACING.xl) + insets.bottom },
+        ]}
+      >
         
         <View style={styles.card}>
             <Text style={styles.sectionHeader}>Dados do Pagamento</Text>

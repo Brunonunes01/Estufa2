@@ -224,25 +224,71 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
     ];
   }, [isHydroMode, navigateTo, openHydroLayoutFlow, openQuickManejoFlow, openQuickSaleFlow]);
 
-  const modules = useMemo<Array<{ label: string; icon: string; route: keyof RootStackParamList; color: string }>>(() => {
-    const base: Array<{ label: string; icon: string; route: keyof RootStackParamList; color: string }> = [
-      { label: 'Relatórios', icon: 'chart-box-outline', route: 'Relatorios', color: COLORS.primary },
-      { label: 'Vendas', icon: 'basket-outline', route: 'VendasList', color: COLORS.success },
-      { label: 'Despesas', icon: 'cash-minus', route: 'DespesasList', color: COLORS.modDespesas },
-      { label: 'Insumos', icon: 'flask-outline', route: 'InsumosList', color: COLORS.primaryDark },
-      { label: 'Clientes', icon: 'account-group-outline', route: 'ClientesList', color: COLORS.info },
-      { label: 'Fornecedores', icon: 'truck-delivery-outline', route: 'FornecedoresList', color: COLORS.orange },
-      { label: 'Compartilhar', icon: 'account-multiple-plus', route: 'ShareAccount', color: COLORS.success },
-      { label: 'Tarefas', icon: 'calendar-check-outline', route: 'Tarefas', color: COLORS.orange },
-      { label: 'Ajustes', icon: 'cog-outline', route: 'Settings', color: COLORS.secondary },
+  const modules = useMemo<Array<{ label: string; icon: string; color: string; onPress: () => void }>>(() => {
+    if (settings.uiV2Enabled) {
+      return [
+        {
+          label: 'Início',
+          icon: 'view-dashboard-outline',
+          color: COLORS.primary,
+          onPress: () => navigateTo('MainTabs', { screen: 'InicioTab' }),
+        },
+        {
+          label: isHydroMode ? 'Hidroponia' : 'Campo',
+          icon: isHydroMode ? 'water-outline' : 'greenhouse',
+          color: COLORS.success,
+          onPress: () => navigateTo('MainTabs', { screen: 'OperacaoTab' }),
+        },
+        {
+          label: 'Estoque',
+          icon: 'warehouse',
+          color: COLORS.primaryDark,
+          onPress: () => navigateTo('MainTabs', { screen: 'EstoqueTab' }),
+        },
+        {
+          label: 'Financeiro',
+          icon: 'cash-multiple',
+          color: COLORS.modFinanceiro,
+          onPress: () => navigateTo('MainTabs', { screen: 'FinanceiroTab' }),
+        },
+        {
+          label: 'Perfil',
+          icon: 'account-circle-outline',
+          color: COLORS.info,
+          onPress: () => navigateTo('MainTabs', { screen: 'PerfilTab' }),
+        },
+        {
+          label: 'Ajustes',
+          icon: 'cog-outline',
+          color: COLORS.secondary,
+          onPress: () => navigateTo('Settings'),
+        },
+      ];
+    }
+
+    const base: Array<{ label: string; icon: string; color: string; onPress: () => void }> = [
+      { label: 'Relatórios', icon: 'chart-box-outline', color: COLORS.primary, onPress: () => navigateTo('Relatorios') },
+      { label: 'Vendas', icon: 'basket-outline', color: COLORS.success, onPress: () => navigateTo('VendasList') },
+      { label: 'Despesas', icon: 'cash-minus', color: COLORS.modDespesas, onPress: () => navigateTo('DespesasList') },
+      { label: 'Insumos', icon: 'flask-outline', color: COLORS.primaryDark, onPress: () => navigateTo('InsumosList') },
+      { label: 'Clientes', icon: 'account-group-outline', color: COLORS.info, onPress: () => navigateTo('ClientesList') },
+      { label: 'Fornecedores', icon: 'truck-delivery-outline', color: COLORS.orange, onPress: () => navigateTo('FornecedoresList') },
+      { label: 'Compartilhar', icon: 'account-multiple-plus', color: COLORS.success, onPress: () => navigateTo('ShareAccount') },
+      { label: 'Tarefas', icon: 'calendar-check-outline', color: COLORS.orange, onPress: () => navigateTo('Tarefas') },
+      { label: 'Ajustes', icon: 'cog-outline', color: COLORS.secondary, onPress: () => navigateTo('Settings') },
     ];
 
     if (isHydroMode) {
-      base.splice(3, 0, { label: 'Hidroponia', icon: 'water', route: 'HidroponiaLotes', color: COLORS.info });
+      base.splice(3, 0, {
+        label: 'Hidroponia',
+        icon: 'water',
+        color: COLORS.info,
+        onPress: () => navigateTo('HidroponiaLotes'),
+      });
     }
 
     return base;
-  }, [isHydroMode]);
+  }, [isHydroMode, navigateTo, settings.uiV2Enabled]);
 
   const handleCompleteTask = useCallback(
     async (taskId: string) => {
@@ -327,8 +373,6 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
 
       <TodayTasks
         tasks={todayTasks}
-        titleColor={theme.textPrimary}
-        textColor={theme.textPrimary}
         onOpenPlantio={(plantioId) => navigateTo('PlantioDetail', { plantioId })}
         onOpenTasks={() => navigateTo('Tarefas')}
         onCompleteTask={handleCompleteTask}
@@ -336,18 +380,10 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
 
       <AlertsList
         alerts={criticalAlerts as any}
-        titleColor={theme.textPrimary}
-        textColor={theme.textPrimary}
         onOpenEstufa={(estufaId) => navigateTo('EstufaDetail', { estufaId })}
       />
 
-      <QuickActions
-        actions={quickActions}
-        titleColor={theme.textPrimary}
-        cardBg={theme.surfaceBackground}
-        borderColor={theme.border}
-        textColor={theme.textPrimary}
-      />
+      <QuickActions actions={quickActions} />
 
       {isAdmin && (
         loadingResumo ? (
@@ -357,7 +393,6 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
             totalReceber={totalReceber}
             totalRecebido={totalRecebido}
             totalPagar={totalPagar}
-            textColor={theme.textSecondary}
           />
         )
       )}
@@ -373,7 +408,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
           <TouchableOpacity
             key={module.label}
             style={[styles.moduleChip, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}
-            onPress={() => navigateTo(module.route)}
+            onPress={module.onPress}
           >
             <MaterialCommunityIcons name={module.icon as any} size={22} color={module.color} />
             <Text style={[styles.moduleChipText, { color: theme.textPrimary }]}>{module.label}</Text>
@@ -391,9 +426,13 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
           title="Centro de Comando"
           subtitle={`Olá, ${user?.displayName?.split(' ')[0] || 'Gestor'}`}
           badgeLabel={isAdmin ? 'Administrador' : 'Operador'}
-          actionLabel="Estufas"
-          actionIcon="greenhouse"
-          onPressAction={() => navigateTo('EstufasList')}
+          actionLabel={settings.uiV2Enabled ? (isHydroMode ? 'Hidroponia' : 'Campo') : 'Estufas'}
+          actionIcon={settings.uiV2Enabled ? (isHydroMode ? 'water-outline' : 'greenhouse') : 'greenhouse'}
+          onPressAction={() =>
+            settings.uiV2Enabled
+              ? navigateTo('MainTabs', { screen: 'OperacaoTab' })
+              : navigateTo('EstufasList')
+          }
         >
           <HeroStats estufas={estufas.length} plantios={totalCiclosAtivos} tarefasHoje={tarefasHojePendentes} />
         </ScreenHeaderCard>

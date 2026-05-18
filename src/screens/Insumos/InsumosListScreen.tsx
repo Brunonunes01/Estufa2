@@ -1,17 +1,21 @@
 import React, { useEffect } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Insumo } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING } from '../../constants/theme';
 import { useThemeMode } from '../../hooks/useThemeMode';
 import { useFeedback } from '../../hooks/useFeedback';
 import { useInsumosList } from '../../hooks/useInsumosList';
+import { useAppSettings } from '../../hooks/useAppSettings';
 import EmptyState from '../../components/ui/EmptyState';
 import SkeletonBlock from '../../components/ui/SkeletonBlock';
 import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 
 const InsumosListScreen = ({ navigation }: any) => {
   const theme = useThemeMode();
+  const insets = useSafeAreaInsets();
+  const { settings } = useAppSettings();
   const { showError } = useFeedback();
   const { insumos, lowStockCount, loading, refreshing, isError, refetch } = useInsumosList();
 
@@ -135,7 +139,7 @@ const InsumosListScreen = ({ navigation }: any) => {
       <FlatList
         data={insumos}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: (settings.uiV2Enabled ? 170 : 120) + insets.bottom }]}
         refreshing={refreshing && !loading}
         onRefresh={refetch}
         ListEmptyComponent={
@@ -152,7 +156,10 @@ const InsumosListScreen = ({ navigation }: any) => {
         renderItem={renderItem}
       />
 
-      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('InsumoForm')}>
+      <TouchableOpacity
+        style={[styles.fab, { bottom: (settings.uiV2Enabled ? 132 : 20) + insets.bottom }]}
+        onPress={() => navigation.navigate('InsumoForm')}
+      >
         <MaterialCommunityIcons name="plus" size={32} color={COLORS.textLight} />
       </TouchableOpacity>
     </View>
@@ -161,7 +168,7 @@ const InsumosListScreen = ({ navigation }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  listContent: { padding: SPACING.lg, paddingBottom: 90, paddingTop: SPACING.md },
+  listContent: { padding: SPACING.lg, paddingTop: SPACING.md },
   headerStats: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   headerStatChip: {
     flex: 1,

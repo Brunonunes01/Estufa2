@@ -16,9 +16,11 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../hooks/useAuth';
 import { useThemeMode } from '../../hooks/useThemeMode';
+import { useAppSettings } from '../../hooks/useAppSettings';
 import { getVendaById, listAllVendas } from '../../services/vendaService';
 import { getColheitaById } from '../../services/colheitaService';
 import { getPlantioById } from '../../services/plantioService';
@@ -35,7 +37,9 @@ import EmptyState from '../../components/ui/EmptyState';
 
 const VendasListScreen = ({ navigation }: any) => {
   const { user, selectedTenantId, availableTenants } = useAuth();
+  const { settings } = useAppSettings();
   const theme = useThemeMode();
+  const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
 
   const [allVendas, setAllVendas] = useState<any[]>([]);
@@ -580,13 +584,34 @@ const VendasListScreen = ({ navigation }: any) => {
         </TouchableOpacity>
       </View>
 
+      <View style={styles.financeLinksRow}>
+        <TouchableOpacity
+          style={[styles.financeLink, styles.financeLinkActive, { borderColor: theme.info }]}
+          onPress={() => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' })}
+        >
+          <Text style={[styles.financeLinkText, { color: theme.info }]}>Vendas</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.financeLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
+          onPress={() => navigation.navigate('ContasReceber')}
+        >
+          <Text style={[styles.financeLinkText, { color: theme.textSecondary }]}>Contas</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.financeLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
+          onPress={() => navigation.navigate('DespesasList')}
+        >
+          <Text style={[styles.financeLinkText, { color: theme.textSecondary }]}>Despesas</Text>
+        </TouchableOpacity>
+      </View>
+
       {loading && allVendas.length === 0 ? (
         <ActivityIndicator size="large" color={theme.info} style={{ marginTop: 54 }} />
       ) : (
         <FlatList
           data={filteredVendas}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: (settings.uiV2Enabled ? 138 : 48) + insets.bottom }]}
           renderItem={renderItem}
           ListEmptyComponent={
             <EmptyState
@@ -794,7 +819,29 @@ const styles = StyleSheet.create({
   },
   filterCountText: { color: COLORS.textLight, fontSize: 10, fontWeight: '800' },
 
-  listContent: { paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xl, paddingTop: SPACING.xs },
+  financeLinksRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.sm,
+  },
+  financeLink: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: RADIUS.pill,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  financeLinkActive: {
+    backgroundColor: COLORS.infoSoft,
+  },
+  financeLinkText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  listContent: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.xs },
   card: {
     borderRadius: RADIUS.md,
     padding: SPACING.md,

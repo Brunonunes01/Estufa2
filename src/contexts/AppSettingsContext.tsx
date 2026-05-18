@@ -6,6 +6,7 @@ export interface AppSettings {
   notifyCritical: boolean;
   notifyDailySummary: boolean;
   activeProductionMode: 'ciclo_longo' | 'hidroponia';
+  uiV2Enabled: boolean;
 }
 
 interface AppSettingsContextData {
@@ -21,6 +22,7 @@ const defaultSettings: AppSettings = {
   notifyCritical: true,
   notifyDailySummary: true,
   activeProductionMode: 'ciclo_longo',
+  uiV2Enabled: true,
 };
 
 export const AppSettingsContext = createContext<AppSettingsContextData>({} as AppSettingsContextData);

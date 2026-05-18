@@ -9,11 +9,15 @@ import { listInsumos } from '../../services/insumoService';
 import { createAplicacao, AplicacaoItemData } from '../../services/aplicacaoService';
 import { Plantio, Insumo } from '../../types/domain';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../constants/theme';
 import { queryClient, queryKeys } from '../../lib/queryClient';
+import { useAppSettings } from '../../hooks/useAppSettings';
 
 const AplicacaoFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const { settings } = useAppSettings();
+  const insets = useSafeAreaInsets();
   const targetId = selectedTenantId || user?.uid;
   const params = route.params || {};
   
@@ -139,7 +143,13 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
 
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: (settings.uiV2Enabled ? 138 : 40) + insets.bottom },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         
         <View style={styles.card}>
             <Text style={styles.sectionHeader}>Finalidade da Aplicação</Text>

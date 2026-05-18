@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../hooks/useAuth';
 import { Estufa, Plantio } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING } from '../../constants/theme';
@@ -26,6 +27,7 @@ import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 
 const EstufasListScreen = ({ navigation, route }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const insets = useSafeAreaInsets();
   const theme = useThemeMode();
   const { settings } = useAppSettings();
   const { showError, showWarning } = useFeedback();
@@ -333,10 +335,33 @@ const EstufasListScreen = ({ navigation, route }: any) => {
         </View>
       </ScreenHeaderCard>
 
+      {!mode ? (
+        <View style={styles.moduleLinksRow}>
+          <TouchableOpacity style={[styles.moduleLink, styles.moduleLinkActive, { borderColor: COLORS.primary }]}>
+            <Text style={[styles.moduleLinkText, { color: COLORS.primary }]}>Campo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.moduleLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'EstoqueTab' })}
+          >
+            <Text style={[styles.moduleLinkText, { color: theme.textSecondary }]}>Estoque</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.moduleLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' })}
+          >
+            <Text style={[styles.moduleLinkText, { color: theme.textSecondary }]}>Financeiro</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       <FlatList
         data={estufas}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: (settings.uiV2Enabled && !mode ? 138 : 60) + insets.bottom },
+        ]}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={COLORS.textLight} />}
         ListHeaderComponent={
           loading ? (
@@ -365,7 +390,29 @@ const EstufasListScreen = ({ navigation, route }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  listContent: { padding: SPACING.lg, paddingBottom: 60 },
+  listContent: { padding: SPACING.lg },
+  moduleLinksRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.xs,
+  },
+  moduleLink: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: RADIUS.pill,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moduleLinkActive: {
+    backgroundColor: COLORS.primarySoft,
+  },
+  moduleLinkText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
   headerStats: { flexDirection: 'row', gap: 8 },
   headerStatChip: {
     flex: 1,

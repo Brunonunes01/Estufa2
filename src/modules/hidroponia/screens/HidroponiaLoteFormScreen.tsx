@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../../hooks/useAuth';
 import { listEstufas } from '../../../services/estufaService';
 import { Estufa, HydroSetor } from '../../../types/domain';
@@ -10,11 +11,14 @@ import { createHydroLote, getHydroLoteById, updateHydroLote } from '../services/
 import { listHydroVerduras } from '../services/hidroponiaVerduraService';
 import { HydroVerdura } from '../types';
 import { createHydroLotCode, toNumber } from '../utils';
+import { useAppSettings } from '../../../hooks/useAppSettings';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'HidroponiaLoteForm'>;
 
 const HidroponiaLoteFormScreen = ({ navigation, route }: Props) => {
   const { user, selectedTenantId } = useAuth();
+  const { settings } = useAppSettings();
+  const insets = useSafeAreaInsets();
   const targetId = selectedTenantId || user?.uid;
   const loteId = route.params?.loteId;
   const routeEstufaId = route.params?.estufaId;
@@ -212,7 +216,13 @@ const HidroponiaLoteFormScreen = ({ navigation, route }: Props) => {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: (settings.uiV2Enabled ? 138 : SPACING.xxl) + insets.bottom },
+      ]}
+    >
       <View style={styles.infoCard}>
         <Text style={styles.infoTitle}>Como Funciona a Produção Hidropônica?</Text>
         <Text style={styles.infoText}>

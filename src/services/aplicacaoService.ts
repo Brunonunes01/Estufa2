@@ -11,6 +11,8 @@ import { db } from './firebaseConfig';
 import { Aplicacao, AplicacaoItem, Insumo, Plantio } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { createTraceabilityEventSafely } from './traceabilityService';
+import { OfflineWriteOptions } from './offline/offlineStorage';
+import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWrite';
 
 export interface AplicacaoItemData {
   insumoId: string;
@@ -30,118 +32,130 @@ export interface CreateAplicacaoData {
   itens: AplicacaoItemData[];
 }
 
-export const createAplicacao = async (data: CreateAplicacaoData, userId: string) => {
+export const createAplicacao = async (
+  data: CreateAplicacaoData,
+  userId: string,
+  options?: OfflineWriteOptions
+) => {
   const tenantId = assertTenantId(userId);
-  const now = Timestamp.now();
+  return runOfflineWrite({
+    action: 'createAplicacao',
+    payload: { data, userId: tenantId },
+    options,
+    onQueuedValue: () => buildOfflinePlaceholderId(),
+    write: async () => {
+      const now = Timestamp.now();
 
-  if (!data.itens?.length) {
-    throw new Error('A aplicação precisa de ao menos um item de insumo.');
-  }
-
-  const result = await runTransaction(db, async (transaction) => {
-    const plantioRef = doc(db, 'plantios', data.plantioId);
-    const plantioSnap = await transaction.get(plantioRef);
-    if (!plantioSnap.exists()) throw new Error('Plantio não encontrado.');
-
-    const plantio = plantioSnap.data() as Plantio;
-    if (plantio.tenantId !== tenantId && plantio.userId !== tenantId) {
-      throw new Error('Acesso negado ao plantio selecionado.');
-    }
-
-    const itensAplicacao: AplicacaoItem[] = [];
-    let custoCalculadoTotal = 0;
-
-    for (const item of data.itens) {
-      const quantidade = Number(item.quantidadeAplicada || 0);
-      if (quantidade <= 0) throw new Error(`Quantidade inválida para ${item.nomeInsumo}.`);
-
-      const insumoRef = doc(db, 'insumos', item.insumoId);
-      const insumoSnap = await transaction.get(insumoRef);
-
-      if (!insumoSnap.exists()) throw new Error(`Insumo não encontrado (${item.nomeInsumo}).`);
-      const insumo = insumoSnap.data() as Insumo;
-      if (insumo.tenantId !== tenantId && insumo.userId !== tenantId) {
-        throw new Error(`Acesso negado ao insumo ${item.nomeInsumo}.`);
+      if (!data.itens?.length) {
+        throw new Error('A aplicação precisa de ao menos um item de insumo.');
       }
 
-      if ((insumo.estoqueAtual || 0) < quantidade) {
-        throw new Error(`Estoque insuficiente para ${item.nomeInsumo}. Disponível: ${insumo.estoqueAtual ?? 0} ${item.unidade}`);
-      }
+      const result = await runTransaction(db, async (transaction) => {
+        const plantioRef = doc(db, 'plantios', data.plantioId);
+        const plantioSnap = await transaction.get(plantioRef);
+        if (!plantioSnap.exists()) throw new Error('Plantio não encontrado.');
 
-      const custoUnitarioNaAplicacao = Number(insumo.custoUnitario || 0);
-      const custoItem = quantidade * custoUnitarioNaAplicacao;
-      custoCalculadoTotal += custoItem;
+        const plantio = plantioSnap.data() as Plantio;
+        if (plantio.tenantId !== tenantId && plantio.userId !== tenantId) {
+          throw new Error('Acesso negado ao plantio selecionado.');
+        }
 
-      transaction.update(insumoRef, {
-        estoqueAtual: (insumo.estoqueAtual || 0) - quantidade,
-        updatedAt: now,
+        const itensAplicacao: AplicacaoItem[] = [];
+        let custoCalculadoTotal = 0;
+
+        for (const item of data.itens) {
+          const quantidade = Number(item.quantidadeAplicada || 0);
+          if (quantidade <= 0) throw new Error(`Quantidade inválida para ${item.nomeInsumo}.`);
+
+          const insumoRef = doc(db, 'insumos', item.insumoId);
+          const insumoSnap = await transaction.get(insumoRef);
+
+          if (!insumoSnap.exists()) throw new Error(`Insumo não encontrado (${item.nomeInsumo}).`);
+          const insumo = insumoSnap.data() as Insumo;
+          if (insumo.tenantId !== tenantId && insumo.userId !== tenantId) {
+            throw new Error(`Acesso negado ao insumo ${item.nomeInsumo}.`);
+          }
+
+          if ((insumo.estoqueAtual || 0) < quantidade) {
+            throw new Error(`Estoque insuficiente para ${item.nomeInsumo}. Disponível: ${insumo.estoqueAtual ?? 0} ${item.unidade}`);
+          }
+
+          const custoUnitarioNaAplicacao = Number(insumo.custoUnitario || 0);
+          const custoItem = quantidade * custoUnitarioNaAplicacao;
+          custoCalculadoTotal += custoItem;
+
+          transaction.update(insumoRef, {
+            estoqueAtual: (insumo.estoqueAtual || 0) - quantidade,
+            updatedAt: now,
+          });
+
+          itensAplicacao.push({
+            insumoId: item.insumoId,
+            nomeInsumo: item.nomeInsumo,
+            dosePorTanque: item.dosePorTanque,
+            quantidadeAplicada: quantidade,
+            unidade: item.unidade,
+            custoUnitarioNaAplicacao,
+          });
+        }
+
+        const aplicacaoRef = doc(collection(db, 'aplicacoes'));
+        const aplicacaoData: Omit<Aplicacao, 'id'> = {
+          tenantId,
+          userId: tenantId,
+          createdBy: tenantId,
+          plantioId: data.plantioId,
+          estufaId: data.estufaId,
+          dataAplicacao: now,
+          tipoAplicacao: data.tipoAplicacao,
+          volumeTanque: data.volumeTanque ?? 0,
+          numeroTanques: data.numeroTanques ?? 1,
+          observacoes: data.observacoes || '',
+          itens: itensAplicacao,
+          custoCalculado: custoCalculadoTotal,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        transaction.set(aplicacaoRef, { ...aplicacaoData, id: aplicacaoRef.id });
+
+        transaction.update(plantioRef, {
+          custoAcumulado: (plantio.custoAcumulado || 0) + custoCalculadoTotal,
+          updatedAt: now,
+        });
+
+        return {
+          aplicacaoId: aplicacaoRef.id,
+          custoCalculadoTotal,
+          itensCount: itensAplicacao.length,
+        };
       });
 
-      itensAplicacao.push({
-        insumoId: item.insumoId,
-        nomeInsumo: item.nomeInsumo,
-        dosePorTanque: item.dosePorTanque,
-        quantidadeAplicada: quantidade,
-        unidade: item.unidade,
-        custoUnitarioNaAplicacao,
+      await createTraceabilityEventSafely(tenantId, {
+        plantioId: data.plantioId,
+        estufaId: data.estufaId || null,
+        entidade: 'aplicacao',
+        entidadeId: result.aplicacaoId,
+        acao: 'criado',
+        descricao: 'Aplicação de insumos registrada.',
+        actorUid: tenantId,
+        metadata: {
+          itensCount: result.itensCount,
+          custoCalculado: result.custoCalculadoTotal,
+          tipoAplicacao: data.tipoAplicacao || null,
+          itens: data.itens.map((item) => ({
+            insumoId: item.insumoId,
+            nomeInsumo: item.nomeInsumo,
+            quantidadeAplicada: Number(item.quantidadeAplicada || 0),
+            unidade: item.unidade,
+            dosePorTanque: Number(item.dosePorTanque || 0),
+          })),
+        },
       });
-    }
 
-    const aplicacaoRef = doc(collection(db, 'aplicacoes'));
-    const aplicacaoData: Omit<Aplicacao, 'id'> = {
-      tenantId,
-      userId: tenantId,
-      createdBy: tenantId,
-      plantioId: data.plantioId,
-      estufaId: data.estufaId,
-      dataAplicacao: now,
-      tipoAplicacao: data.tipoAplicacao,
-      volumeTanque: data.volumeTanque ?? 0,
-      numeroTanques: data.numeroTanques ?? 1,
-      observacoes: data.observacoes || '',
-      itens: itensAplicacao,
-      custoCalculado: custoCalculadoTotal,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    transaction.set(aplicacaoRef, { ...aplicacaoData, id: aplicacaoRef.id });
-
-    transaction.update(plantioRef, {
-      custoAcumulado: (plantio.custoAcumulado || 0) + custoCalculadoTotal,
-      updatedAt: now,
-    });
-
-    return {
-      aplicacaoId: aplicacaoRef.id,
-      custoCalculadoTotal,
-      itensCount: itensAplicacao.length,
-    };
-  });
-
-  await createTraceabilityEventSafely(tenantId, {
-    plantioId: data.plantioId,
-    estufaId: data.estufaId || null,
-    entidade: 'aplicacao',
-    entidadeId: result.aplicacaoId,
-    acao: 'criado',
-    descricao: 'Aplicação de insumos registrada.',
-    actorUid: tenantId,
-    metadata: {
-      itensCount: result.itensCount,
-      custoCalculado: result.custoCalculadoTotal,
-      tipoAplicacao: data.tipoAplicacao || null,
-      itens: data.itens.map((item) => ({
-        insumoId: item.insumoId,
-        nomeInsumo: item.nomeInsumo,
-        quantidadeAplicada: Number(item.quantidadeAplicada || 0),
-        unidade: item.unidade,
-        dosePorTanque: Number(item.dosePorTanque || 0),
-      })),
+      return result.aplicacaoId;
     },
   });
-
-  return result.aplicacaoId;
 };
 
 export const listAplicacoesByPlantio = async (userId: string, plantioId: string): Promise<Aplicacao[]> => {

@@ -3,10 +3,12 @@ import {
   View, Text, TextInput, ScrollView, StyleSheet, 
   TouchableOpacity, Alert, ActivityIndicator 
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../hooks/useAuth';
 import { createManejo } from '../../services/manejoService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { Timestamp } from 'firebase/firestore'; 
+import { useAppSettings } from '../../hooks/useAppSettings';
 
 const tiposManejo = [
   { id: 'clima', label: 'Clima/Ambiente' },
@@ -16,6 +18,8 @@ const tiposManejo = [
 
 const ManejoFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const { settings } = useAppSettings();
+  const insets = useSafeAreaInsets();
   
   const plantioId = route.params?.plantioId;
   const estufaId = route.params?.estufaId;
@@ -80,7 +84,12 @@ const ManejoFormScreen = ({ route, navigation }: any) => {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.padding}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.padding,
+          { paddingBottom: (settings.uiV2Enabled ? 138 : SPACING.xl) + insets.bottom },
+        ]}
+      >
         
         <Text style={styles.sectionTitle}>Tipo de Ocorrência</Text>
         <View style={styles.pillContainer}>

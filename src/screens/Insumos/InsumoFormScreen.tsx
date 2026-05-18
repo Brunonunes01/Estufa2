@@ -3,13 +3,17 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, ScrollView, Alert, StyleSheet, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker'; 
 import { useQueryClient } from '@tanstack/react-query';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createInsumo, updateInsumo, getInsumoById, InsumoFormData } from '../../services/insumoService';
 import { useAuth } from '../../hooks/useAuth';
+import { useAppSettings } from '../../hooks/useAppSettings';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { queryKeys } from '../../lib/queryClient';
 
 const InsumoFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const { settings } = useAppSettings();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const insumoId = route.params?.insumoId;
   const isEditMode = !!insumoId;
@@ -87,7 +91,12 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
 
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-      <ScrollView contentContainerStyle={{padding: 20}}>
+      <ScrollView
+        contentContainerStyle={{
+          padding: 20,
+          paddingBottom: (settings.uiV2Enabled ? 138 : 30) + insets.bottom,
+        }}
+      >
         <View style={styles.card}>
             <Text style={styles.sectionHeader}>Informações do Produto</Text>
             

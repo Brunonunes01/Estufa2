@@ -17,7 +17,7 @@ export type RootStackParamList = {
   ShareAccount: undefined;
   Perfil: undefined;
   Settings: undefined;
-  EstufasList: { mode?: 'colheita' | 'manejo' | 'hidro_layout' } | undefined;
+  EstufasList: { mode?: 'colheita' | 'plantio' | 'manejo' | 'hidro_layout' } | undefined;
   EstufaForm: { estufaId?: string } | undefined;
   EstufaDetail: { estufaId: string };
   EstufaHistory: { estufaId: string } | undefined;

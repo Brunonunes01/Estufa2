@@ -3,11 +3,11 @@ import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { TarefaAgricola } from '../../types/domain';
 import { COLORS, SPACING } from '../../constants/theme';
+import SectionHeading from '../ui/SectionHeading';
+import { useThemeMode } from '../../hooks/useThemeMode';
 
 interface TodayTasksProps {
   tasks: TarefaAgricola[];
-  titleColor: string;
-  textColor: string;
   onOpenPlantio: (plantioId: string) => void;
   onOpenTasks: () => void;
   onCompleteTask?: (taskId: string) => void;
@@ -20,49 +20,60 @@ const prioridadeCor: Record<TarefaAgricola['prioridade'], string> = {
   critica: COLORS.danger,
 };
 
-const TodayTasks = ({ tasks, titleColor, textColor, onOpenPlantio, onOpenTasks, onCompleteTask }: TodayTasksProps) => (
-  <View style={styles.wrap}>
-    <View style={styles.header}>
-      <Text style={[styles.title, { color: titleColor }]}>O Que Fazer Hoje</Text>
-      <View style={styles.headerRight}>
-        <Text style={[styles.count, { color: textColor }]}>{tasks.length}</Text>
-        <TouchableOpacity style={styles.manageBtn} onPress={onOpenTasks}>
-          <Text style={styles.manageBtnText}>Gerenciar</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+const TodayTasks = ({ tasks, onOpenPlantio, onOpenTasks, onCompleteTask }: TodayTasksProps) => {
+  const theme = useThemeMode();
 
-    {tasks.length === 0 ? (
-      <View style={[styles.emptyBox, { borderColor: COLORS.border }]}> 
-        <Text style={[styles.emptyText, { color: textColor }]}>Sem tarefas pendentes para hoje.</Text>
-      </View>
-    ) : (
-      tasks.slice(0, 6).map((task) => (
-        <View key={task.id} style={[styles.row, { borderColor: COLORS.border }]}>
-          <TouchableOpacity style={styles.openArea} onPress={() => onOpenPlantio(task.plantioId)}>
-            <MaterialCommunityIcons name="calendar-check" size={18} color={prioridadeCor[task.prioridade]} />
-            <View style={styles.content}>
-              <Text style={[styles.taskType, { color: textColor }]}>{task.tipoTarefa.toUpperCase()}</Text>
-              <Text style={[styles.obs, { color: textColor }]} numberOfLines={1}>{task.observacoes || 'Sem observações'}</Text>
-            </View>
-            <Text style={[styles.priority, { color: prioridadeCor[task.prioridade] }]}>{task.prioridade.toUpperCase()}</Text>
-          </TouchableOpacity>
-          {onCompleteTask ? (
-            <TouchableOpacity style={styles.doneBtn} onPress={() => onCompleteTask(task.id)}>
-              <MaterialCommunityIcons name="check" size={14} color={COLORS.textLight} />
+  return (
+    <View style={styles.wrap}>
+      <SectionHeading
+        title="O Que Fazer Hoje"
+        right={(
+          <View style={styles.headerRight}>
+            <Text style={[styles.count, { color: theme.textSecondary }]}>{tasks.length}</Text>
+            <TouchableOpacity style={styles.manageBtn} onPress={onOpenTasks} activeOpacity={0.85}>
+              <Text style={styles.manageBtnText}>Gerenciar</Text>
             </TouchableOpacity>
-          ) : null}
+          </View>
+        )}
+      />
+
+      {tasks.length === 0 ? (
+        <View style={[styles.emptyBox, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
+          <Text style={[styles.emptyText, { color: theme.textSecondary }]}>Sem tarefas pendentes para hoje.</Text>
         </View>
-      ))
-    )}
-  </View>
-);
+      ) : (
+        tasks.slice(0, 6).map((task) => (
+          <View
+            key={task.id}
+            style={[styles.row, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
+          >
+            <TouchableOpacity style={styles.openArea} onPress={() => onOpenPlantio(task.plantioId)} activeOpacity={0.85}>
+              <MaterialCommunityIcons name="calendar-check" size={18} color={prioridadeCor[task.prioridade]} />
+              <View style={styles.content}>
+                <Text style={[styles.taskType, { color: theme.textPrimary }]}>{task.tipoTarefa.toUpperCase()}</Text>
+                <Text style={[styles.obs, { color: theme.textSecondary }]} numberOfLines={1}>
+                  {task.observacoes || 'Sem observações'}
+                </Text>
+              </View>
+              <Text style={[styles.priority, { color: prioridadeCor[task.prioridade] }]}>
+                {task.prioridade.toUpperCase()}
+              </Text>
+            </TouchableOpacity>
+            {onCompleteTask ? (
+              <TouchableOpacity style={styles.doneBtn} onPress={() => onCompleteTask(task.id)} activeOpacity={0.85}>
+                <MaterialCommunityIcons name="check" size={14} color={COLORS.textLight} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ))
+      )}
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   wrap: { marginBottom: SPACING.lg },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title: { fontSize: 18, fontWeight: '900' },
   count: { fontSize: 12, fontWeight: '800' },
   manageBtn: {
     height: 30,

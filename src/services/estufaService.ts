@@ -14,6 +14,8 @@ import { db } from './firebaseConfig';
 import { Estufa, HydroMotor, HydroSetor } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { cancelActivePlantiosByEstufa } from './plantioService';
+import { OfflineWriteOptions } from './offline/offlineStorage';
+import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWrite';
 
 const normalizeMotores = (motores?: HydroMotor[] | null) =>
   Array.isArray(motores) ? motores : [];
@@ -58,25 +60,33 @@ const validateHydroMotorBindings = (setoresInput?: HydroSetor[] | null, motoresI
   });
 };
 
-export const createEstufa = async (data: Partial<Estufa>, userId: string) => {
+export const createEstufa = async (data: Partial<Estufa>, userId: string, options?: OfflineWriteOptions) => {
   const tenantId = assertTenantId(userId);
-  try {
-    validateHydroMotorBindings(data.setores, data.motores);
-    const novaEstufa = {
-      ...data,
-      userId: tenantId,
-      tenantId,
-      createdBy: tenantId,
-      status: data.status || 'ativa',
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    };
-    const docRef = await addDoc(collection(db, 'estufas'), novaEstufa);
-    return docRef.id;
-  } catch (error) {
-    console.error("Erro ao criar estufa:", error);
-    throw new Error("Erro ao salvar estufa no banco de dados.");
-  }
+  return runOfflineWrite({
+    action: 'createEstufa',
+    payload: { data, userId: tenantId },
+    options,
+    onQueuedValue: () => buildOfflinePlaceholderId(),
+    write: async () => {
+      try {
+        validateHydroMotorBindings(data.setores, data.motores);
+        const novaEstufa = {
+          ...data,
+          userId: tenantId,
+          tenantId,
+          createdBy: tenantId,
+          status: data.status || 'ativa',
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        };
+        const docRef = await addDoc(collection(db, 'estufas'), novaEstufa);
+        return docRef.id;
+      } catch (error) {
+        console.error("Erro ao criar estufa:", error);
+        throw new Error("Erro ao salvar estufa no banco de dados.");
+      }
+    },
+  });
 };
 
 export const listEstufas = async (userId: string): Promise<Estufa[]> => {
@@ -141,40 +151,56 @@ export const getEstufaById = async (id: string, userId: string): Promise<Estufa 
   }
 };
 
-export const updateEstufa = async (id: string, data: Partial<Estufa>, userId: string) => {
+export const updateEstufa = async (id: string, data: Partial<Estufa>, userId: string, options?: OfflineWriteOptions) => {
   const tenantId = assertTenantId(userId);
-  try {
-    // Verifica propriedade antes de atualizar
-    const estufa = await getEstufaById(id, tenantId);
-    if (!estufa) throw new Error("Estufa não encontrada.");
+  return runOfflineWrite({
+    action: 'updateEstufa',
+    payload: { id, data, userId: tenantId },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () => {
+      try {
+        // Verifica propriedade antes de atualizar
+        const estufa = await getEstufaById(id, tenantId);
+        if (!estufa) throw new Error("Estufa não encontrada.");
 
-    if (data.motores !== undefined || data.setores !== undefined) {
-      const nextSetores = data.setores !== undefined ? data.setores : estufa.setores;
-      const nextMotores = data.motores !== undefined ? data.motores : estufa.motores;
-      validateHydroMotorBindings(nextSetores, nextMotores);
-    }
+        if (data.motores !== undefined || data.setores !== undefined) {
+          const nextSetores = data.setores !== undefined ? data.setores : estufa.setores;
+          const nextMotores = data.motores !== undefined ? data.motores : estufa.motores;
+          validateHydroMotorBindings(nextSetores, nextMotores);
+        }
 
-    const docRef = doc(db, 'estufas', id);
-    await updateDoc(docRef, { ...data, updatedAt: Timestamp.now() });
-  } catch (error) {
-    console.error("Erro ao atualizar estufa:", error);
-    throw error instanceof Error ? error : new Error("Erro ao atualizar estufa.");
-  }
+        const docRef = doc(db, 'estufas', id);
+        await updateDoc(docRef, { ...data, updatedAt: Timestamp.now() });
+      } catch (error) {
+        console.error("Erro ao atualizar estufa:", error);
+        throw error instanceof Error ? error : new Error("Erro ao atualizar estufa.");
+      }
+    },
+  });
 };
 
-export const deleteEstufa = async (id: string, userId: string) => {
+export const deleteEstufa = async (id: string, userId: string, options?: OfflineWriteOptions) => {
   const tenantId = assertTenantId(userId);
-  try {
-    // Verifica propriedade antes de excluir
-    const estufa = await getEstufaById(id, tenantId);
-    if (!estufa) throw new Error("Estufa não encontrada para exclusão.");
+  return runOfflineWrite({
+    action: 'deleteEstufa',
+    payload: { id, userId: tenantId },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () => {
+      try {
+        // Verifica propriedade antes de excluir
+        const estufa = await getEstufaById(id, tenantId);
+        if (!estufa) throw new Error("Estufa não encontrada para exclusão.");
 
-    await cancelActivePlantiosByEstufa(tenantId, id);
+        await cancelActivePlantiosByEstufa(tenantId, id);
 
-    const docRef = doc(db, 'estufas', id);
-    await deleteDoc(docRef);
-  } catch (error) {
-    console.error("Erro ao eliminar estufa:", error);
-    throw error instanceof Error ? error : new Error("Não foi possível excluir a estufa.");
-  }
+        const docRef = doc(db, 'estufas', id);
+        await deleteDoc(docRef);
+      } catch (error) {
+        console.error("Erro ao eliminar estufa:", error);
+        throw error instanceof Error ? error : new Error("Não foi possível excluir a estufa.");
+      }
+    },
+  });
 };

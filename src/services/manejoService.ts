@@ -4,45 +4,59 @@ import { db } from './firebaseConfig';
 import { RegistroManejo } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { createTraceabilityEventSafely } from './traceabilityService';
+import { OfflineWriteOptions } from './offline/offlineStorage';
+import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWrite';
 
 // 1. CRIAR REGISTRO DE MANEJO
-export const createManejo = async (data: Partial<RegistroManejo>, userId: string) => {
+export const createManejo = async (
+  data: Partial<RegistroManejo>,
+  userId: string,
+  options?: OfflineWriteOptions
+) => {
   const tenantId = assertTenantId(userId);
-  const novoManejo = {
-    ...data,
-    userId: tenantId,
-    tenantId,
-    createdBy: tenantId,
-    fotos: Array.isArray(data.fotos) ? data.fotos : [],
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
-  };
+  return runOfflineWrite({
+    action: 'createManejo',
+    payload: { data, userId: tenantId },
+    options,
+    onQueuedValue: () => buildOfflinePlaceholderId(),
+    write: async () => {
+      const novoManejo = {
+        ...data,
+        userId: tenantId,
+        tenantId,
+        createdBy: tenantId,
+        fotos: Array.isArray(data.fotos) ? data.fotos : [],
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      };
 
-  try {
-    const docRef = await addDoc(collection(db, 'manejos'), novoManejo);
-    if (data.plantioId) {
-      await createTraceabilityEventSafely(tenantId, {
-        plantioId: String(data.plantioId),
-        estufaId: (data.estufaId as string) || null,
-        entidade: 'manejo',
-        entidadeId: docRef.id,
-        acao: 'criado',
-        descricao: 'Registro de manejo adicionado ao ciclo.',
-        actorUid: tenantId,
-        metadata: {
-          tipoManejo: data.tipoManejo || null,
-          severidade: data.severidade || null,
-          responsavel: data.responsavel || null,
-          dataRegistro: data.dataRegistro || null,
-          fotosCount: Array.isArray(data.fotos) ? data.fotos.length : 0,
-        },
-      });
-    }
-    return docRef.id;
-  } catch (error) {
-    console.error("Erro ao registrar manejo: ", error);
-    throw new Error('Não foi possível salvar o registro de manejo.');
-  }
+      try {
+        const docRef = await addDoc(collection(db, 'manejos'), novoManejo);
+        if (data.plantioId) {
+          await createTraceabilityEventSafely(tenantId, {
+            plantioId: String(data.plantioId),
+            estufaId: (data.estufaId as string) || null,
+            entidade: 'manejo',
+            entidadeId: docRef.id,
+            acao: 'criado',
+            descricao: 'Registro de manejo adicionado ao ciclo.',
+            actorUid: tenantId,
+            metadata: {
+              tipoManejo: data.tipoManejo || null,
+              severidade: data.severidade || null,
+              responsavel: data.responsavel || null,
+              dataRegistro: data.dataRegistro || null,
+              fotosCount: Array.isArray(data.fotos) ? data.fotos.length : 0,
+            },
+          });
+        }
+        return docRef.id;
+      } catch (error) {
+        console.error("Erro ao registrar manejo: ", error);
+        throw new Error('Não foi possível salvar o registro de manejo.');
+      }
+    },
+  });
 };
 
 // 2. LISTAR MANEJOS DE UM LOTE ESPECÍFICO

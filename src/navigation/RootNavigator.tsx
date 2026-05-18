@@ -13,6 +13,8 @@ import {
   Text,
   StatusBar,
   TouchableOpacity,
+  Modal,
+  Pressable,
   Platform,
   SafeAreaView,
   Dimensions,
@@ -20,6 +22,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNetInfo } from '@react-native-community/netinfo';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../hooks/useAuth';
 import { useAppSettings } from '../hooks/useAppSettings';
@@ -30,6 +33,7 @@ import LoginScreen from '../screens/Auth/LoginScreen';
 import RegisterScreen from '../screens/Auth/RegisterScreen';
 import ShareAccountScreen from '../screens/Auth/ShareAccountScreen';
 import DashboardScreen from '../screens/Dashboard/DashboardScreen';
+import CampoHubScreen from '../screens/Campo/CampoHubScreen';
 import PerfilScreen from '../screens/Perfil/PerfilScreen';
 import SettingsScreen from '../screens/Configuracoes/SettingsScreen';
 import EstufasListScreen from '../screens/Estufas/EstufasListScreen';
@@ -71,6 +75,7 @@ import HidroponiaVendaFormScreen from '../modules/hidroponia/screens/HidroponiaV
 import HidroponiaColheitaFormScreen from '../modules/hidroponia/screens/HidroponiaColheitaFormScreen';
 import HidroponiaVerdurasScreen from '../modules/hidroponia/screens/HidroponiaVerdurasScreen';
 import { MainTabParamList, RootStackParamList } from './types';
+import { startOfflineSyncListener, syncPendingDataNow } from '../services/offline/syncService';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -150,58 +155,117 @@ const AuthStack = () => (
   </Stack.Navigator>
 );
 
-const MainTabs = ({ activeMode }: { activeMode: 'ciclo_longo' | 'hidroponia' }) => {
+const MainTabs = ({ activeMode, uiV2Enabled }: { activeMode: 'ciclo_longo' | 'hidroponia'; uiV2Enabled: boolean }) => {
   const mode = useThemeMode();
-  const OperacaoEntryScreen = activeMode === 'hidroponia' ? HidroponiaLotesScreen : EstufasListScreen;
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [quickActionsVisible, setQuickActionsVisible] = useState(false);
+  const OperacaoEntryScreen = activeMode === 'hidroponia' ? HidroponiaLotesScreen : CampoHubScreen;
+
+  const quickActions = activeMode === 'hidroponia'
+    ? [
+        { key: 'qa-hydro-read', label: 'Nova leitura pH/EC', icon: 'test-tube', onPress: () => navigation.navigate('HidroponiaLeituraForm') },
+        { key: 'qa-hydro-lote', label: 'Novo lote', icon: 'sprout-outline', onPress: () => navigation.navigate('HidroponiaLoteForm') },
+        { key: 'qa-stock-entry', label: 'Entrada de insumo', icon: 'warehouse', onPress: () => navigation.navigate('InsumoEntry') },
+        { key: 'qa-sale', label: 'Registrar venda', icon: 'cash-plus', onPress: () => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' }) },
+        { key: 'qa-task', label: 'Nova tarefa', icon: 'clipboard-text-plus-outline', onPress: () => navigation.navigate('Tarefas') },
+      ]
+    : [
+        { key: 'qa-plantio', label: 'Novo plantio', icon: 'sprout', onPress: () => navigation.navigate('PlantioForm') },
+        { key: 'qa-manejo', label: 'Novo manejo', icon: 'clipboard-pulse-outline', onPress: () => navigation.navigate('WizardSelectPlantio') },
+        { key: 'qa-stock-entry', label: 'Entrada de insumo', icon: 'warehouse', onPress: () => navigation.navigate('InsumoEntry') },
+        { key: 'qa-sale', label: 'Registrar venda', icon: 'cash-plus', onPress: () => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' }) },
+        { key: 'qa-task', label: 'Nova tarefa', icon: 'clipboard-text-plus-outline', onPress: () => navigation.navigate('Tarefas') },
+      ];
+
+  const handleQuickActionPress = (onPress: () => void) => {
+    setQuickActionsVisible(false);
+    onPress();
+  };
 
   return (
-    <Tab.Navigator
-      id="main-tabs"
-      screenOptions={({ route }) => {
-        const iconMap: Record<keyof MainTabParamList, string> = {
-          InicioTab: 'view-dashboard-outline',
-          OperacaoTab: activeMode === 'hidroponia' ? 'water-outline' : 'greenhouse',
-          EstoqueTab: 'warehouse',
-          FinanceiroTab: 'cash-multiple',
-          PerfilTab: 'account-circle-outline',
-        };
+    <View style={{ flex: 1 }}>
+      <Tab.Navigator
+        id="main-tabs"
+        screenOptions={({ route }) => {
+          const iconMap: Record<keyof MainTabParamList, string> = {
+            InicioTab: 'view-dashboard-outline',
+            OperacaoTab: activeMode === 'hidroponia' ? 'water-outline' : 'greenhouse',
+            EstoqueTab: 'warehouse',
+            FinanceiroTab: 'cash-multiple',
+            PerfilTab: 'account-circle-outline',
+          };
 
-        return {
-          headerShown: false,
-          tabBarHideOnKeyboard: true,
-          tabBarActiveTintColor: COLORS.primary,
-          tabBarInactiveTintColor: mode.textSecondary,
-          tabBarLabelStyle: { fontSize: 11, fontWeight: '700', marginBottom: 4 },
-          tabBarStyle: {
-            height: 66,
-            paddingTop: 6,
-            borderTopWidth: 1,
-            borderTopColor: mode.border,
-            backgroundColor: mode.surfaceBackground,
-          },
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name={iconMap[route.name] as any} size={size ?? 22} color={color} />
-          ),
-        };
-      }}
-    >
-      <Tab.Screen name="InicioTab" component={DashboardScreen} options={{ title: 'Início' }} />
-      <Tab.Screen
-        name="OperacaoTab"
-        component={OperacaoEntryScreen}
-        options={{ title: activeMode === 'hidroponia' ? 'Hidroponia' : 'Operação' }}
-      />
-      <Tab.Screen name="EstoqueTab" component={InsumosListScreen} options={{ title: 'Estoque' }} />
-      <Tab.Screen name="FinanceiroTab" component={VendasListScreen} options={{ title: 'Financeiro' }} />
-      <Tab.Screen name="PerfilTab" component={PerfilScreen} options={{ title: 'Perfil' }} />
-    </Tab.Navigator>
+          return {
+            headerShown: false,
+            tabBarHideOnKeyboard: true,
+            tabBarActiveTintColor: COLORS.primary,
+            tabBarInactiveTintColor: mode.textSecondary,
+            tabBarLabelStyle: { fontSize: 11, fontWeight: '700', marginBottom: 4 },
+            tabBarStyle: {
+              height: 66 + insets.bottom,
+              paddingTop: 6,
+              paddingBottom: Math.max(6, insets.bottom - 2),
+              borderTopWidth: 1,
+              borderTopColor: mode.border,
+              backgroundColor: mode.surfaceBackground,
+            },
+            tabBarIcon: ({ color, size }) => (
+              <MaterialCommunityIcons name={iconMap[route.name] as any} size={size ?? 22} color={color} />
+            ),
+          };
+        }}
+      >
+        <Tab.Screen name="InicioTab" component={DashboardScreen} options={{ title: 'Início' }} />
+        <Tab.Screen
+          name="OperacaoTab"
+          component={OperacaoEntryScreen}
+          options={{ title: activeMode === 'hidroponia' ? 'Hidroponia' : 'Campo' }}
+        />
+        <Tab.Screen name="EstoqueTab" component={InsumosListScreen} options={{ title: 'Estoque' }} />
+        <Tab.Screen name="FinanceiroTab" component={VendasListScreen} options={{ title: 'Financeiro' }} />
+        <Tab.Screen name="PerfilTab" component={PerfilScreen} options={{ title: 'Perfil' }} />
+      </Tab.Navigator>
+
+      {uiV2Enabled ? (
+        <>
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={() => setQuickActionsVisible(true)}
+            style={[styles.quickFab, { bottom: Math.max(insets.bottom, 8) + 72 }]}
+          >
+            <MaterialCommunityIcons name="flash-outline" size={25} color={COLORS.textLight} />
+          </TouchableOpacity>
+
+          <Modal visible={quickActionsVisible} transparent animationType="slide" onRequestClose={() => setQuickActionsVisible(false)}>
+            <Pressable style={styles.quickSheetBackdrop} onPress={() => setQuickActionsVisible(false)} />
+            <View style={[styles.quickSheet, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+              <View style={styles.quickSheetHeader}>
+                <Text style={styles.quickSheetTitle}>Ações rápidas</Text>
+                <TouchableOpacity onPress={() => setQuickActionsVisible(false)}>
+                  <MaterialCommunityIcons name="close" size={22} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              {quickActions.map((action) => (
+                <TouchableOpacity key={action.key} style={styles.quickActionRow} onPress={() => handleQuickActionPress(action.onPress)}>
+                  <View style={styles.quickActionIcon}>
+                    <MaterialCommunityIcons name={action.icon as any} size={18} color={COLORS.primary} />
+                  </View>
+                  <Text style={styles.quickActionText}>{action.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </Modal>
+        </>
+      ) : null}
+    </View>
   );
 };
 
-const AppStack = ({ activeMode }: { activeMode: 'ciclo_longo' | 'hidroponia' }) => (
+const AppStack = ({ activeMode, uiV2Enabled }: { activeMode: 'ciclo_longo' | 'hidroponia'; uiV2Enabled: boolean }) => (
   <Stack.Navigator id="app-stack" screenOptions={defaultScreenOptions}>
     <Stack.Screen name="MainTabs" options={{ headerShown: false, animation: 'fade' }}>
-      {() => <MainTabs activeMode={activeMode} />}
+      {() => <MainTabs activeMode={activeMode} uiV2Enabled={uiV2Enabled} />}
     </Stack.Screen>
 
     <Stack.Screen name="ShareAccount" component={ShareAccountScreen} options={{ title: 'Compartilhar Acesso' }} />
@@ -312,6 +376,17 @@ export const RootNavigator = () => {
   const screenWidth = Dimensions.get('window').width;
   const isWideScreen = isWeb && screenWidth > 500;
 
+  useEffect(() => {
+    const stop = startOfflineSyncListener();
+    return () => stop();
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      void syncPendingDataNow();
+    }
+  }, [user]);
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -338,7 +413,9 @@ export const RootNavigator = () => {
         ]}
       >
         <OfflineBanner />
-        <NavigationContainer key={settings.activeProductionMode}>{user ? <AppStack activeMode={settings.activeProductionMode} /> : <AuthStack />}</NavigationContainer>
+        <NavigationContainer key={`${settings.activeProductionMode}-${settings.uiV2Enabled ? 'v2' : 'legacy'}`}>
+          {user ? <AppStack activeMode={settings.activeProductionMode} uiV2Enabled={settings.uiV2Enabled} /> : <AuthStack />}
+        </NavigationContainer>
       </View>
     </View>
   );
@@ -390,5 +467,70 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 13,
     textAlign: 'center',
+  },
+  quickFab: {
+    position: 'absolute',
+    right: 18,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: COLORS.textDark,
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 0.26,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  quickSheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: COLORS.overlaySoft,
+  },
+  quickSheet: {
+    marginTop: 'auto',
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderColor: COLORS.border,
+  },
+  quickSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 10,
+  },
+  quickSheetTitle: {
+    color: COLORS.textPrimary,
+    fontWeight: '900',
+    fontSize: 16,
+  },
+  quickActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surfaceMuted,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    marginBottom: 9,
+  },
+  quickActionIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickActionText: {
+    color: COLORS.textPrimary,
+    fontWeight: '800',
+    fontSize: 14,
   },
 });

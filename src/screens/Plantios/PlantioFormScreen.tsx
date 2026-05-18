@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, ScrollView, StyleSheet, 
   TouchableOpacity, Alert, ActivityIndicator, Modal
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
@@ -12,6 +13,7 @@ import { Timestamp } from 'firebase/firestore';
 import { queryClient, queryKeys } from '../../lib/queryClient';
 import { verifyCurrentUserPassword } from '../../services/securityService';
 import { useMutation } from '@tanstack/react-query';
+import { useAppSettings } from '../../hooks/useAppSettings';
 
 type UnidadeQuantidadePlantio = 'Mudas' | 'Sementes' | 'Bandejas' | 'Gramas' | 'Kg';
 
@@ -29,6 +31,8 @@ const normalizeUnidadeQuantidade = (value?: string | null): UnidadeQuantidadePla
 
 const PlantioFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId, canDeleteEstufa } = useAuth();
+  const { settings } = useAppSettings();
+  const insets = useSafeAreaInsets();
   const targetId = selectedTenantId || user?.uid;
   
   const estufaId = route.params?.estufaId; 
@@ -306,7 +310,12 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.padding}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.padding,
+          { paddingBottom: (settings.uiV2Enabled ? 138 : SPACING.xl) + insets.bottom },
+        ]}
+      >
         
         <View style={styles.loteContainer}>
           <Text style={styles.loteLabel}>CÓDIGO DO LOTE (GERADO AUTOMATICAMENTE)</Text>

@@ -14,6 +14,8 @@ import {
 import { db } from './firebaseConfig';
 import { Fornecedor } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
+import { OfflineWriteOptions } from './offline/offlineStorage';
+import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWrite';
 
 // Dados que vêm do formulário
 export type FornecedorFormData = {
@@ -26,24 +28,32 @@ export type FornecedorFormData = {
 };
 
 // 1. CRIAR FORNECEDOR
-export const createFornecedor = async (data: FornecedorFormData, userId: string) => {
+export const createFornecedor = async (data: FornecedorFormData, userId: string, options?: OfflineWriteOptions) => {
   const tenantId = assertTenantId(userId);
-  const novoFornecedor = {
-    ...data,
-    tenantId,
-    userId: tenantId,
-    createdBy: tenantId,
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
-  };
+  return runOfflineWrite({
+    action: 'createFornecedor',
+    payload: { data, userId: tenantId },
+    options,
+    onQueuedValue: () => buildOfflinePlaceholderId(),
+    write: async () => {
+      const novoFornecedor = {
+        ...data,
+        tenantId,
+        userId: tenantId,
+        createdBy: tenantId,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      };
 
-  try {
-    const docRef = await addDoc(collection(db, 'fornecedores'), novoFornecedor);
-    return docRef.id;
-  } catch (error) {
-    console.error("Erro ao criar fornecedor: ", error);
-    throw new Error('Não foi possível criar o fornecedor.');
-  }
+      try {
+        const docRef = await addDoc(collection(db, 'fornecedores'), novoFornecedor);
+        return docRef.id;
+      } catch (error) {
+        console.error("Erro ao criar fornecedor: ", error);
+        throw new Error('Não foi possível criar o fornecedor.');
+      }
+    },
+  });
 };
 
 // 2. LISTAR FORNECEDORES
@@ -96,32 +106,57 @@ export const getFornecedorById = async (fornecedorId: string, userId: string): P
 };
 
 // 4. ATUALIZAR FORNECEDOR
-export const updateFornecedor = async (fornecedorId: string, data: FornecedorFormData, userId: string) => {
+export const updateFornecedor = async (
+  fornecedorId: string,
+  data: FornecedorFormData,
+  userId: string,
+  options?: OfflineWriteOptions
+) => {
   const tenantId = assertTenantId(userId);
-  try {
-    const fornecedor = await getFornecedorById(fornecedorId, tenantId);
-    if (!fornecedor) throw new Error("Fornecedor não encontrado.");
+  return runOfflineWrite({
+    action: 'updateFornecedor',
+    payload: { id: fornecedorId, data, userId: tenantId },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () => {
+      try {
+        const fornecedor = await getFornecedorById(fornecedorId, tenantId);
+        if (!fornecedor) throw new Error("Fornecedor não encontrado.");
 
-    const fornecedorRef = doc(db, 'fornecedores', fornecedorId);
-    await updateDoc(fornecedorRef, {
-      ...data,
-      updatedAt: Timestamp.now(),
-    });
-  } catch (error) {
-    console.error("Erro ao atualizar fornecedor: ", error);
-    throw error;
-  }
+        const fornecedorRef = doc(db, 'fornecedores', fornecedorId);
+        await updateDoc(fornecedorRef, {
+          ...data,
+          updatedAt: Timestamp.now(),
+        });
+      } catch (error) {
+        console.error("Erro ao atualizar fornecedor: ", error);
+        throw error;
+      }
+    },
+  });
 };
 
-export const deleteFornecedor = async (fornecedorId: string, userId: string) => {
+export const deleteFornecedor = async (
+  fornecedorId: string,
+  userId: string,
+  options?: OfflineWriteOptions
+) => {
   const tenantId = assertTenantId(userId);
-  try {
-    const fornecedor = await getFornecedorById(fornecedorId, tenantId);
-    if (!fornecedor) throw new Error("Fornecedor não encontrado para exclusão.");
+  return runOfflineWrite({
+    action: 'deleteFornecedor',
+    payload: { id: fornecedorId, userId: tenantId },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () => {
+      try {
+        const fornecedor = await getFornecedorById(fornecedorId, tenantId);
+        if (!fornecedor) throw new Error("Fornecedor não encontrado para exclusão.");
 
-    await deleteDoc(doc(db, 'fornecedores', fornecedorId));
-  } catch (error) {
-    console.error("Erro ao excluir fornecedor: ", error);
-    throw error;
-  }
+        await deleteDoc(doc(db, 'fornecedores', fornecedorId));
+      } catch (error) {
+        console.error("Erro ao excluir fornecedor: ", error);
+        throw error;
+      }
+    },
+  });
 };

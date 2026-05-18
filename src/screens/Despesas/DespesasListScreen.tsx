@@ -2,12 +2,14 @@ import React, { useCallback, useEffect } from 'react';
 import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../hooks/useAuth';
 import { Despesa } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING } from '../../constants/theme';
 import { useThemeMode } from '../../hooks/useThemeMode';
 import { useFeedback } from '../../hooks/useFeedback';
 import { useDespesasList } from '../../hooks/useDespesasList';
+import { useAppSettings } from '../../hooks/useAppSettings';
 import EmptyState from '../../components/ui/EmptyState';
 import SkeletonBlock from '../../components/ui/SkeletonBlock';
 import LoadingButton from '../../components/ui/LoadingButton';
@@ -15,7 +17,9 @@ import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 
 const DespesasListScreen = ({ navigation }: any) => {
   const { isOwner } = useAuth();
+  const { settings } = useAppSettings();
   const theme = useThemeMode();
+  const insets = useSafeAreaInsets();
   const { showError, showSuccess } = useFeedback();
   const {
     despesas,
@@ -129,10 +133,28 @@ const DespesasListScreen = ({ navigation }: any) => {
         </View>
       ) : null}
 
+      <View style={styles.financeLinksRow}>
+        <TouchableOpacity
+          style={[styles.financeLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
+          onPress={() => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' })}
+        >
+          <Text style={[styles.financeLinkText, { color: theme.textSecondary }]}>Vendas</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.financeLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
+          onPress={() => navigation.navigate('ContasReceber')}
+        >
+          <Text style={[styles.financeLinkText, { color: theme.textSecondary }]}>Contas</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.financeLink, styles.financeLinkActive, { borderColor: COLORS.modDespesas }]}>
+          <Text style={[styles.financeLinkText, { color: COLORS.modDespesas }]}>Despesas</Text>
+        </TouchableOpacity>
+      </View>
+
       <FlatList
         data={despesas}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: (settings.uiV2Enabled ? 138 : 96) + insets.bottom }]}
         refreshing={refreshing && !loading}
         onRefresh={refetch}
         ListEmptyComponent={
@@ -208,7 +230,10 @@ const DespesasListScreen = ({ navigation }: any) => {
         }}
       />
 
-      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('DespesaForm')}>
+      <TouchableOpacity
+        style={[styles.fab, { bottom: (settings.uiV2Enabled ? 132 : 20) + insets.bottom }]}
+        onPress={() => navigation.navigate('DespesaForm')}
+      >
         <MaterialCommunityIcons name="plus" size={30} color={COLORS.textLight} />
       </TouchableOpacity>
     </View>
@@ -217,7 +242,7 @@ const DespesasListScreen = ({ navigation }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  listContent: { paddingHorizontal: SPACING.lg, paddingBottom: 90, paddingTop: SPACING.md },
+  listContent: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.md },
   headerStats: { flexDirection: 'row', gap: 8 },
   headerStatChip: {
     flex: 1,
@@ -233,6 +258,27 @@ const styles = StyleSheet.create({
 
   skeletonWrapper: { paddingHorizontal: SPACING.lg, marginTop: SPACING.md, marginBottom: 6, gap: 10 },
   skeletonCard: { width: '100%', height: 150, borderRadius: RADIUS.lg },
+  financeLinksRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.xs,
+  },
+  financeLink: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: RADIUS.pill,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  financeLinkActive: {
+    backgroundColor: `${COLORS.modDespesas}1A`,
+  },
+  financeLinkText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
 
   card: {
     borderRadius: 18,

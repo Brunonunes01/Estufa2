@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -28,6 +29,7 @@ import { getHydroLoteById, listHydroLotes } from '../services/hidroponiaLoteServ
 import { listHydroOcupacoesByLote } from '../services/hidroponiaOcupacaoService';
 import { HydroLote, HydroOcupacao } from '../types';
 import { registrarVendaHidroponicaPorLote } from '../services/hidroponiaColheitaService';
+import { useAppSettings } from '../../../hooks/useAppSettings';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'HidroponiaVendaForm'>;
 type UnidadeVenda = 'kg' | 'caixa' | 'unidade' | 'maço';
@@ -35,6 +37,8 @@ type MetodoPagamento = 'pix' | 'dinheiro' | 'boleto' | 'prazo' | 'cartao' | 'out
 
 const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
   const { user, selectedTenantId } = useAuth();
+  const { settings } = useAppSettings();
+  const insets = useSafeAreaInsets();
   const targetId = selectedTenantId || user?.uid;
   const params = route.params || {};
   const isEditMode = !!params.vendaId;
@@ -327,7 +331,12 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: (settings.uiV2Enabled ? 138 : 34) + insets.bottom },
+        ]}
+      >
         <View style={styles.card}>
           <Text style={styles.sectionHeader}>Origem do Produto</Text>
           <Text style={styles.label}>Produção hidropônica</Text>

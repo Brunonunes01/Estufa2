@@ -14,8 +14,10 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../../hooks/useAuth';
+import { useAppSettings } from '../../../hooks/useAppSettings';
 import { getEstufaById, listEstufas } from '../../../services/estufaService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../../constants/theme';
 import { Estufa, HydroMotor, HydroSetor } from '../../../types/domain';
@@ -37,6 +39,8 @@ const STATUS_OPTIONS: Array<{ value: HydroMotor['status']; label: string }> = [
 
 const HidroponiaMotoresScreen = ({ navigation, route }: Props) => {
   const { user, selectedTenantId } = useAuth();
+  const { settings } = useAppSettings();
+  const insets = useSafeAreaInsets();
   const targetId = selectedTenantId || user?.uid;
   const routeEstufaId = route.params?.estufaId;
 
@@ -281,7 +285,10 @@ const HidroponiaMotoresScreen = ({ navigation, route }: Props) => {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: (settings.uiV2Enabled ? 138 : SPACING.xxl) + insets.bottom },
+      ]}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={load} colors={[COLORS.primary]} />}
     >
       <View style={styles.heroCard}>
@@ -289,6 +296,24 @@ const HidroponiaMotoresScreen = ({ navigation, route }: Props) => {
         <Text style={styles.heroText}>
           Aqui você cadastra, lista e edita motores. O vínculo com setor continua sendo feito no layout.
         </Text>
+      </View>
+
+      <View style={styles.moduleLinksRow}>
+        <TouchableOpacity
+          style={styles.moduleLink}
+          onPress={() => navigation.navigate('HidroponiaLotes', selectedEstufaId ? { estufaId: selectedEstufaId } : undefined)}
+        >
+          <Text style={styles.moduleLinkText}>Lotes</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.moduleLink, styles.moduleLinkActive]}>
+          <Text style={[styles.moduleLinkText, { color: COLORS.info }]}>Motores</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.moduleLink}
+          onPress={() => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' })}
+        >
+          <Text style={styles.moduleLinkText}>Financeiro</Text>
+        </TouchableOpacity>
       </View>
 
       <Text style={styles.sectionLabel}>Estufa</Text>
@@ -519,6 +544,30 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   content: { padding: SPACING.lg, paddingBottom: SPACING.xxl },
+  moduleLinksRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: SPACING.sm,
+  },
+  moduleLink: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.pill,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moduleLinkActive: {
+    borderColor: COLORS.info,
+    backgroundColor: COLORS.infoSoft,
+  },
+  moduleLinkText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
   heroCard: {
     backgroundColor: COLORS.secondary,
     borderRadius: RADIUS.lg,

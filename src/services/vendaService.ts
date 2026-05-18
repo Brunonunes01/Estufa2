@@ -21,6 +21,8 @@ import {
   createTraceabilityPublicTokenFromId,
 } from './publicTraceabilityService';
 import { syncHydroLoteStatus } from '../modules/hidroponia/services/hidroponiaLoteService';
+import { OfflineWriteOptions } from './offline/offlineStorage';
+import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWrite';
 
 export interface VendaFormData {
   plantioId?: string;
@@ -184,73 +186,81 @@ const mergeVendaDocs = (snaps: Awaited<ReturnType<typeof getDocs>>[]): Venda[] =
   return Array.from(vendasMap.values());
 };
 
-export const createVenda = async (data: VendaFormData, userId: string) => {
+export const createVenda = async (data: VendaFormData, userId: string, options?: OfflineWriteOptions) => {
   const tenantId = assertTenantId(userId);
-  validateVendaFormData(data);
-  const ref = doc(collection(db, 'vendas'));
-  const traceabilityPublicToken = createTraceabilityPublicTokenFromId(ref.id);
-  const payload = buildVendaPayload(data, tenantId, traceabilityPublicToken);
-  await setDoc(ref, payload);
-  const tracePlantioId = data.plantioId || null;
-  const traceHydroLoteId =
-    data.hydroLoteId || (data.originType === 'hydro_lote' ? data.originId || null : null);
-  const compradorTrace = await resolveCompradorTrace(tenantId, data.clienteId || null);
-  const item = payload.itens?.[0];
+  return runOfflineWrite({
+    action: 'createVenda',
+    payload: { data, userId: tenantId },
+    options,
+    onQueuedValue: () => buildOfflinePlaceholderId(),
+    write: async () => {
+      validateVendaFormData(data);
+      const ref = doc(collection(db, 'vendas'));
+      const traceabilityPublicToken = createTraceabilityPublicTokenFromId(ref.id);
+      const payload = buildVendaPayload(data, tenantId, traceabilityPublicToken);
+      await setDoc(ref, payload);
+      const tracePlantioId = data.plantioId || null;
+      const traceHydroLoteId =
+        data.hydroLoteId || (data.originType === 'hydro_lote' ? data.originId || null : null);
+      const compradorTrace = await resolveCompradorTrace(tenantId, data.clienteId || null);
+      const item = payload.itens?.[0];
 
-  await createTraceabilityEventSafely(tenantId, {
-    plantioId: tracePlantioId,
-    hydroLoteId: traceHydroLoteId,
-    estufaId: data.estufaId || null,
-    entidade: 'venda',
-    entidadeId: ref.id,
-    acao: data.cycleOverrideAudit ? 'desbloqueio_ciclo' : 'criado',
-    descricao: 'Venda registrada.',
-    motivo: data.cycleOverrideAudit?.reason || null,
-    actorUid: data.cycleOverrideAudit?.byUid || tenantId,
-    actorName: data.cycleOverrideAudit?.byName || null,
-    metadata: {
-      valorTotal: payload.valorTotal,
-      statusPagamento: payload.statusPagamento,
-      colheitaId: data.colheitaId || null,
-      quantidade: Number(data.quantidade || 0),
-      unidade: data.unidade || null,
-      precoUnitario: Number(data.precoUnitario || 0),
-      metodoPagamento: data.metodoPagamento || 'pix',
-      clienteId: data.clienteId || null,
-      originType: payload.originType || null,
-      originId: payload.originId || null,
-      traceabilityPublicToken: payload.traceabilityPublicToken || null,
-      traceabilityPublicUrl: payload.traceabilityPublicUrl || null,
-      cicloDesbloqueadoPorAdmin: !!data.cycleOverrideAudit,
-      produto: {
-        descricao: item?.descricao || data.itemDescricao || null,
-        quantidade: Number(item?.quantidade || data.quantidade || 0),
-        unidade: item?.unidade || data.unidade || null,
-        codigoRastreio: traceHydroLoteId || tracePlantioId || ref.id,
-      },
-      enteAnterior: {
-        nome: payload.originType === 'hydro_lote' ? 'Produção hidropônica' : 'Produção agrícola',
-        documento: payload.originId || null,
-        tipo: payload.originType || null,
-      },
-      entePosterior: compradorTrace,
+      await createTraceabilityEventSafely(tenantId, {
+        plantioId: tracePlantioId,
+        hydroLoteId: traceHydroLoteId,
+        estufaId: data.estufaId || null,
+        entidade: 'venda',
+        entidadeId: ref.id,
+        acao: data.cycleOverrideAudit ? 'desbloqueio_ciclo' : 'criado',
+        descricao: 'Venda registrada.',
+        motivo: data.cycleOverrideAudit?.reason || null,
+        actorUid: data.cycleOverrideAudit?.byUid || tenantId,
+        actorName: data.cycleOverrideAudit?.byName || null,
+        metadata: {
+          valorTotal: payload.valorTotal,
+          statusPagamento: payload.statusPagamento,
+          colheitaId: data.colheitaId || null,
+          quantidade: Number(data.quantidade || 0),
+          unidade: data.unidade || null,
+          precoUnitario: Number(data.precoUnitario || 0),
+          metodoPagamento: data.metodoPagamento || 'pix',
+          clienteId: data.clienteId || null,
+          originType: payload.originType || null,
+          originId: payload.originId || null,
+          traceabilityPublicToken: payload.traceabilityPublicToken || null,
+          traceabilityPublicUrl: payload.traceabilityPublicUrl || null,
+          cicloDesbloqueadoPorAdmin: !!data.cycleOverrideAudit,
+          produto: {
+            descricao: item?.descricao || data.itemDescricao || null,
+            quantidade: Number(item?.quantidade || data.quantidade || 0),
+            unidade: item?.unidade || data.unidade || null,
+            codigoRastreio: traceHydroLoteId || tracePlantioId || ref.id,
+          },
+          enteAnterior: {
+            nome: payload.originType === 'hydro_lote' ? 'Produção hidropônica' : 'Produção agrícola',
+            documento: payload.originId || null,
+            tipo: payload.originType || null,
+          },
+          entePosterior: compradorTrace,
+        },
+      });
+
+      await triggerExternalDashboardSync({
+        tenantId,
+        entity: 'venda',
+        action: 'create',
+        recordId: ref.id,
+        metadata: {
+          statusPagamento: payload.statusPagamento,
+          originType: payload.originType || null,
+          originId: payload.originId || null,
+          valorTotal: payload.valorTotal,
+        },
+      });
+
+      return ref.id;
     },
   });
-
-  await triggerExternalDashboardSync({
-    tenantId,
-    entity: 'venda',
-    action: 'create',
-    recordId: ref.id,
-    metadata: {
-      statusPagamento: payload.statusPagamento,
-      originType: payload.originType || null,
-      originId: payload.originId || null,
-      valorTotal: payload.valorTotal,
-    },
-  });
-
-  return ref.id;
 };
 
 export const getVendaById = async (id: string, userId: string): Promise<Venda | null> => {
@@ -264,14 +274,20 @@ export const getVendaById = async (id: string, userId: string): Promise<Venda | 
   return { ...data, id: snap.id };
 };
 
-export const updateVenda = async (id: string, data: VendaFormData, userId: string) => {
+export const updateVenda = async (id: string, data: VendaFormData, userId: string, options?: OfflineWriteOptions) => {
   const tenantId = assertTenantId(userId);
-  validateVendaFormData(data);
-  const venda = await getVendaById(id, tenantId);
-  if (!venda) throw new Error('Venda não encontrada.');
-  const hydroAllocations = Array.isArray((venda as any).hydroAllocations)
-    ? ((venda as any).hydroAllocations as unknown[])
-    : [];
+  return runOfflineWrite({
+    action: 'updateVenda',
+    payload: { id, data, userId: tenantId },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () => {
+      validateVendaFormData(data);
+      const venda = await getVendaById(id, tenantId);
+      if (!venda) throw new Error('Venda não encontrada.');
+      const hydroAllocations = Array.isArray((venda as any).hydroAllocations)
+        ? ((venda as any).hydroAllocations as unknown[])
+        : [];
 
   if (hydroAllocations.length > 0) {
     const previousQuantidade = Number((venda as any).quantidade || venda.itens?.[0]?.quantidade || 0);
@@ -358,31 +374,39 @@ export const updateVenda = async (id: string, data: VendaFormData, userId: strin
     },
   });
 
-  await triggerExternalDashboardSync({
-    tenantId,
-    entity: 'venda',
-    action: 'update',
-    recordId: id,
-    metadata: {
-      statusPagamento: payload.statusPagamento,
-      originType: payload.originType || null,
-      originId: payload.originId || null,
-      valorTotal: payload.valorTotal,
+      await triggerExternalDashboardSync({
+        tenantId,
+        entity: 'venda',
+        action: 'update',
+        recordId: id,
+        metadata: {
+          statusPagamento: payload.statusPagamento,
+          originType: payload.originType || null,
+          originId: payload.originId || null,
+          valorTotal: payload.valorTotal,
+        },
+      });
     },
   });
 };
 
-export const deleteVenda = async (id: string, userId: string) => {
+export const deleteVenda = async (id: string, userId: string, options?: OfflineWriteOptions) => {
   const tenantId = assertTenantId(userId);
-  const venda = await getVendaById(id, tenantId);
-  if (!venda) throw new Error('Venda não encontrada.');
-  const hydroAllocations = Array.isArray((venda as any).hydroAllocations)
-    ? ((venda as any).hydroAllocations as Array<{
-        ocupacaoId?: string;
-        estruturaId?: string;
-        quantidade?: number;
-      }>)
-    : [];
+  return runOfflineWrite({
+    action: 'deleteVenda',
+    payload: { id, userId: tenantId },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () => {
+      const venda = await getVendaById(id, tenantId);
+      if (!venda) throw new Error('Venda não encontrada.');
+      const hydroAllocations = Array.isArray((venda as any).hydroAllocations)
+        ? ((venda as any).hydroAllocations as Array<{
+            ocupacaoId?: string;
+            estruturaId?: string;
+            quantidade?: number;
+          }>)
+        : [];
 
   await runTransaction(db, async (transaction) => {
     const vendaRef = doc(db, 'vendas', id);
@@ -466,16 +490,18 @@ export const deleteVenda = async (id: string, userId: string) => {
     },
   });
 
-  await triggerExternalDashboardSync({
-    tenantId,
-    entity: 'venda',
-    action: 'delete',
-    recordId: id,
-    metadata: {
-      statusPagamento: venda.statusPagamento || null,
-      originType: (venda as any).originType || null,
-      originId: (venda as any).originId || null,
-      valorTotal: Number(venda.valorTotal || 0),
+      await triggerExternalDashboardSync({
+        tenantId,
+        entity: 'venda',
+        action: 'delete',
+        recordId: id,
+        metadata: {
+          statusPagamento: venda.statusPagamento || null,
+          originType: (venda as any).originType || null,
+          originId: (venda as any).originId || null,
+          valorTotal: Number(venda.valorTotal || 0),
+        },
+      });
     },
   });
 };
@@ -536,47 +562,60 @@ export const listVendasByPlantio = async (userId: string, plantioId: string): Pr
     .sort((a, b) => (b.dataVenda?.seconds || 0) - (a.dataVenda?.seconds || 0));
 };
 
-export const receberVenda = async (vendaId: string, userId: string, metodoRecebimento?: string) => {
+export const receberVenda = async (
+  vendaId: string,
+  userId: string,
+  metodoRecebimento?: string,
+  options?: OfflineWriteOptions
+) => {
   const tenantId = assertTenantId(userId);
-  const venda = await getVendaById(vendaId, tenantId);
-  if (!venda) throw new Error('Registro não encontrado.');
+  return runOfflineWrite({
+    action: 'receberVenda',
+    payload: { id: vendaId, userId: tenantId, metodoRecebimento: metodoRecebimento || null },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () => {
+      const venda = await getVendaById(vendaId, tenantId);
+      if (!venda) throw new Error('Registro não encontrado.');
 
-  await updateDoc(doc(db, 'vendas', vendaId), {
-    statusPagamento: 'pago',
-    formaPagamento: (metodoRecebimento || venda.formaPagamento || 'pix') as Venda['formaPagamento'],
-    metodoPagamento: metodoRecebimento || venda.metodoPagamento || 'pix',
-    updatedAt: Timestamp.now(),
-  });
+      await updateDoc(doc(db, 'vendas', vendaId), {
+        statusPagamento: 'pago',
+        formaPagamento: (metodoRecebimento || venda.formaPagamento || 'pix') as Venda['formaPagamento'],
+        metodoPagamento: metodoRecebimento || venda.metodoPagamento || 'pix',
+        updatedAt: Timestamp.now(),
+      });
 
-  await createTraceabilityEventSafely(tenantId, {
-    plantioId: venda.plantioId || null,
-    hydroLoteId: (venda as any).hydroLoteId || null,
-    estufaId: venda.estufaId || null,
-    entidade: 'venda',
-    entidadeId: vendaId,
-    acao: 'recebimento_registrado',
-    descricao: 'Recebimento da venda confirmado.',
-    actorUid: tenantId,
-    metadata: {
-      metodoPagamento: metodoRecebimento || venda.metodoPagamento || venda.formaPagamento || 'pix',
-      previousStatusPagamento: venda.statusPagamento,
-      newStatusPagamento: 'pago',
-      originType: (venda as any).originType || null,
-      originId: (venda as any).originId || null,
-    },
-  });
+      await createTraceabilityEventSafely(tenantId, {
+        plantioId: venda.plantioId || null,
+        hydroLoteId: (venda as any).hydroLoteId || null,
+        estufaId: venda.estufaId || null,
+        entidade: 'venda',
+        entidadeId: vendaId,
+        acao: 'recebimento_registrado',
+        descricao: 'Recebimento da venda confirmado.',
+        actorUid: tenantId,
+        metadata: {
+          metodoPagamento: metodoRecebimento || venda.metodoPagamento || venda.formaPagamento || 'pix',
+          previousStatusPagamento: venda.statusPagamento,
+          newStatusPagamento: 'pago',
+          originType: (venda as any).originType || null,
+          originId: (venda as any).originId || null,
+        },
+      });
 
-  await triggerExternalDashboardSync({
-    tenantId,
-    entity: 'venda',
-    action: 'status_change',
-    recordId: vendaId,
-    metadata: {
-      previousStatusPagamento: venda.statusPagamento || null,
-      newStatusPagamento: 'pago',
-      originType: (venda as any).originType || null,
-      originId: (venda as any).originId || null,
-      valorTotal: Number(venda.valorTotal || 0),
+      await triggerExternalDashboardSync({
+        tenantId,
+        entity: 'venda',
+        action: 'status_change',
+        recordId: vendaId,
+        metadata: {
+          previousStatusPagamento: venda.statusPagamento || null,
+          newStatusPagamento: 'pago',
+          originType: (venda as any).originType || null,
+          originId: (venda as any).originId || null,
+          valorTotal: Number(venda.valorTotal || 0),
+        },
+      });
     },
   });
 };

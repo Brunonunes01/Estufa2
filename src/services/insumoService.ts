@@ -14,6 +14,8 @@ import {
 import { db } from './firebaseConfig';
 import { Insumo } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
+import { OfflineWriteOptions } from './offline/offlineStorage';
+import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWrite';
 
 export type InsumoFormData = {
   nome: string;
@@ -34,26 +36,47 @@ export type InsumoEntryData = {
   observacoes: string | null;
 };
 
-export const createInsumo = async (data: InsumoFormData, userId: string) => {
+export const createInsumo = async (data: InsumoFormData, userId: string, options?: OfflineWriteOptions) => {
   const tenantId = assertTenantId(userId);
-  const now = Timestamp.now();
-  const novoInsumo = {
-    ...data,
-    tenantId,
-    userId: tenantId,
-    createdAt: now,
-    updatedAt: now,
-  };
-  const docRef = await addDoc(collection(db, 'insumos'), novoInsumo);
-  return docRef.id;
+  return runOfflineWrite({
+    action: 'createInsumo',
+    payload: { data, userId: tenantId },
+    options,
+    onQueuedValue: () => buildOfflinePlaceholderId(),
+    write: async () => {
+      const now = Timestamp.now();
+      const novoInsumo = {
+        ...data,
+        tenantId,
+        userId: tenantId,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const docRef = await addDoc(collection(db, 'insumos'), novoInsumo);
+      return docRef.id;
+    },
+  });
 };
 
-export const updateInsumo = async (insumoId: string, data: Partial<InsumoFormData>, userId: string) => {
+export const updateInsumo = async (
+  insumoId: string,
+  data: Partial<InsumoFormData>,
+  userId: string,
+  options?: OfflineWriteOptions
+) => {
   const tenantId = assertTenantId(userId);
-  const insumo = await getInsumoById(insumoId, tenantId);
-  if (!insumo) throw new Error('Insumo não encontrado.');
+  return runOfflineWrite({
+    action: 'updateInsumo',
+    payload: { id: insumoId, data, userId: tenantId },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () => {
+      const insumo = await getInsumoById(insumoId, tenantId);
+      if (!insumo) throw new Error('Insumo não encontrado.');
 
-  await updateDoc(doc(db, 'insumos', insumoId), { ...data, updatedAt: Timestamp.now() });
+      await updateDoc(doc(db, 'insumos', insumoId), { ...data, updatedAt: Timestamp.now() });
+    },
+  });
 };
 
 export const listInsumos = async (userId: string): Promise<Insumo[]> => {
@@ -95,7 +118,8 @@ export const deleteInsumo = async (insumoId: string, userId: string) => {
 export const addEstoqueToInsumo = async (
   insumoId: string,
   entryData: InsumoEntryData,
-  userId: string
+  userId: string,
+  options?: OfflineWriteOptions
 ) => {
   const tenantId = assertTenantId(userId);
   const quantidadeComprada = Number(entryData.quantidadeComprada || 0);
@@ -108,43 +132,50 @@ export const addEstoqueToInsumo = async (
     throw new Error('Custo unitário da compra deve ser maior que zero.');
   }
 
-  return runTransaction(db, async (transaction) => {
-    const insumoRef = doc(db, 'insumos', insumoId);
-    const insumoSnap = await transaction.get(insumoRef);
+  return runOfflineWrite({
+    action: 'addEstoqueToInsumo',
+    payload: { id: insumoId, entryData, userId: tenantId },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () =>
+      runTransaction(db, async (transaction) => {
+        const insumoRef = doc(db, 'insumos', insumoId);
+        const insumoSnap = await transaction.get(insumoRef);
 
-    if (!insumoSnap.exists()) throw new Error('Insumo não encontrado.');
-    const insumo = insumoSnap.data() as Insumo;
-    if (insumo.tenantId !== tenantId && insumo.userId !== tenantId) {
-      throw new Error('Acesso negado ao insumo selecionado.');
-    }
+        if (!insumoSnap.exists()) throw new Error('Insumo não encontrado.');
+        const insumo = insumoSnap.data() as Insumo;
+        if (insumo.tenantId !== tenantId && insumo.userId !== tenantId) {
+          throw new Error('Acesso negado ao insumo selecionado.');
+        }
 
-    const estoqueAntigo = Number(insumo.estoqueAtual || 0);
-    const custoAntigo = Number(insumo.custoUnitario || 0);
+        const estoqueAntigo = Number(insumo.estoqueAtual || 0);
+        const custoAntigo = Number(insumo.custoUnitario || 0);
 
-    const novoEstoque = estoqueAntigo + quantidadeComprada;
-    let novoCusto = custoAntigo;
-    if (novoEstoque > 0) {
-      const valorEstoqueAntigo = estoqueAntigo * custoAntigo;
-      const valorNovaCompra = quantidadeComprada * custoUnitarioCompra;
-      novoCusto = (valorEstoqueAntigo + valorNovaCompra) / novoEstoque;
-    }
+        const novoEstoque = estoqueAntigo + quantidadeComprada;
+        let novoCusto = custoAntigo;
+        if (novoEstoque > 0) {
+          const valorEstoqueAntigo = estoqueAntigo * custoAntigo;
+          const valorNovaCompra = quantidadeComprada * custoUnitarioCompra;
+          novoCusto = (valorEstoqueAntigo + valorNovaCompra) / novoEstoque;
+        }
 
-    transaction.update(insumoRef, {
-      estoqueAtual: novoEstoque,
-      custoUnitario: novoCusto,
-      updatedAt: Timestamp.now(),
-    });
+        transaction.update(insumoRef, {
+          estoqueAtual: novoEstoque,
+          custoUnitario: novoCusto,
+          updatedAt: Timestamp.now(),
+        });
 
-    const entradaRef = doc(collection(db, 'insumo_entradas'));
-    transaction.set(entradaRef, {
-      insumoId,
-      nomeInsumo: insumo.nome,
-      tenantId,
-      userId: tenantId,
-      ...entryData,
-      quantidadeComprada,
-      custoUnitarioCompra,
-      dataEntrada: Timestamp.now(),
-    });
+        const entradaRef = doc(collection(db, 'insumo_entradas'));
+        transaction.set(entradaRef, {
+          insumoId,
+          nomeInsumo: insumo.nome,
+          tenantId,
+          userId: tenantId,
+          ...entryData,
+          quantidadeComprada,
+          custoUnitarioCompra,
+          dataEntrada: Timestamp.now(),
+        });
+      }),
   });
 };

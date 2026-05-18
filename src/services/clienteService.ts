@@ -14,6 +14,8 @@ import {
 import { db } from './firebaseConfig';
 import { Cliente } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
+import { OfflineWriteOptions } from './offline/offlineStorage';
+import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWrite';
 
 export type ClienteFormData = {
   nome: string;
@@ -33,24 +35,32 @@ export type ClienteFormData = {
 };
 
 // 1. CRIAR
-export const createCliente = async (data: ClienteFormData, userId: string) => {
+export const createCliente = async (data: ClienteFormData, userId: string, options?: OfflineWriteOptions) => {
   const tenantId = assertTenantId(userId);
-  const now = Timestamp.now();
-  const novoCliente = {
-    ...data,
-    tenantId,
-    userId: tenantId, // Compatibilidade
-    createdAt: now,
-    updatedAt: now,
-  };
+  return runOfflineWrite({
+    action: 'createCliente',
+    payload: { data, userId: tenantId },
+    options,
+    onQueuedValue: () => buildOfflinePlaceholderId(),
+    write: async () => {
+      const now = Timestamp.now();
+      const novoCliente = {
+        ...data,
+        tenantId,
+        userId: tenantId, // Compatibilidade
+        createdAt: now,
+        updatedAt: now,
+      };
 
-  try {
-    const docRef = await addDoc(collection(db, 'clientes'), novoCliente);
-    return docRef.id;
-  } catch (error) {
-    console.error("Erro ao criar cliente: ", error);
-    throw new Error('Não foi possível cadastrar o cliente.');
-  }
+      try {
+        const docRef = await addDoc(collection(db, 'clientes'), novoCliente);
+        return docRef.id;
+      } catch (error) {
+        console.error("Erro ao criar cliente: ", error);
+        throw new Error('Não foi possível cadastrar o cliente.');
+      }
+    },
+  });
 };
 
 // 2. LISTAR
@@ -100,32 +110,53 @@ export const getClienteById = async (clienteId: string, userId: string): Promise
 };
 
 // 4. ATUALIZAR
-export const updateCliente = async (clienteId: string, data: ClienteFormData, userId: string) => {
+export const updateCliente = async (
+  clienteId: string,
+  data: ClienteFormData,
+  userId: string,
+  options?: OfflineWriteOptions
+) => {
   const tenantId = assertTenantId(userId);
-  try {
-    const cliente = await getClienteById(clienteId, tenantId);
-    if (!cliente) throw new Error("Cliente não encontrado.");
+  return runOfflineWrite({
+    action: 'updateCliente',
+    payload: { id: clienteId, data, userId: tenantId },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () => {
+      try {
+        const cliente = await getClienteById(clienteId, tenantId);
+        if (!cliente) throw new Error("Cliente não encontrado.");
 
-    const ref = doc(db, 'clientes', clienteId);
-    await updateDoc(ref, {
-      ...data,
-      updatedAt: Timestamp.now(),
-    });
-  } catch (error) {
-    console.error("Erro ao atualizar cliente: ", error);
-    throw error;
-  }
+        const ref = doc(db, 'clientes', clienteId);
+        await updateDoc(ref, {
+          ...data,
+          updatedAt: Timestamp.now(),
+        });
+      } catch (error) {
+        console.error("Erro ao atualizar cliente: ", error);
+        throw error;
+      }
+    },
+  });
 };
 
-export const deleteCliente = async (clienteId: string, userId: string) => {
+export const deleteCliente = async (clienteId: string, userId: string, options?: OfflineWriteOptions) => {
   const tenantId = assertTenantId(userId);
-  try {
-    const cliente = await getClienteById(clienteId, tenantId);
-    if (!cliente) throw new Error("Cliente não encontrado para exclusão.");
+  return runOfflineWrite({
+    action: 'deleteCliente',
+    payload: { id: clienteId, userId: tenantId },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () => {
+      try {
+        const cliente = await getClienteById(clienteId, tenantId);
+        if (!cliente) throw new Error("Cliente não encontrado para exclusão.");
 
-    await deleteDoc(doc(db, 'clientes', clienteId));
-  } catch (error) {
-    console.error("Erro ao excluir cliente: ", error);
-    throw error;
-  }
+        await deleteDoc(doc(db, 'clientes', clienteId));
+      } catch (error) {
+        console.error("Erro ao excluir cliente: ", error);
+        throw error;
+      }
+    },
+  });
 };

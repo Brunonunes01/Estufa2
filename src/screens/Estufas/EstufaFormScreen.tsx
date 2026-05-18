@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, ScrollView, StyleSheet, 
   TouchableOpacity, Alert, ActivityIndicator, Modal, Platform
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -30,6 +31,7 @@ const DEFAULT_MAP_REGION: Region = {
 const EstufaFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId, canDeleteEstufa } = useAuth();
   const { settings } = useAppSettings();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const editingId = route.params?.estufaId;
   const isEditMode = !!editingId;
@@ -338,7 +340,12 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.padding}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.padding,
+          { paddingBottom: (settings.uiV2Enabled ? 138 : SPACING.xl) + insets.bottom },
+        ]}
+      >
         
         <Text style={styles.label}>Nome da Estufa *</Text>
         <TextInput 

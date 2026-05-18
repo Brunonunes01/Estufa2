@@ -23,6 +23,12 @@ import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/th
 import SectionHeading from '../../components/ui/SectionHeading';
 import { useFeedback } from '../../hooks/useFeedback';
 import { useDashboardActions } from '../../hooks/useDashboardActions';
+import {
+  getOfflineSyncState,
+  subscribeOfflineSyncState,
+  syncPendingDataNow,
+  type OfflineSyncState,
+} from '../../services/offline/syncService';
 
 const SettingsScreen = () => {
   const { user, isAdmin, refreshUserProfile } = useAuth();
@@ -40,6 +46,8 @@ const SettingsScreen = () => {
   const [senhaNova, setSenhaNova] = useState('');
   const [senhaConfirmacao, setSenhaConfirmacao] = useState('');
   const [savingSecurity, setSavingSecurity] = useState(false);
+  const [syncState, setSyncState] = useState<OfflineSyncState>(getOfflineSyncState());
+  const [syncingNow, setSyncingNow] = useState(false);
 
   const roleLabel = useMemo(() => (isAdmin ? 'Administrador' : 'Operador'), [isAdmin]);
   const appVersion = Constants.expoConfig?.version || '1.0.0';
@@ -64,6 +72,11 @@ const SettingsScreen = () => {
 
     load();
   }, [user?.uid]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeOfflineSyncState(setSyncState);
+    return unsubscribe;
+  }, []);
 
   const handleSaveConta = async () => {
     if (!user?.uid) return;
@@ -132,6 +145,25 @@ const SettingsScreen = () => {
       }
     } finally {
       setSavingSecurity(false);
+    }
+  };
+
+  const handleSyncNow = async () => {
+    if (syncingNow) return;
+    setSyncingNow(true);
+    try {
+      const result = await syncPendingDataNow();
+      if (result.lastError) {
+        showError(result.lastError);
+      } else if (result.queued > 0) {
+        showWarning(`Sincronização parcial. Ainda restam ${result.queued} item(ns) na fila.`);
+      } else {
+        showSuccess('Sincronização concluída com sucesso.');
+      }
+    } catch {
+      showError('Não foi possível sincronizar agora.');
+    } finally {
+      setSyncingNow(false);
     }
   };
 
@@ -242,6 +274,22 @@ const SettingsScreen = () => {
       </View>
 
       <View style={styles.card}>
+        <SectionHeading title="Nova Interface" subtitle="Ative a navegação modular com ações rápidas" />
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>UI V2 (beta estável)</Text>
+          <Switch
+            value={settings.uiV2Enabled}
+            onValueChange={(value) => updateSettings({ uiV2Enabled: value })}
+            trackColor={{ false: COLORS.borderDark, true: COLORS.primaryLight }}
+            thumbColor={settings.uiV2Enabled ? COLORS.primary : COLORS.textMuted}
+          />
+        </View>
+        <Text style={styles.helpText}>
+          Quando ativo, o app usa barra inferior modular e menu de ações rápidas (FAB).
+        </Text>
+      </View>
+
+      <View style={styles.card}>
         <SectionHeading title="Aparência" subtitle="Personalize o visual do aplicativo" />
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Modo escuro (experimental)</Text>
@@ -261,6 +309,28 @@ const SettingsScreen = () => {
           <Text style={styles.switchLabel}>Versão do app</Text>
           <Text style={styles.systemValue}>{appVersion}</Text>
         </View>
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Itens pendentes para sincronizar</Text>
+          <Text style={styles.systemValue}>{syncState.queued}</Text>
+        </View>
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Última sincronização</Text>
+          <Text style={styles.systemValue}>
+            {syncState.lastSyncAt ? new Date(syncState.lastSyncAt).toLocaleString('pt-BR') : 'Ainda não sincronizado'}
+          </Text>
+        </View>
+        {syncState.lastError ? <Text style={styles.errorText}>{syncState.lastError}</Text> : null}
+        <TouchableOpacity
+          style={[styles.primaryBtn, (syncState.syncing || syncingNow) && styles.buttonDisabled]}
+          onPress={handleSyncNow}
+          disabled={syncState.syncing || syncingNow}
+        >
+          {syncState.syncing || syncingNow ? (
+            <ActivityIndicator color={COLORS.textLight} />
+          ) : (
+            <Text style={styles.primaryBtnText}>Sincronizar Agora</Text>
+          )}
+        </TouchableOpacity>
       </View>
 
       <TouchableOpacity style={styles.logoutBtn} onPress={signOut}>
@@ -317,6 +387,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   primaryBtnText: { color: COLORS.textLight, fontWeight: '700', fontSize: 14 },
+  buttonDisabled: { opacity: 0.65 },
   switchRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -325,6 +396,7 @@ const styles = StyleSheet.create({
   },
   switchLabel: { color: COLORS.textPrimary, fontSize: TYPOGRAPHY.body, fontWeight: '600', flex: 1, marginRight: 10 },
   systemValue: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+  errorText: { color: COLORS.danger, fontSize: 12, fontWeight: '600', marginTop: 4, marginBottom: 8 },
   helpText: { marginTop: 8, color: COLORS.textSecondary, fontSize: 12 },
   modeRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
   modeBtn: {

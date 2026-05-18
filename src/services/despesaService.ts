@@ -15,6 +15,8 @@ import {
 import { db } from './firebaseConfig';
 import { Despesa } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
+import { OfflineWriteOptions } from './offline/offlineStorage';
+import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWrite';
 
 export type DespesaFormData = {
   descricao: string;
@@ -28,24 +30,32 @@ export type DespesaFormData = {
   estufaId?: string | null;
 };
 
-export const createDespesa = async (data: DespesaFormData, userId: string) => {
+export const createDespesa = async (data: DespesaFormData, userId: string, options?: OfflineWriteOptions) => {
   const tenantId = assertTenantId(userId);
-  const now = Timestamp.now();
+  return runOfflineWrite({
+    action: 'createDespesa',
+    payload: { data, userId: tenantId },
+    options,
+    onQueuedValue: () => buildOfflinePlaceholderId(),
+    write: async () => {
+      const now = Timestamp.now();
 
-  const novaDespesa = {
-    ...data,
-    tenantId,
-    userId: tenantId, // Compatibilidade
-    dataDespesa: Timestamp.fromDate(data.dataDespesa),
-    dataVencimento: data.dataVencimento ? Timestamp.fromDate(data.dataVencimento) : null,
-    createdAt: now,
-    updatedAt: now,
-    // Garante que o campo de status usado em queries seja o statusPagamento
-    status: data.statusPagamento, 
-  };
+      const novaDespesa = {
+        ...data,
+        tenantId,
+        userId: tenantId, // Compatibilidade
+        dataDespesa: Timestamp.fromDate(data.dataDespesa),
+        dataVencimento: data.dataVencimento ? Timestamp.fromDate(data.dataVencimento) : null,
+        createdAt: now,
+        updatedAt: now,
+        // Garante que o campo de status usado em queries seja o statusPagamento
+        status: data.statusPagamento,
+      };
 
-  const docRef = await addDoc(collection(db, 'despesas'), novaDespesa);
-  return docRef.id;
+      const docRef = await addDoc(collection(db, 'despesas'), novaDespesa);
+      return docRef.id;
+    },
+  });
 };
 
 export const listDespesas = async (userId: string): Promise<Despesa[]> => {
@@ -108,25 +118,42 @@ export const getDespesaById = async (id: string, userId: string): Promise<Despes
 export const updateDespesaStatus = async (
   id: string,
   novoStatus: 'pago' | 'pendente',
-  userId: string
+  userId: string,
+  options?: OfflineWriteOptions
 ) => {
   const tenantId = assertTenantId(userId);
-  const despesa = await getDespesaById(id, tenantId);
-  if (!despesa) throw new Error('Despesa não encontrada.');
+  return runOfflineWrite({
+    action: 'updateDespesaStatus',
+    payload: { id, status: novoStatus, userId: tenantId },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () => {
+      const despesa = await getDespesaById(id, tenantId);
+      if (!despesa) throw new Error('Despesa não encontrada.');
 
-  await updateDoc(doc(db, 'despesas', id), {
-    statusPagamento: novoStatus,
-    status: novoStatus, // Mantido para compatibilidade de query
-    updatedAt: Timestamp.now(),
+      await updateDoc(doc(db, 'despesas', id), {
+        statusPagamento: novoStatus,
+        status: novoStatus, // Mantido para compatibilidade de query
+        updatedAt: Timestamp.now(),
+      });
+    },
   });
 };
 
-export const deleteDespesa = async (despesaId: string, userId: string) => {
+export const deleteDespesa = async (despesaId: string, userId: string, options?: OfflineWriteOptions) => {
   const tenantId = assertTenantId(userId);
-  const despesa = await getDespesaById(despesaId, tenantId);
-  if (!despesa) throw new Error('Despesa não encontrada.');
+  return runOfflineWrite({
+    action: 'deleteDespesa',
+    payload: { id: despesaId, userId: tenantId },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () => {
+      const despesa = await getDespesaById(despesaId, tenantId);
+      if (!despesa) throw new Error('Despesa não encontrada.');
 
-  await deleteDoc(doc(db, 'despesas', despesaId));
+      await deleteDoc(doc(db, 'despesas', despesaId));
+    },
+  });
 };
 
 export const getTotalDespesasPendentes = async (userId: string): Promise<number> => {

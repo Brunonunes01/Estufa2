@@ -11,17 +11,21 @@ import { listAllPlantios, unlockPlantioCycleForEarlySale } from '../../services/
 import { listEstufas } from '../../services/estufaService';
 import { listClientes, createCliente } from '../../services/clienteService';
 import { useAuth } from '../../hooks/useAuth';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Plantio, Cliente } from '../../types/domain';
 import { COLORS } from '../../constants/theme';
 import { queryClient, queryKeys } from '../../lib/queryClient';
 import { verifyCurrentUserPassword } from '../../services/securityService';
+import { useAppSettings } from '../../hooks/useAppSettings';
 
 type UnidadeColheita = "kg" | "caixa" | "unidade" | "maço";
 type MetodoPagamento = "pix" | "dinheiro" | "boleto" | "prazo" | "cartao" | "outro";
 
 const ColheitaFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId, canDeleteEstufa } = useAuth();
+  const { settings } = useAppSettings();
+  const insets = useSafeAreaInsets();
   const targetId = selectedTenantId || user?.uid;
   const params = route.params || {};
   const vendaIdParam = params.vendaId as string | undefined;
@@ -362,7 +366,12 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: (settings.uiV2Enabled ? 138 : 30) + insets.bottom },
+        ]}
+      >
 
         <View style={styles.card}>
             <Text style={styles.sectionHeader}>Origem e Destino</Text>

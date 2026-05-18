@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../../hooks/useAuth';
 import { listEstufas } from '../../../services/estufaService';
 import { Estufa } from '../../../types/domain';
@@ -10,6 +11,7 @@ import { HYDRO_ACTION_OPTIONS } from '../constants';
 import { createHydroLeitura } from '../services/hidroponiaLeituraService';
 import { HydroLeituraAcao } from '../types';
 import { toNumber } from '../utils';
+import { useAppSettings } from '../../../hooks/useAppSettings';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'HidroponiaLeituraForm'>;
 
@@ -20,6 +22,8 @@ const nullableNumber = (value: string) => {
 
 const HidroponiaLeituraFormScreen = ({ navigation, route }: Props) => {
   const { user, selectedTenantId } = useAuth();
+  const { settings } = useAppSettings();
+  const insets = useSafeAreaInsets();
   const targetId = selectedTenantId || user?.uid;
   const [estufas, setEstufas] = useState<Estufa[]>([]);
   const [estufaId, setEstufaId] = useState(route.params?.estufaId || '');
@@ -137,7 +141,13 @@ const HidroponiaLeituraFormScreen = ({ navigation, route }: Props) => {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: (settings.uiV2Enabled ? 138 : SPACING.xxl) + insets.bottom },
+      ]}
+    >
       <Text style={styles.sectionTitle}>Local da leitura</Text>
       <Text style={styles.label}>Estufa</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.optionWrap}>

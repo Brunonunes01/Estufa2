@@ -1,12 +1,16 @@
 // src/screens/Fornecedores/FornecedorFormScreen.tsx
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, ScrollView, Alert, StyleSheet, ActivityIndicator, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createFornecedor, FornecedorFormData, getFornecedorById, updateFornecedor } from '../../services/fornecedorService';
 import { useAuth } from '../../hooks/useAuth';
+import { useAppSettings } from '../../hooks/useAppSettings';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const FornecedorFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const { settings } = useAppSettings();
+  const insets = useSafeAreaInsets();
   const fornecedorId = route.params?.fornecedorId;
   const isEditMode = !!fornecedorId;
   
@@ -36,7 +40,12 @@ const FornecedorFormScreen = ({ route, navigation }: any) => {
 
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: (settings.uiV2Enabled ? 138 : SPACING.xl) + insets.bottom },
+        ]}
+      >
         <View style={styles.card}>
           <Text style={styles.sectionHeader}>Dados do Fornecedor</Text>
 

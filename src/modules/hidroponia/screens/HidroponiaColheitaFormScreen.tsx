@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../../../hooks/useAuth';
@@ -20,6 +21,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { HydroOcupacao } from '../types';
 import { registrarColheitaHidroponica } from '../services/hidroponiaColheitaService';
 import { toNumber } from '../utils';
+import { useAppSettings } from '../../../hooks/useAppSettings';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'HidroponiaColheitaForm'>;
 
@@ -34,6 +36,8 @@ const UNIDADES = ['maços', 'un', 'kg', 'caixas'];
 
 const HidroponiaColheitaFormScreen = ({ navigation, route }: Props) => {
   const { user, selectedTenantId } = useAuth();
+  const { settings } = useAppSettings();
+  const insets = useSafeAreaInsets();
   const targetId = selectedTenantId || user?.uid;
   const { ocupacaoId, isSeedlingResale } = route.params;
 
@@ -116,7 +120,13 @@ const HidroponiaColheitaFormScreen = ({ navigation, route }: Props) => {
   });
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: (settings.uiV2Enabled ? 138 : SPACING.xxl) + insets.bottom },
+      ]}
+    >
       <View style={styles.headerCard}>
         <Text style={styles.headerLabel}>
           {isSeedlingResale ? 'Vendendo mudas da bancada ' : 'Colhendo da Bancada '} 
