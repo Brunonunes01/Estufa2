@@ -1,9 +1,4 @@
-import { onAuthStateChanged as onFirebaseAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
-import { auth as firebaseAuth } from './firebaseConfig';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
-import { isSupabaseBackend } from './backendConfig';
-import { Timestamp, doc, setDoc } from 'firebase/firestore';
-import { db } from './firebaseConfig';
 
 export type AuthBridgeUser = {
   id: string;
@@ -20,11 +15,6 @@ const ensureSupabaseReady = () => {
 };
 
 export const signInWithPasswordBridge = async (email: string, password: string) => {
-  if (!isSupabaseBackend()) {
-    await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
-    return;
-  }
-
   ensureSupabaseReady();
   const supabase = getSupabaseClient();
   const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
@@ -32,20 +22,6 @@ export const signInWithPasswordBridge = async (email: string, password: string) 
 };
 
 export const signUpWithPasswordBridge = async (name: string, email: string, password: string) => {
-  if (!isSupabaseBackend()) {
-    const { createUserWithEmailAndPassword, updateProfile } = await import('firebase/auth');
-    const userCredential = await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
-    await updateProfile(userCredential.user, { displayName: name });
-    await setDoc(doc(db, 'users', userCredential.user.uid), {
-      name,
-      email: email.trim(),
-      role: 'admin',
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    });
-    return;
-  }
-
   ensureSupabaseReady();
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.auth.signUp({
@@ -60,6 +36,11 @@ export const signUpWithPasswordBridge = async (name: string, email: string, pass
   const user = data.user;
   if (!user) {
     throw new Error('Não foi possível criar a conta.');
+  }
+
+  // Com confirmação de e-mail ativa, pode não haver sessão imediata.
+  if (!data.session) {
+    return;
   }
 
   const { error: profileError } = await supabase.from('profiles').upsert(
@@ -81,7 +62,6 @@ export const signUpWithPasswordBridge = async (name: string, email: string, pass
   });
   if (tenantError) {
     const msg = String(tenantError.message || '');
-    // Evita bloquear cadastro caso já exista tenant bootstrap.
     if (!msg.toLowerCase().includes('duplicate')) {
       throw tenantError;
     }
@@ -89,10 +69,6 @@ export const signUpWithPasswordBridge = async (name: string, email: string, pass
 };
 
 export const signOutBridge = async () => {
-  if (!isSupabaseBackend()) {
-    await firebaseAuth.signOut();
-    return;
-  }
   ensureSupabaseReady();
   const supabase = getSupabaseClient();
   const { error } = await supabase.auth.signOut();
@@ -102,20 +78,6 @@ export const signOutBridge = async () => {
 export const onAuthStateChangedBridge = (
   callback: (user: AuthBridgeUser | null) => void
 ) => {
-  if (!isSupabaseBackend()) {
-    return onFirebaseAuthStateChanged(firebaseAuth, (fbUser) =>
-      callback(
-        fbUser
-          ? {
-              id: fbUser.uid,
-              email: fbUser.email,
-              displayName: fbUser.displayName,
-            }
-          : null
-      )
-    );
-  }
-
   ensureSupabaseReady();
   const supabase = getSupabaseClient();
   const { data } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -135,12 +97,6 @@ export const onAuthStateChangedBridge = (
 };
 
 export const getCurrentAuthUserBridge = async (): Promise<AuthBridgeUser | null> => {
-  if (!isSupabaseBackend()) {
-    const user = firebaseAuth.currentUser;
-    if (!user) return null;
-    return { id: user.uid, email: user.email, displayName: user.displayName };
-  }
-
   ensureSupabaseReady();
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.auth.getSession();

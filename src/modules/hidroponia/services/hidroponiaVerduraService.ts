@@ -8,7 +8,7 @@ import {
   Timestamp,
   updateDoc,
   where,
-} from 'firebase/firestore';
+} from '../../../compat/firestore';
 import { db } from '../../../services/firebaseConfig';
 import { assertTenantId } from '../../../services/tenantGuard';
 import { isSupabaseBackend } from '../../../services/backendConfig';

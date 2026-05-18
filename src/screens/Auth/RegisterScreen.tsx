@@ -37,7 +37,7 @@ const RegisterScreen = ({ navigation }: any) => {
         err?.message?.toLowerCase?.().includes('already registered')
       ) setError('Este e-mail já está em uso.');
       else if (err?.code === 'auth/invalid-email') setError('Formato de e-mail inválido.');
-      else setError('Ocorreu um erro ao criar a conta.');
+      else setError(err?.message || 'Ocorreu um erro ao criar a conta.');
     }
   };
 

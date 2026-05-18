@@ -1,4 +1,4 @@
-import { collection, doc, getDocs, query, runTransaction, Timestamp, where } from 'firebase/firestore';
+import { collection, doc, getDocs, query, runTransaction, Timestamp, where } from '../../../compat/firestore';
 import { db } from '../../../services/firebaseConfig';
 import { assertTenantId } from '../../../services/tenantGuard';
 import { createTraceabilityEventSafely } from '../../../services/traceabilityService';

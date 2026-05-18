@@ -11,7 +11,7 @@ import MapView, { Marker, Region } from '../../components/MapViewCompat';
 import { useAuth } from '../../hooks/useAuth';
 import { createEstufa, updateEstufa, getEstufaById, deleteEstufa } from '../../services/estufaService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
-import { Timestamp } from 'firebase/firestore'; 
+import { Timestamp } from '../../compat/firestore'; 
 import { verifyCurrentUserPassword } from '../../services/securityService';
 import { HydroponicSystemType, ProductionMode } from '../../types/domain';
 import { HYDRO_SYSTEM_OPTIONS } from '../../modules/hidroponia/constants';

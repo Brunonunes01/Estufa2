@@ -1,4 +1,4 @@
-import { doc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, Timestamp } from '../compat/firestore';
 import { listEstufas } from './estufaService';
 import { getVendasFinancialSummary } from './vendaService';
 import { getTotalDespesasPendentes } from './despesaService';

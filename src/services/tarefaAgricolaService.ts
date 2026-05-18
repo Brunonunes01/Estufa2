@@ -1,4 +1,4 @@
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, Timestamp, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, Timestamp, updateDoc, where } from '../compat/firestore';
 import { db } from './firebaseConfig';
 import { TarefaAgricola } from '../types/domain';
 import { assertTenantId } from './tenantGuard';

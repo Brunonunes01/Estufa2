@@ -2,7 +2,7 @@
 import { auth, db } from './firebaseConfig';
 import { 
     collection, getDocs, doc, setDoc, getDoc, writeBatch, Timestamp
-} from 'firebase/firestore';
+} from '../compat/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ShareCode, Tenant } from '../types/domain';
 import { isSupabaseBackend } from './backendConfig';

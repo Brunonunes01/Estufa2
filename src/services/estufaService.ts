@@ -9,7 +9,7 @@ import {
   updateDoc, 
   deleteDoc, 
   Timestamp 
-} from 'firebase/firestore';
+} from '../compat/firestore';
 import { db } from './firebaseConfig';
 import { Estufa, HydroMotor, HydroSetor } from '../types/domain';
 import { assertTenantId } from './tenantGuard';

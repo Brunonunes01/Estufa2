@@ -1,4 +1,4 @@
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from '../../compat/firestore';
 import { HydroponicSystemType } from '../../types/domain';
 
 export type HydroLoteStatus = 'ativo' | 'concluido' | 'cancelado';

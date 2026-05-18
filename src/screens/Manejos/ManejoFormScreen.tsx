@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../hooks/useAuth';
 import { createManejo } from '../../services/manejoService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
-import { Timestamp } from 'firebase/firestore'; 
+import { Timestamp } from '../../compat/firestore'; 
 import { useAppSettings } from '../../hooks/useAppSettings';
 
 const tiposManejo = [

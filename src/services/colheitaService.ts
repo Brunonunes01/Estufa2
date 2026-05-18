@@ -10,7 +10,7 @@ import {
   Timestamp,
   updateDoc,
   where,
-} from 'firebase/firestore';
+} from '../compat/firestore';
 import { db } from './firebaseConfig';
 import { Colheita, Plantio, Venda } from '../types/domain';
 import { getPlantioById } from './plantioService';

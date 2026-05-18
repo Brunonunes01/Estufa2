@@ -1,5 +1,5 @@
 import NetInfo from '@react-native-community/netinfo';
-import { waitForPendingWrites } from 'firebase/firestore';
+import { waitForPendingWrites } from '../../compat/firestore';
 import { db } from '../firebaseConfig';
 import { flushOfflineQueue, getOfflineQueueSize, isOnlineNow } from './offlineStorage';
 import { isSupabaseBackend } from '../backendConfig';

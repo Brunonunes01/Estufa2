@@ -1,9 +1,5 @@
 import React, { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { doc, getDoc, collection, onSnapshot, Unsubscribe, setDoc, Timestamp } from 'firebase/firestore';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth as firebaseAuth, db as firebaseDb } from '../services/firebaseConfig';
 import { User } from '../types/domain';
-import { isSupabaseBackend } from '../services/backendConfig';
 import { getSupabaseClient, isSupabaseConfigured } from '../services/supabaseClient';
 import { onAuthStateChangedBridge, signInWithPasswordBridge } from '../services/authBridge';
 
@@ -19,13 +15,13 @@ interface AuthContextData {
 
 export const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
-const normalizeOwnerName = (value: unknown) => {
-  if (typeof value !== 'string') return 'Parceiro';
-  const clean = value.trim();
-  return clean || 'Parceiro';
+const ensureSupabaseConfigured = () => {
+  if (!isSupabaseConfigured()) {
+    throw new Error(
+      'Supabase não configurado. Defina EXPO_PUBLIC_SUPABASE_URL e EXPO_PUBLIC_SUPABASE_ANON_KEY.'
+    );
+  }
 };
-
-const supabaseEnabled = () => isSupabaseBackend() && isSupabaseConfigured();
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -37,6 +33,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const ensureSupabaseProfileAndTenants = useCallback(
     async (authUser: { id: string; email?: string | null; displayName?: string | null }) => {
+      ensureSupabaseConfigured();
       const supabase = getSupabaseClient();
       const fallbackName = authUser.displayName?.trim() || authUser.email?.split('@')[0] || 'Usuário';
 
@@ -92,7 +89,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return tenantOptions[0]?.uid || '';
       });
 
-      const role = (profile?.role as User['role']) || ((memberships || []).some((m: any) => m.role === 'admin') ? 'admin' : 'operator');
+      const role =
+        (profile?.role as User['role']) ||
+        ((memberships || []).some((m: any) => m.role === 'admin') ? 'admin' : 'operator');
 
       setUser({
         uid: authUser.id,
@@ -105,120 +104,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     []
   );
 
-  const loadUserProfileFirebase = useCallback(
-    async (uid: string) => {
-      const userDocRef = doc(firebaseDb, 'users', uid);
-      const userDoc = await getDoc(userDocRef);
-
-      if (!userDoc.exists()) {
-        const firebaseUser = firebaseAuth.currentUser;
-        const fallbackName = firebaseUser?.displayName?.trim() || firebaseUser?.email?.split('@')[0] || 'Usuário';
-        const now = Timestamp.now();
-
-        await setDoc(userDocRef, {
-          name: fallbackName,
-          email: firebaseUser?.email || '',
-          role: 'admin',
-          createdAt: now,
-          updatedAt: now,
-        });
-
-        const createdDoc = await getDoc(userDocRef);
-        if (!createdDoc.exists()) {
-          setUser(null);
-          return null;
-        }
-
-        const createdRaw = createdDoc.data();
-        const createdUserData = {
-          uid,
-          ...createdRaw,
-          role: createdRaw.role || 'admin',
-        } as User;
-
-        setUser(createdUserData);
-        if (!selectedTenantId) setSelectedTenantId(createdUserData.uid);
-        return createdUserData;
-      }
-
-      const raw = userDoc.data();
-      const userData = {
-        uid,
-        ...raw,
-        role: raw.role || 'admin',
-      } as User;
-
-      setUser(userData);
-      if (!selectedTenantId) setSelectedTenantId(userData.uid);
-      return userData;
-    },
-    [selectedTenantId]
-  );
-
   useEffect(() => {
-    let unsubscribeShares: Unsubscribe | undefined;
+    let authUnsubscribe: (() => void) | null = null;
 
     const bootstrap = async () => {
-      const unsubscribeAuth = onAuthStateChangedBridge(async (authUser) => {
+      authUnsubscribe = onAuthStateChangedBridge(async (authUser) => {
         if (authUser) {
           try {
-            if (supabaseEnabled()) {
-              await ensureSupabaseProfileAndTenants(authUser);
-            } else {
-              const userData = await loadUserProfileFirebase(authUser.id);
-              if (userData) {
-                setUser(userData);
-                if (!selectedTenantId) setSelectedTenantId(userData.uid);
-
-                const myAccount = {
-                  uid: userData.uid,
-                  name: 'Minha Estufa (Principal)',
-                  type: 'owner' as const,
-                  ownerName: userData.name,
-                };
-
-                const legacyShares: { uid: string; name: string; type: 'shared'; ownerName: string }[] = [];
-                if (userData.sharedAccess && Array.isArray(userData.sharedAccess)) {
-                  userData.sharedAccess.forEach((access: any) => {
-                    const ownerName = normalizeOwnerName(access?.ownerName || access?.sharedBy || access?.name);
-                    const legacyTenantId = access?.tenantId || access?.uid;
-                    if (!legacyTenantId) return;
-                    legacyShares.push({
-                      uid: legacyTenantId,
-                      name: `Estufa de ${ownerName}`,
-                      type: 'shared',
-                      ownerName,
-                    });
-                  });
-                }
-
-                unsubscribeShares = onSnapshot(
-                  collection(firebaseDb, 'users', authUser.id, 'accessible_tenants'),
-                  (snapshot) => {
-                    const newShares = snapshot.docs.map((item) => {
-                      const data = item.data();
-                      const ownerName = normalizeOwnerName(
-                        data.ownerName || data.sharedByName || data.sharedBy || data.name
-                      );
-
-                      return {
-                        uid: data.tenantId,
-                        name: `Estufa de ${ownerName}`,
-                        type: 'shared' as const,
-                        ownerName,
-                      };
-                    });
-
-                    const allTenants = [myAccount, ...legacyShares, ...newShares];
-                    const uniqueTenants = allTenants.filter(
-                      (item, index, self) => index === self.findIndex((t) => t.uid === item.uid)
-                    );
-
-                    setAvailableTenants(uniqueTenants);
-                  }
-                );
-              }
-            }
+            await ensureSupabaseProfileAndTenants(authUser);
           } catch (error) {
             console.error('AuthContext Error:', error);
             setUser(null);
@@ -227,51 +120,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setUser(null);
           setAvailableTenants([]);
           setSelectedTenantId('');
-          if (unsubscribeShares) unsubscribeShares();
         }
         setLoading(false);
       });
-
-      return unsubscribeAuth;
     };
 
-    let authUnsubscribe: (() => void) | null = null;
-
-    bootstrap().then((unsub) => {
-      authUnsubscribe = unsub;
-    });
+    bootstrap();
 
     return () => {
       if (authUnsubscribe) authUnsubscribe();
-      if (unsubscribeShares) unsubscribeShares();
     };
-  }, [ensureSupabaseProfileAndTenants, loadUserProfileFirebase, selectedTenantId]);
+  }, [ensureSupabaseProfileAndTenants]);
 
   const changeTenant = (uid: string) => {
     setSelectedTenantId(uid);
   };
 
   const signIn = async (email: string, password: string) => {
-    if (supabaseEnabled()) {
-      await signInWithPasswordBridge(email, password);
-      return;
-    }
-    await signInWithEmailAndPassword(firebaseAuth, email, password);
+    await signInWithPasswordBridge(email, password);
   };
 
   const refreshUserProfile = async () => {
     if (!user?.uid) return;
-
-    if (supabaseEnabled()) {
-      await ensureSupabaseProfileAndTenants({
-        id: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-      });
-      return;
-    }
-
-    await loadUserProfileFirebase(user.uid);
+    await ensureSupabaseProfileAndTenants({
+      id: user.uid,
+      email: user.email,
+      displayName: user.displayName,
+    });
   };
 
   return (

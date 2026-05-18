@@ -1,6 +1,6 @@
 import { getPlantioById } from './plantioService';
 import { listVendasByPlantio } from './vendaService';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where } from '../compat/firestore';
 import { db } from './firebaseConfig';
 import { Despesa } from '../types/domain';
 import { assertTenantId } from './tenantGuard';

@@ -10,7 +10,7 @@ import {
   getDoc,
   updateDoc,
   deleteDoc,
-} from 'firebase/firestore';
+} from '../compat/firestore';
 import { db } from './firebaseConfig';
 import { Cliente } from '../types/domain';
 import { assertTenantId } from './tenantGuard';

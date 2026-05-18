@@ -8,7 +8,7 @@ import {
   getDoc,
   updateDoc,
   writeBatch,
-} from 'firebase/firestore';
+} from '../compat/firestore';
 import { db } from './firebaseConfig';
 import { Plantio } from '../types/domain';
 import { assertTenantId } from './tenantGuard';

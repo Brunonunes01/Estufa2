@@ -9,7 +9,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { createPlantio, updatePlantio, getPlantioById, deletePlantioSafely } from '../../services/plantioService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
-import { Timestamp } from 'firebase/firestore'; 
+import { Timestamp } from '../../compat/firestore'; 
 import { queryClient, queryKeys } from '../../lib/queryClient';
 import { verifyCurrentUserPassword } from '../../services/securityService';
 import { useMutation } from '@tanstack/react-query';

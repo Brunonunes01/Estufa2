@@ -1,5 +1,5 @@
 // src/services/manejoService.ts
-import { collection, addDoc, query, where, getDocs, Timestamp, doc, deleteDoc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, Timestamp, doc, deleteDoc, getDoc } from '../compat/firestore';
 import { db } from './firebaseConfig';
 import { RegistroManejo } from '../types/domain';
 import { assertTenantId } from './tenantGuard';

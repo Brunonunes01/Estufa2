@@ -1,4 +1,4 @@
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where } from '../compat/firestore';
 import { db } from './firebaseConfig';
 import { Despesa, Plantio, Venda } from '../types/domain';
 import { assertTenantId } from './tenantGuard';

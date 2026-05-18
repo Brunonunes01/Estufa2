@@ -1,4 +1,4 @@
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from '../compat/firestore';
 
 export type UserRole = 'admin' | 'operator';
 

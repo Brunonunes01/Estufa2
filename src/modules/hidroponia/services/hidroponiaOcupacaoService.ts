@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, Timestamp, updateDoc, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, Timestamp, updateDoc, where } from '../../../compat/firestore';
 import { db } from '../../../services/firebaseConfig';
 import { assertTenantId } from '../../../services/tenantGuard';
 import { isSupabaseBackend } from '../../../services/backendConfig';

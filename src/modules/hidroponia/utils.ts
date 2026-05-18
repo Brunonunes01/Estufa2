@@ -1,4 +1,4 @@
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from '../../compat/firestore';
 
 export const toNumber = (value: string | number | null | undefined) => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;

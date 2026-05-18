@@ -10,7 +10,7 @@ import {
   updateDoc,
   deleteDoc,
   runTransaction,
-} from 'firebase/firestore';
+} from '../compat/firestore';
 import { db } from './firebaseConfig';
 import { Insumo } from '../types/domain';
 import { assertTenantId } from './tenantGuard';

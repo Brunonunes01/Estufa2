@@ -6,7 +6,7 @@ import {
   runTransaction,
   Timestamp,
   where,
-} from 'firebase/firestore';
+} from '../compat/firestore';
 import { db } from './firebaseConfig';
 import { Aplicacao, AplicacaoItem, Insumo, Plantio } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
