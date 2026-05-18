@@ -179,7 +179,7 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
               <MaterialCommunityIcons name="hand-coin-outline" size={16} color={COLORS.warning} />
               <Text style={styles.secondaryBtnText}>Contas a Receber</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={() => navigation.navigate('VendasList')}>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={() => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' })}>
               <MaterialCommunityIcons name="chart-box-outline" size={16} color={COLORS.info} />
               <Text style={styles.secondaryBtnText}>Relatórios de Vendas</Text>
           </TouchableOpacity>

@@ -2,12 +2,15 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, ScrollView, Alert, StyleSheet, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker'; 
+import { useQueryClient } from '@tanstack/react-query';
 import { createInsumo, updateInsumo, getInsumoById, InsumoFormData } from '../../services/insumoService';
 import { useAuth } from '../../hooks/useAuth';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { queryKeys } from '../../lib/queryClient';
 
 const InsumoFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const queryClient = useQueryClient();
   const insumoId = route.params?.insumoId;
   const isEditMode = !!insumoId;
 
@@ -75,6 +78,7 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
             fornecedorId: null, tamanhoEmbalagem: null, observacoes: null
         };
         if (isEditMode) await updateInsumo(insumoId, data, targetId); else await createInsumo(data, targetId);
+        await queryClient.invalidateQueries({ queryKey: queryKeys.insumosList(targetId) });
         navigation.goBack();
     } catch (error: any) {
       Alert.alert("Erro", error?.message || "Falha ao salvar.");

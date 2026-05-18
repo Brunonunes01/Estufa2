@@ -4,6 +4,7 @@ import {
   View, TextInput, Text, ActivityIndicator, StyleSheet, TouchableOpacity,
   KeyboardAvoidingView, Platform, ScrollView, Alert, StatusBar
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../services/firebaseConfig';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -11,6 +12,7 @@ import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/th
 import useGoogleAuth from '../../hooks/useGoogleAuth';
 
 const LoginScreen = ({ navigation }: any) => {
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -49,7 +51,10 @@ const LoginScreen = ({ navigation }: any) => {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
-        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom + SPACING.xl, 42) }]}
+          keyboardShouldPersistTaps="handled"
+        >
             <View style={styles.heroCard}>
               <View style={styles.logoContainer}>
                 <View style={styles.logoBadge}>
@@ -57,10 +62,16 @@ const LoginScreen = ({ navigation }: any) => {
                 </View>
                 <Text style={styles.appName}>AgroGestão</Text>
                 <Text style={styles.appSub}>Monitoramento inteligente da estufa</Text>
+                <View style={styles.badgeRow}>
+                  <MaterialCommunityIcons name="shield-check-outline" size={16} color={COLORS.primary} />
+                  <Text style={styles.badgeText}>Novo layout de acesso</Text>
+                </View>
               </View>
             </View>
 
             <View style={styles.card}>
+                <Text style={styles.cardTitle}>Entrar na sua conta</Text>
+                <Text style={styles.cardSubtitle}>Use suas credenciais para acessar o painel da estufa.</Text>
                 <Text style={styles.label}>E-mail</Text>
                 <View style={styles.inputWrapper}>
                     <MaterialCommunityIcons name="email-outline" size={20} color={COLORS.textPlaceholder} style={styles.inputIcon} />
@@ -72,6 +83,8 @@ const LoginScreen = ({ navigation }: any) => {
                         onChangeText={setEmail}
                         autoCapitalize="none"
                         keyboardType="email-address"
+                        autoCorrect={false}
+                        textContentType="emailAddress"
                     />
                 </View>
                 
@@ -85,6 +98,7 @@ const LoginScreen = ({ navigation }: any) => {
                         value={password}
                         onChangeText={setPassword}
                         secureTextEntry
+                        textContentType="password"
                     />
                 </View>
                 
@@ -95,7 +109,7 @@ const LoginScreen = ({ navigation }: any) => {
                     </View>
                 ) : null}
                 
-                <TouchableOpacity style={styles.loginBtn} onPress={handleLogin} disabled={loading}>
+                <TouchableOpacity style={[styles.loginBtn, loading && styles.loginBtnDisabled]} onPress={handleLogin} disabled={loading}>
                     {loading ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.loginBtnText}>ENTRAR</Text>}
                 </TouchableOpacity>
 
@@ -106,7 +120,7 @@ const LoginScreen = ({ navigation }: any) => {
                 </View>
 
                 <TouchableOpacity
-                  style={styles.googleBtn}
+                  style={[styles.googleBtn, (loading || loadingGoogle || googleDisabled) && styles.googleBtnDisabled]}
                   onPress={signInWithGoogle}
                   disabled={loading || loadingGoogle || googleDisabled}
                 >
@@ -138,14 +152,19 @@ const styles = StyleSheet.create({
     logoBadge: { width: 68, height: 68, borderRadius: RADIUS.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
     appName: { fontSize: TYPOGRAPHY.h1, fontWeight: '900', color: COLORS.secondary, marginTop: 12, letterSpacing: 0.2 },
     appSub: { fontSize: TYPOGRAPHY.body, color: COLORS.textSecondary, marginTop: 6 },
+    badgeRow: { marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.pill, paddingHorizontal: 12, paddingVertical: 6 },
+    badgeText: { color: COLORS.primary, fontWeight: '800', fontSize: 12 },
 
     card: { backgroundColor: COLORS.surface, padding: SPACING.xl, borderRadius: RADIUS.xl, borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.card },
+    cardTitle: { color: COLORS.textPrimary, fontSize: TYPOGRAPHY.h2, fontWeight: '900', marginBottom: 6 },
+    cardSubtitle: { color: COLORS.textSecondary, fontSize: 14, marginBottom: SPACING.lg },
     label: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 },
     inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surfaceMuted, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: COLORS.border, marginBottom: SPACING.lg, height: 56 },
     inputIcon: { paddingLeft: 15, paddingRight: 5 },
     input: { flex: 1, fontSize: TYPOGRAPHY.body, color: COLORS.textDark, fontWeight: '700', height: '100%' },
 
     loginBtn: { backgroundColor: COLORS.primary, height: 56, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginTop: SPACING.sm, ...SHADOWS.card },
+    loginBtnDisabled: { opacity: 0.7 },
     loginBtnText: { color: COLORS.textLight, fontWeight: '900', fontSize: TYPOGRAPHY.body, letterSpacing: 0.8 },
     dividerRow: { marginTop: SPACING.lg, flexDirection: 'row', alignItems: 'center', gap: 10 },
     dividerLine: { flex: 1, height: 1, backgroundColor: COLORS.border },
@@ -163,6 +182,7 @@ const styles = StyleSheet.create({
       gap: 10,
     },
     googleBtnText: { color: COLORS.textPrimary, fontWeight: '800', fontSize: TYPOGRAPHY.body },
+    googleBtnDisabled: { opacity: 0.65 },
 
     registerBtn: { marginTop: SPACING.xl, alignItems: 'center' },
     registerText: { fontSize: 15, color: COLORS.textSecondary },

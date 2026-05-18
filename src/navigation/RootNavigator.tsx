@@ -1,17 +1,22 @@
 // src/navigation/RootNavigator.tsx
 import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
-import { createNativeStackNavigator, NativeStackNavigationOptions, NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { 
-  View, 
-  ActivityIndicator, 
-  Text, 
-  StatusBar, 
-  TouchableOpacity, 
-  Platform, 
-  SafeAreaView, 
-  Dimensions, 
-  StyleSheet 
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import {
+  createNativeStackNavigator,
+  NativeStackNavigationOptions,
+  NativeStackNavigationProp,
+} from '@react-navigation/native-stack';
+import {
+  View,
+  ActivityIndicator,
+  Text,
+  StatusBar,
+  TouchableOpacity,
+  Platform,
+  SafeAreaView,
+  Dimensions,
+  StyleSheet,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNetInfo } from '@react-native-community/netinfo';
@@ -21,7 +26,6 @@ import { useAppSettings } from '../hooks/useAppSettings';
 import { useThemeMode } from '../hooks/useThemeMode';
 import { COLORS, RADIUS } from '../constants/theme';
 
-// Importação dos ecrãs
 import LoginScreen from '../screens/Auth/LoginScreen';
 import RegisterScreen from '../screens/Auth/RegisterScreen';
 import ShareAccountScreen from '../screens/Auth/ShareAccountScreen';
@@ -66,11 +70,11 @@ import HidroponiaLeituraFormScreen from '../modules/hidroponia/screens/Hidroponi
 import HidroponiaVendaFormScreen from '../modules/hidroponia/screens/HidroponiaVendaFormScreen';
 import HidroponiaColheitaFormScreen from '../modules/hidroponia/screens/HidroponiaColheitaFormScreen';
 import HidroponiaVerdurasScreen from '../modules/hidroponia/screens/HidroponiaVerdurasScreen';
-import { RootStackParamList } from './types';
+import { MainTabParamList, RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const Tab = createBottomTabNavigator<MainTabParamList>();
 
-// --- BANNER OFFLINE ---
 const OfflineBanner = () => {
   const netInfo = useNetInfo();
   const [showReconnected, setShowReconnected] = useState(false);
@@ -119,8 +123,8 @@ const OfflineBanner = () => {
 const HomeButton = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   return (
-    <TouchableOpacity 
-      onPress={() => navigation.navigate('Dashboard')} 
+    <TouchableOpacity
+      onPress={() => navigation.navigate('MainTabs', { screen: 'InicioTab' })}
       style={{ marginRight: 15, padding: 5 }}
     >
       <MaterialCommunityIcons name="home-outline" size={26} color={COLORS.textLight} />
@@ -129,14 +133,14 @@ const HomeButton = () => {
 };
 
 const defaultScreenOptions: NativeStackNavigationOptions = {
-    headerStyle: { backgroundColor: COLORS.secondary },
-    headerTintColor: COLORS.textLight,
-    headerTitleStyle: { fontWeight: '800', fontSize: 17 },
-    headerTitleAlign: 'center', 
-    headerShadowVisible: false,
-    headerBackTitle: '', 
-    animation: 'slide_from_right', 
-    headerRight: () => <HomeButton />, 
+  headerStyle: { backgroundColor: COLORS.secondary },
+  headerTintColor: COLORS.textLight,
+  headerTitleStyle: { fontWeight: '800', fontSize: 17 },
+  headerTitleAlign: 'center',
+  headerShadowVisible: false,
+  headerBackTitle: '',
+  animation: 'slide_from_right',
+  headerRight: () => <HomeButton />,
 };
 
 const AuthStack = () => (
@@ -146,31 +150,94 @@ const AuthStack = () => (
   </Stack.Navigator>
 );
 
+const MainTabs = ({ activeMode }: { activeMode: 'ciclo_longo' | 'hidroponia' }) => {
+  const mode = useThemeMode();
+  const OperacaoEntryScreen = activeMode === 'hidroponia' ? HidroponiaLotesScreen : EstufasListScreen;
+
+  return (
+    <Tab.Navigator
+      id="main-tabs"
+      screenOptions={({ route }) => {
+        const iconMap: Record<keyof MainTabParamList, string> = {
+          InicioTab: 'view-dashboard-outline',
+          OperacaoTab: activeMode === 'hidroponia' ? 'water-outline' : 'greenhouse',
+          EstoqueTab: 'warehouse',
+          FinanceiroTab: 'cash-multiple',
+          PerfilTab: 'account-circle-outline',
+        };
+
+        return {
+          headerShown: false,
+          tabBarHideOnKeyboard: true,
+          tabBarActiveTintColor: COLORS.primary,
+          tabBarInactiveTintColor: mode.textSecondary,
+          tabBarLabelStyle: { fontSize: 11, fontWeight: '700', marginBottom: 4 },
+          tabBarStyle: {
+            height: 66,
+            paddingTop: 6,
+            borderTopWidth: 1,
+            borderTopColor: mode.border,
+            backgroundColor: mode.surfaceBackground,
+          },
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name={iconMap[route.name] as any} size={size ?? 22} color={color} />
+          ),
+        };
+      }}
+    >
+      <Tab.Screen name="InicioTab" component={DashboardScreen} options={{ title: 'Início' }} />
+      <Tab.Screen
+        name="OperacaoTab"
+        component={OperacaoEntryScreen}
+        options={{ title: activeMode === 'hidroponia' ? 'Hidroponia' : 'Operação' }}
+      />
+      <Tab.Screen name="EstoqueTab" component={InsumosListScreen} options={{ title: 'Estoque' }} />
+      <Tab.Screen name="FinanceiroTab" component={VendasListScreen} options={{ title: 'Financeiro' }} />
+      <Tab.Screen name="PerfilTab" component={PerfilScreen} options={{ title: 'Perfil' }} />
+    </Tab.Navigator>
+  );
+};
+
 const AppStack = ({ activeMode }: { activeMode: 'ciclo_longo' | 'hidroponia' }) => (
   <Stack.Navigator id="app-stack" screenOptions={defaultScreenOptions}>
-    <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false, animation: 'fade' }} />
+    <Stack.Screen name="MainTabs" options={{ headerShown: false, animation: 'fade' }}>
+      {() => <MainTabs activeMode={activeMode} />}
+    </Stack.Screen>
+
     <Stack.Screen name="ShareAccount" component={ShareAccountScreen} options={{ title: 'Compartilhar Acesso' }} />
     <Stack.Screen name="Perfil" component={PerfilScreen} options={{ title: 'Minha Propriedade' }} />
     <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Configurações' }} />
+
     <Stack.Screen name="EstufasList" component={EstufasListScreen} options={{ title: 'Hubs de Estufa' }} />
     <Stack.Screen name="EstufaForm" component={EstufaFormScreen} options={{ title: 'Cadastro da Estufa' }} />
     <Stack.Screen name="EstufaDetail" component={EstufaDetailScreen} options={{ title: 'Detalhes da Estufa' }} />
     <Stack.Screen name="EstufaHistory" component={EstufaHistoryScreen} options={{ title: 'Histórico da Estufa' }} />
+
     <Stack.Screen name="VendasList" component={VendasListScreen} options={{ title: 'Relatórios de Vendas' }} />
     <Stack.Screen name="ContasReceber" component={ContasReceberScreen} options={{ title: 'Contas a Receber' }} />
     <Stack.Screen name="HidroponiaVendaForm" component={HidroponiaVendaFormScreen} options={{ title: 'Venda Hidroponia' }} />
+
     <Stack.Screen name="InsumosList" component={InsumosListScreen} options={{ title: 'Estoque de Insumos' }} />
     <Stack.Screen name="InsumoForm" component={InsumoFormScreen} options={{ title: 'Cadastro de Insumo' }} />
     <Stack.Screen name="InsumoEntry" component={InsumoEntryScreen} options={{ title: 'Entrada de Estoque' }} />
+
     <Stack.Screen name="FornecedoresList" component={FornecedoresListScreen} options={{ title: 'Fornecedores' }} />
     <Stack.Screen name="FornecedorForm" component={FornecedorFormScreen} options={{ title: 'Cadastro de Fornecedor' }} />
     <Stack.Screen name="ClientesList" component={ClientesListScreen} options={{ title: 'Clientes' }} />
     <Stack.Screen name="ClienteForm" component={ClienteFormScreen} options={{ title: 'Cadastro de Cliente' }} />
+
     <Stack.Screen name="DespesasList" component={DespesasListScreen} options={{ title: 'Despesas' }} />
     <Stack.Screen name="DespesaForm" component={DespesaFormScreen} options={{ title: 'Lançar Despesa' }} />
+
     <Stack.Screen name="Relatorios" component={RelatoriosScreen} options={{ title: 'BI & Relatórios' }} />
-    <Stack.Screen name="RelatorioOperacional" component={RelatorioOperacionalScreen} options={{ title: 'Relatório Operacional' }} />
+    <Stack.Screen
+      name="RelatorioOperacional"
+      component={RelatorioOperacionalScreen}
+      options={{ title: 'Relatório Operacional' }}
+    />
+
     <Stack.Screen name="Tarefas" component={TarefasScreen} options={{ title: 'Tarefas Agrícolas' }} />
+
     {activeMode === 'ciclo_longo' ? (
       <>
         <Stack.Screen name="PlantioForm" component={PlantioFormScreen} options={{ title: 'Novo Plantio' }} />
@@ -180,21 +247,57 @@ const AppStack = ({ activeMode }: { activeMode: 'ciclo_longo' | 'hidroponia' }) 
         <Stack.Screen name="ManejosHistory" component={ManejosHistoryScreen} options={{ title: 'Diário de Manejo' }} />
         <Stack.Screen name="ColheitaForm" component={ColheitaFormScreen} options={{ title: 'Registrar Venda' }} />
         <Stack.Screen name="AplicacaoForm" component={AplicacaoFormScreen} options={{ title: 'Aplicação' }} />
-        <Stack.Screen name="AplicacoesHistory" component={AplicacoesHistoryScreen} options={{ title: 'Histórico de Aplicações' }} />
-        <Stack.Screen name="WizardSelectPlantio" component={WizardSelectPlantioScreen} options={{ title: 'Passo 1: Selecionar Ciclo' }} />
-        <Stack.Screen name="WizardSelectActivity" component={WizardSelectActivityScreen} options={{ title: 'Passo 2: Escolher Atividade' }} />
+        <Stack.Screen
+          name="AplicacoesHistory"
+          component={AplicacoesHistoryScreen}
+          options={{ title: 'Histórico de Aplicações' }}
+        />
+        <Stack.Screen
+          name="WizardSelectPlantio"
+          component={WizardSelectPlantioScreen}
+          options={{ title: 'Passo 1: Selecionar Ciclo' }}
+        />
+        <Stack.Screen
+          name="WizardSelectActivity"
+          component={WizardSelectActivityScreen}
+          options={{ title: 'Passo 2: Escolher Atividade' }}
+        />
       </>
     ) : (
       <>
-        <Stack.Screen name="HidroponiaEstufaLayout" component={HidroponiaEstufaLayoutScreen} options={{ title: 'Layout da Estufa' }} />
+        <Stack.Screen
+          name="HidroponiaEstufaLayout"
+          component={HidroponiaEstufaLayoutScreen}
+          options={{ title: 'Layout da Estufa' }}
+        />
         <Stack.Screen name="HidroponiaMotores" component={HidroponiaMotoresScreen} options={{ title: 'Motores' }} />
         <Stack.Screen name="HidroponiaLotes" component={HidroponiaLotesScreen} options={{ title: 'Hidroponia' }} />
-        <Stack.Screen name="HidroponiaVerduras" component={HidroponiaVerdurasScreen} options={{ title: 'Cadastro de Verduras' }} />
+        <Stack.Screen
+          name="HidroponiaVerduras"
+          component={HidroponiaVerdurasScreen}
+          options={{ title: 'Cadastro de Verduras' }}
+        />
         <Stack.Screen name="HidroponiaLoteForm" component={HidroponiaLoteFormScreen} options={{ title: 'Iniciar Produção' }} />
-        <Stack.Screen name="HidroponiaLoteDetail" component={HidroponiaLoteDetailScreen} options={{ title: 'Detalhe da Produção' }} />
-        <Stack.Screen name="HidroponiaMovimentarLote" component={HidroponiaMovimentarLoteScreen} options={{ title: 'Movimentar Produção' }} />
-        <Stack.Screen name="HidroponiaColheitaForm" component={HidroponiaColheitaFormScreen} options={{ title: 'Colheita Hidroponia' }} />
-        <Stack.Screen name="HidroponiaLeituraForm" component={HidroponiaLeituraFormScreen} options={{ title: 'Leitura pH/CE' }} />
+        <Stack.Screen
+          name="HidroponiaLoteDetail"
+          component={HidroponiaLoteDetailScreen}
+          options={{ title: 'Detalhe da Produção' }}
+        />
+        <Stack.Screen
+          name="HidroponiaMovimentarLote"
+          component={HidroponiaMovimentarLoteScreen}
+          options={{ title: 'Movimentar Produção' }}
+        />
+        <Stack.Screen
+          name="HidroponiaColheitaForm"
+          component={HidroponiaColheitaFormScreen}
+          options={{ title: 'Colheita Hidroponia' }}
+        />
+        <Stack.Screen
+          name="HidroponiaLeituraForm"
+          component={HidroponiaLeituraFormScreen}
+          options={{ title: 'Leitura pH/CE' }}
+        />
       </>
     )}
   </Stack.Navigator>
@@ -204,8 +307,7 @@ export const RootNavigator = () => {
   const { user, loading } = useAuth();
   const { settings } = useAppSettings();
   const mode = useThemeMode();
-  
-  // Lógica para detetar se é Web e calcular largura
+
   const isWeb = Platform.OS === 'web';
   const screenWidth = Dimensions.get('window').width;
   const isWideScreen = isWeb && screenWidth > 500;
@@ -223,20 +325,20 @@ export const RootNavigator = () => {
 
   return (
     <View style={[styles.outerContainer, { backgroundColor: isWideScreen ? COLORS.backgroundAlt : mode.pageBackground }]}>
-      <View style={[
-        styles.innerContainer, 
-        {
-          width: isWideScreen ? 500 : '100%',
-          elevation: isWideScreen ? 10 : 0,
-          borderRadius: isWideScreen ? RADIUS.xl : 0,
-          borderWidth: isWideScreen ? 1 : 0,
-          backgroundColor: mode.pageBackground,
-        }
-      ]}>
+      <View
+        style={[
+          styles.innerContainer,
+          {
+            width: isWideScreen ? 500 : '100%',
+            elevation: isWideScreen ? 10 : 0,
+            borderRadius: isWideScreen ? RADIUS.xl : 0,
+            borderWidth: isWideScreen ? 1 : 0,
+            backgroundColor: mode.pageBackground,
+          },
+        ]}
+      >
         <OfflineBanner />
-        <NavigationContainer key={settings.activeProductionMode}>
-          {user ? <AppStack activeMode={settings.activeProductionMode} /> : <AuthStack />}
-        </NavigationContainer>
+        <NavigationContainer key={settings.activeProductionMode}>{user ? <AppStack activeMode={settings.activeProductionMode} /> : <AuthStack />}</NavigationContainer>
       </View>
     </View>
   );
@@ -253,7 +355,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     overflow: 'hidden',
     borderColor: COLORS.border,
-    // Sombra para Web
     shadowColor: COLORS.textDark,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -263,23 +364,23 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.background
+    backgroundColor: COLORS.background,
   },
   loadingText: {
     marginTop: 20,
     color: COLORS.textSecondary,
     fontWeight: '700',
     fontSize: 13,
-    letterSpacing: 1.5
+    letterSpacing: 1.5,
   },
   offlineBannerContainer: {
-    backgroundColor: COLORS.warning, 
+    backgroundColor: COLORS.warning,
     paddingVertical: 10,
-    paddingHorizontal: 15, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
+    paddingHorizontal: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ? StatusBar.currentHeight + 5 : 10 : 10
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ? StatusBar.currentHeight + 5 : 10) : 10,
   },
   onlineBannerContainer: {
     backgroundColor: COLORS.success,
@@ -288,6 +389,6 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
     fontWeight: 'bold',
     fontSize: 13,
-    textAlign: 'center'
-  }
+    textAlign: 'center',
+  },
 });

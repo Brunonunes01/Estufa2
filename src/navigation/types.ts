@@ -1,6 +1,16 @@
 import { Plantio } from "../types/domain";
+import { NavigatorScreenParams } from '@react-navigation/native';
+
+export type MainTabParamList = {
+  InicioTab: undefined;
+  OperacaoTab: undefined;
+  EstoqueTab: undefined;
+  FinanceiroTab: undefined;
+  PerfilTab: undefined;
+};
 
 export type RootStackParamList = {
+  MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   Login: undefined;
   Register: undefined;
   Dashboard: undefined;

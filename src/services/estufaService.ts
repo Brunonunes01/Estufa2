@@ -82,18 +82,37 @@ export const createEstufa = async (data: Partial<Estufa>, userId: string) => {
 export const listEstufas = async (userId: string): Promise<Estufa[]> => {
   const tenantId = assertTenantId(userId);
   try {
-    const [byUserId, byTenantId] = await Promise.all([
+    const [byUserIdResult, byTenantIdResult] = await Promise.allSettled([
       getDocs(query(collection(db, 'estufas'), where("userId", "==", tenantId))),
       getDocs(query(collection(db, 'estufas'), where("tenantId", "==", tenantId))),
     ]);
 
     const estufasMap = new Map<string, Estufa>();
-    byUserId.forEach((item) => {
-      estufasMap.set(item.id, { ...(item.data() as Estufa), id: item.id });
-    });
-    byTenantId.forEach((item) => {
-      estufasMap.set(item.id, { ...(item.data() as Estufa), id: item.id });
-    });
+
+    if (byUserIdResult.status === 'fulfilled') {
+      byUserIdResult.value.forEach((item) => {
+        estufasMap.set(item.id, { ...(item.data() as Estufa), id: item.id });
+      });
+    }
+
+    if (byTenantIdResult.status === 'fulfilled') {
+      byTenantIdResult.value.forEach((item) => {
+        estufasMap.set(item.id, { ...(item.data() as Estufa), id: item.id });
+      });
+    }
+
+    if (estufasMap.size > 0) {
+      return Array.from(estufasMap.values());
+    }
+
+    const firstError =
+      byTenantIdResult.status === 'rejected'
+        ? byTenantIdResult.reason
+        : byUserIdResult.status === 'rejected'
+          ? byUserIdResult.reason
+          : null;
+
+    if (firstError) throw firstError;
 
     return Array.from(estufasMap.values());
   } catch (error) {

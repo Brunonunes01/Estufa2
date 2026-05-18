@@ -6,14 +6,17 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker'; 
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';
 import { addEstoqueToInsumo, listInsumos, InsumoEntryData } from '../../services/insumoService'; 
 import { Fornecedor, Insumo } from '../../types/domain';
 import { listFornecedores as listFornecedoresService } from '../../services/fornecedorService'; 
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { queryKeys } from '../../lib/queryClient';
 
 const InsumoEntryScreen = ({ route, navigation }: any) => {
     const { user, selectedTenantId } = useAuth();
+    const queryClient = useQueryClient();
     const preselectedInsumoId = route.params?.preselectedInsumoId;
 
     const [insumosList, setInsumosList] = useState<Insumo[]>([]);
@@ -120,6 +123,7 @@ const InsumoEntryScreen = ({ route, navigation }: any) => {
         setLoadingForm(true);
         try {
             await addEstoqueToInsumo(selectedInsumoId, entryData, targetId);
+            await queryClient.invalidateQueries({ queryKey: queryKeys.insumosList(targetId) });
             Alert.alert('Sucesso!', `Entrada de ${qtd} ${insumoSelecionado.unidadePadrao} registrada. O Custo Médio Ponderado foi atualizado.`);
             navigation.goBack(); 
         } catch (error) {

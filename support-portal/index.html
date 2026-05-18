@@ -1,25 +1,64 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-PT">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SGE Support Portal</title>
+    <title>SGE | Suporte Nível 3</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="layout">
-      <header class="hero">
-        <div>
-          <p class="eyebrow">Acesso Restrito</p>
-          <h1>Portal de Suporte SGE</h1>
-          <p class="subtitle">
-            Operação separada do app principal, com login de suporte, diagnóstico por tenant e trilha de auditoria.
-          </p>
-        </div>
-        <button id="logoutBtn" class="ghost hidden">Sair</button>
-      </header>
+    <div id="portalApp" class="portal-app">
+      <aside id="sidebar" class="sidebar"></aside>
 
-      <main id="appRoot" class="content"></main>
+      <div class="main-shell">
+        <header class="topbar">
+          <div>
+            <p class="topbar-kicker">SGE Support</p>
+            <h1 id="viewTitle">Portal de Suporte Nível 3</h1>
+          </div>
+          <div class="topbar-actions">
+            <span id="userBadge" class="badge hidden"></span>
+            <button id="logoutBtn" class="btn btn-outline hidden" type="button">Terminar Sessão</button>
+          </div>
+        </header>
+
+        <section id="statusBar" class="status hidden"></section>
+
+        <main id="mainContent" class="main-content"></main>
+      </div>
+    </div>
+
+    <div id="recordModal" class="modal hidden" aria-hidden="true">
+      <div class="modal-panel">
+        <div class="modal-head">
+          <h2 id="recordModalTitle">Editar Registo</h2>
+          <button id="recordModalClose" class="icon-btn" type="button" aria-label="Fechar">✕</button>
+        </div>
+        <form id="recordModalForm" class="modal-form"></form>
+      </div>
+    </div>
+
+    <div id="auditModal" class="modal hidden" aria-hidden="true">
+      <div class="modal-panel modal-panel-sm">
+        <div class="modal-head">
+          <h2 id="auditModalTitle">Justificação Obrigatória</h2>
+          <button id="auditModalClose" class="icon-btn" type="button" aria-label="Fechar">✕</button>
+        </div>
+        <form id="auditModalForm" class="modal-form">
+          <label for="auditNote">Motivo técnico da ação</label>
+          <textarea id="auditNote" required minlength="8" placeholder="Descreva o que será feito e porquê."></textarea>
+          <div class="form-actions">
+            <button id="auditCancelBtn" class="btn btn-outline" type="button">Cancelar</button>
+            <button class="btn btn-danger" type="submit">Confirmar</button>
+          </div>
+        </form>
+      </div>
     </div>
 
     <script type="module" src="./portal.js"></script>

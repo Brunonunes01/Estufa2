@@ -8,6 +8,7 @@ import {
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -28,681 +29,1026 @@ const firebaseConfig = {
   appId: '1:878004575186:web:58cbe34633e63232d3c60b',
 };
 
+const FIXED_SUPPORT_UID = 'fsCWNyTtuOOeYAmVokbhfU0xA2e2';
+const PAGE_SIZE = 20;
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+const el = {
+  sidebar: document.getElementById('sidebar'),
+  mainContent: document.getElementById('mainContent'),
+  statusBar: document.getElementById('statusBar'),
+  viewTitle: document.getElementById('viewTitle'),
+  userBadge: document.getElementById('userBadge'),
+  logoutBtn: document.getElementById('logoutBtn'),
+  recordModal: document.getElementById('recordModal'),
+  recordModalTitle: document.getElementById('recordModalTitle'),
+  recordModalForm: document.getElementById('recordModalForm'),
+  recordModalClose: document.getElementById('recordModalClose'),
+  auditModal: document.getElementById('auditModal'),
+  auditModalTitle: document.getElementById('auditModalTitle'),
+  auditModalForm: document.getElementById('auditModalForm'),
+  auditModalClose: document.getElementById('auditModalClose'),
+  auditCancelBtn: document.getElementById('auditCancelBtn'),
+  auditNote: document.getElementById('auditNote'),
+};
+
 const state = {
   user: null,
   profile: null,
-  supportAllowed: false,
+  allowed: false,
   tenants: [],
   selectedTenantId: '',
-  data: null,
-  statusMessage: '',
-  statusError: false,
+  currentView: 'overview',
+  message: '',
+  error: false,
+  cachedRows: {},
+  tableState: {},
+  pendingAuditAction: null,
+  pendingEditContext: null,
 };
 
-const FIXED_SUPPORT_UID = 'fsCWNyTtuOOeYAmVokbhfU0xA2e2';
-const LOAD_TIMEOUT_MS = 20000;
+const appRoot = document.getElementById('portalApp');
 
-const root = document.getElementById('appRoot');
-const logoutBtn = document.getElementById('logoutBtn');
+const MENU = [
+  {
+    section: 'Visão Geral',
+    items: [{ id: 'overview', label: 'Dashboard & Alertas' }],
+  },
+  {
+    section: 'Operacional',
+    items: [
+      { id: 'estufas', label: 'Estufas' },
+      { id: 'plantios', label: 'Plantios' },
+      { id: 'tarefas', label: 'Tarefas' },
+      { id: 'colheitas', label: 'Colheitas' },
+      { id: 'manejos', label: 'Manejos' },
+    ],
+  },
+  {
+    section: 'Hidroponia',
+    items: [
+      { id: 'hidroponia_lotes', label: 'Lotes' },
+      { id: 'hidroponia_leituras', label: 'Leituras' },
+      { id: 'hidroponia_movimentacoes', label: 'Movimentações' },
+      { id: 'hidroponia_motores', label: 'Motores' },
+    ],
+  },
+  {
+    section: 'Estoque',
+    items: [
+      { id: 'insumos', label: 'Insumos' },
+      { id: 'aplicacoes', label: 'Aplicações' },
+    ],
+  },
+  {
+    section: 'Financeiro',
+    items: [
+      { id: 'vendas', label: 'Vendas' },
+      { id: 'despesas', label: 'Despesas' },
+      { id: 'contas_receber', label: 'Contas a Receber' },
+    ],
+  },
+  {
+    section: 'CRM',
+    items: [
+      { id: 'clientes', label: 'Clientes' },
+      { id: 'fornecedores', label: 'Fornecedores' },
+    ],
+  },
+  {
+    section: 'Administração',
+    items: [{ id: 'support_audit', label: 'Trilha de Auditoria' }],
+  },
+];
 
-const fmtCurrency = (value) =>
-  Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-const toMillisSafe = (value) => {
-  if (!value) return 0;
-  if (typeof value.toDate === 'function') return value.toDate().getTime();
-  if (typeof value.seconds === 'number') return value.seconds * 1000;
-  const parsed = new Date(value).getTime();
-  return Number.isFinite(parsed) ? parsed : 0;
+const MODULE_CONFIG = {
+  estufas: {
+    title: 'Estufas',
+    collection: 'estufas',
+    columns: [
+      { key: 'nome', label: 'Nome', editable: true },
+      { key: 'tipo', label: 'Tipo', editable: true },
+      { key: 'area', label: 'Área', editable: true, type: 'number' },
+      { key: 'updatedAt', label: 'Atualizado', format: formatDate },
+    ],
+    actions: { edit: true, delete: true },
+  },
+  plantios: {
+    title: 'Plantios',
+    collection: 'plantios',
+    columns: [
+      { key: 'cultura', label: 'Cultura', editable: true },
+      { key: 'rastreabilidade', label: 'Rastreabilidade', editable: true },
+      { key: 'dataPlantio', label: 'Data de Plantio', format: formatDate, editable: true, type: 'date' },
+      { key: 'status', label: 'Status', editable: true },
+    ],
+    actions: { edit: true, delete: true },
+  },
+  tarefas: {
+    title: 'Tarefas',
+    collection: 'tarefas',
+    columns: [
+      { key: 'titulo', label: 'Tarefa', editable: true },
+      { key: 'estufaNome', label: 'Estufa', editable: true },
+      { key: 'status', label: 'Status', format: formatStatus },
+      { key: 'dataPrevista', label: 'Data Prevista', format: formatDate, editable: true, type: 'date' },
+    ],
+    actions: {
+      edit: true,
+      delete: true,
+      forceStatus: {
+        field: 'status',
+        label: 'Forçar Status',
+        options: ['pendente', 'concluida'],
+      },
+    },
+  },
+  colheitas: {
+    title: 'Colheitas',
+    collection: 'colheitas',
+    columns: [
+      { key: 'cultura', label: 'Cultura', editable: true },
+      { key: 'quantidade', label: 'Quantidade', editable: true, type: 'number' },
+      { key: 'unidade', label: 'Unidade', editable: true },
+      { key: 'dataColheita', label: 'Data', format: formatDate, editable: true, type: 'date' },
+    ],
+    actions: { edit: true, delete: true },
+  },
+  manejos: {
+    title: 'Manejos',
+    collection: 'manejos',
+    columns: [
+      { key: 'tipo', label: 'Tipo', editable: true },
+      { key: 'estufaNome', label: 'Estufa', editable: true },
+      { key: 'plantioId', label: 'Plantio', editable: true },
+      { key: 'data', label: 'Data', format: formatDate, editable: true, type: 'date' },
+    ],
+    actions: { edit: true, delete: true },
+  },
+  hidroponia_lotes: {
+    title: 'Hidroponia | Lotes',
+    collection: 'hidroponia_lotes',
+    columns: [
+      { key: 'cultura', label: 'Cultura', editable: true },
+      { key: 'fase', label: 'Fase', editable: true },
+      { key: 'quantidadePlantas', label: 'Qtd Plantas', editable: true, type: 'number' },
+      { key: 'dataTransplante', label: 'Transplante', format: formatDate, editable: true, type: 'date' },
+      { key: 'status', label: 'Status', format: formatStatus, editable: true },
+    ],
+    actions: { edit: true, delete: true },
+  },
+  hidroponia_leituras: {
+    title: 'Hidroponia | Leituras',
+    collection: 'hidroponia_leituras',
+    columns: [
+      { key: 'ph', label: 'pH', editable: true, type: 'number' },
+      { key: 'ec', label: 'EC', editable: true, type: 'number' },
+      { key: 'temperatura', label: 'Temperatura', editable: true, type: 'number' },
+      { key: 'dataLeitura', label: 'Data', format: formatDate, editable: true, type: 'date' },
+    ],
+    actions: { edit: true, delete: true },
+  },
+  hidroponia_movimentacoes: {
+    title: 'Hidroponia | Movimentações',
+    collection: 'hidroponia_movimentacoes',
+    columns: [
+      { key: 'loteId', label: 'Lote', editable: true },
+      { key: 'origem', label: 'Origem', editable: true },
+      { key: 'destino', label: 'Destino', editable: true },
+      { key: 'quantidade', label: 'Quantidade', editable: true, type: 'number' },
+      { key: 'createdAt', label: 'Data', format: formatDate },
+    ],
+    actions: { edit: true, delete: true },
+  },
+  hidroponia_motores: {
+    title: 'Hidroponia | Motores',
+    collection: 'hidroponia_motores',
+    columns: [
+      { key: 'nome', label: 'Motor', editable: true },
+      { key: 'status', label: 'Estado', format: formatStatus, editable: true },
+      { key: 'temporizador', label: 'Temporizador', editable: true },
+      { key: 'updatedAt', label: 'Atualizado', format: formatDate },
+    ],
+    actions: {
+      edit: true,
+      delete: true,
+      forceStatus: {
+        field: 'status',
+        label: 'Forçar Estado',
+        options: ['ligado', 'desligado'],
+      },
+    },
+  },
+  insumos: {
+    title: 'Insumos',
+    collection: 'insumos',
+    columns: [
+      { key: 'nome', label: 'Nome', editable: true },
+      { key: 'categoria', label: 'Categoria', editable: true },
+      { key: 'quantidadeAtual', label: 'Quantidade', editable: true, type: 'number' },
+      { key: 'unidadeMedida', label: 'Unidade', editable: true },
+    ],
+    actions: { edit: true, delete: true },
+  },
+  aplicacoes: {
+    title: 'Aplicações',
+    collection: 'aplicacoes',
+    columns: [
+      { key: 'insumoNome', label: 'Insumo', editable: true },
+      { key: 'dosagem', label: 'Dosagem', editable: true },
+      { key: 'alvo', label: 'Lote/Plantio', editable: true },
+      { key: 'dataAplicacao', label: 'Data', format: formatDate, editable: true, type: 'date' },
+    ],
+    actions: { edit: true, delete: true },
+  },
+  vendas: {
+    title: 'Vendas',
+    collection: 'vendas',
+    columns: [
+      { key: 'dataVenda', label: 'Data', format: formatDate, editable: true, type: 'date' },
+      { key: 'clienteId', label: 'Cliente', editable: true },
+      { key: 'valorTotal', label: 'Valor Total', format: formatCurrency, editable: true, type: 'number' },
+      { key: 'statusPagamento', label: 'Pagamento', format: formatStatus, editable: true },
+    ],
+    actions: {
+      edit: true,
+      delete: true,
+      forceStatus: {
+        field: 'statusPagamento',
+        label: 'Forçar Pagamento',
+        options: ['pago', 'pendente', 'cancelado'],
+      },
+    },
+  },
+  despesas: {
+    title: 'Despesas',
+    collection: 'despesas',
+    columns: [
+      { key: 'categoria', label: 'Categoria', editable: true },
+      { key: 'valor', label: 'Valor', format: formatCurrency, editable: true, type: 'number' },
+      { key: 'vencimento', label: 'Vencimento', format: formatDate, editable: true, type: 'date' },
+      { key: 'status', label: 'Status', format: formatStatus, editable: true },
+    ],
+    actions: { edit: true, delete: true },
+  },
+  contas_receber: {
+    title: 'Contas a Receber',
+    collection: 'contas_receber',
+    columns: [
+      { key: 'descricao', label: 'Descrição', editable: true },
+      { key: 'valor', label: 'Valor', format: formatCurrency, editable: true, type: 'number' },
+      { key: 'vencimento', label: 'Vencimento', format: formatDate, editable: true, type: 'date' },
+      { key: 'status', label: 'Status', format: formatStatus, editable: true },
+    ],
+    actions: { edit: true, delete: true },
+  },
+  clientes: {
+    title: 'Clientes',
+    collection: 'clientes',
+    columns: [
+      { key: 'nome', label: 'Nome', editable: true },
+      { key: 'telefone', label: 'Telefone', editable: true },
+      { key: 'morada', label: 'Morada', editable: true },
+      { key: 'nifCpf', label: 'NIF/CPF', editable: true },
+    ],
+    actions: { edit: true, delete: true },
+  },
+  fornecedores: {
+    title: 'Fornecedores',
+    collection: 'fornecedores',
+    columns: [
+      { key: 'nome', label: 'Nome', editable: true },
+      { key: 'telefone', label: 'Telefone', editable: true },
+      { key: 'morada', label: 'Morada', editable: true },
+      { key: 'nifCpf', label: 'NIF/CPF', editable: true },
+    ],
+    actions: { edit: true, delete: true },
+  },
+  support_audit: {
+    title: 'Support Audit (Somente Leitura)',
+    collection: 'support_audit',
+    columns: [
+      { key: 'createdAt', label: 'Data', format: formatDateTime },
+      { key: 'action', label: 'Ação' },
+      { key: 'createdBy', label: 'Técnico' },
+      { key: 'note', label: 'Justificação' },
+    ],
+    actions: { edit: false, delete: false },
+    readOnly: true,
+  },
 };
 
-const fmtDate = (value) => {
-  if (!value) return '-';
-  if (typeof value.toDate === 'function') return value.toDate().toLocaleDateString('pt-BR');
-  if (typeof value.seconds === 'number') return new Date(value.seconds * 1000).toLocaleDateString('pt-BR');
-  return new Date(value).toLocaleDateString('pt-BR');
-};
-
-const escape = (value) =>
-  String(value || '')
+function escapeHtml(value) {
+  return String(value ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
 
-const setStatus = (message, isError = false) => {
-  state.statusMessage = message;
-  state.statusError = isError;
-  render();
-};
+function toDate(value) {
+  if (!value) return null;
+  if (typeof value.toDate === 'function') return value.toDate();
+  if (typeof value.seconds === 'number') return new Date(value.seconds * 1000);
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
-const mergeTenantAndLegacyDocs = (docsA, docsB) => {
+function formatDate(value) {
+  const d = toDate(value);
+  return d ? d.toLocaleDateString('pt-PT') : '-';
+}
+
+function formatDateTime(value) {
+  const d = toDate(value);
+  return d ? d.toLocaleString('pt-PT') : '-';
+}
+
+function formatCurrency(value) {
+  return Number(value || 0).toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' });
+}
+
+function formatStatus(value) {
+  const v = String(value || 'n/a').toLowerCase();
+  const cls = v === 'pago' || v === 'concluida' || v === 'ligado' ? 'success' : v === 'pendente' ? 'warn' : 'muted';
+  return `<span class="tag ${cls}">${escapeHtml(v)}</span>`;
+}
+
+function getCellValue(row, column) {
+  const raw = row[column.key];
+  if (column.format) return column.format(raw, row);
+  return escapeHtml(raw ?? '-');
+}
+
+function setStatus(message, isError = false) {
+  state.message = message;
+  state.error = isError;
+  el.statusBar.classList.remove('hidden', 'ok', 'error');
+  el.statusBar.classList.add(isError ? 'error' : 'ok');
+  el.statusBar.textContent = message;
+}
+
+function clearStatus() {
+  state.message = '';
+  el.statusBar.textContent = '';
+  el.statusBar.classList.add('hidden');
+}
+
+function ensureTableState(collectionName) {
+  if (!state.tableState[collectionName]) {
+    state.tableState[collectionName] = { page: 1, search: '' };
+  }
+  return state.tableState[collectionName];
+}
+
+function mergeDocs(a, b) {
   const map = new Map();
-  [...docsA, ...docsB].forEach((item) => map.set(item.id, item));
+  [...a, ...b].forEach((item) => map.set(item.id, item));
   return Array.from(map.values());
-};
+}
 
-const listByTenant = async (collectionName, tenantId) => {
+async function queryTenantCollection(collectionName) {
+  if (!state.selectedTenantId) return [];
+  const tenantId = state.selectedTenantId;
   const [tenantSnap, legacySnap] = await Promise.all([
     getDocs(query(collection(db, collectionName), where('tenantId', '==', tenantId))),
     getDocs(query(collection(db, collectionName), where('userId', '==', tenantId))),
   ]);
+  const tenantRows = tenantSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const legacyRows = legacySnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return mergeDocs(tenantRows, legacyRows);
+}
 
-  const tenantDocs = tenantSnap.docs.map((d) => ({ ...d.data(), id: d.id }));
-  const legacyDocs = legacySnap.docs.map((d) => ({ ...d.data(), id: d.id }));
-  return mergeTenantAndLegacyDocs(tenantDocs, legacyDocs);
-};
-
-const withTimeout = (promise, timeoutMs, label) =>
-  Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(`Timeout ao carregar ${label} após ${timeoutMs / 1000}s.`)), timeoutMs)
-    ),
-  ]);
-
-const getFinancialStatus = (venda) => {
-  const status = String(venda.statusPagamento || '').toLowerCase();
-  if (status === 'cancelado') return 'cancelado';
-  if (status === 'pendente' || status === 'atrasado' || (!status && venda.metodoPagamento === 'prazo')) {
-    return 'pendente';
-  }
-  return 'pago';
-};
-
-const loadSupportData = async () => {
-  if (!state.selectedTenantId) return;
-
-  const tenantId = state.selectedTenantId;
-  const [clientes, vendas, plantios, despesas, tenantSettingsSnap] = await withTimeout(
-    Promise.all([
-      listByTenant('clientes', tenantId),
-      listByTenant('vendas', tenantId),
-      listByTenant('plantios', tenantId),
-      listByTenant('despesas', tenantId),
-      getDoc(doc(db, 'tenant_settings', tenantId)),
-    ]),
-    LOAD_TIMEOUT_MS,
-    'dados base do tenant'
-  );
-
-  let auditSnap = { docs: [] };
-  try {
-    auditSnap = await withTimeout(
-      getDocs(query(collection(db, 'support_audit'), where('tenantId', '==', tenantId))),
-      LOAD_TIMEOUT_MS,
-      'auditoria de suporte'
-    );
-  } catch (error) {
-    console.warn('Falha ao carregar support_audit, seguindo sem auditoria:', error);
-  }
-
-  const totals = vendas.reduce(
-    (acc, venda) => {
-      const total = Number(venda.valorTotal || 0);
-      const status = getFinancialStatus(venda);
-      if (status === 'pendente') acc.receber += total;
-      if (status === 'pago') acc.recebido += total;
-      return acc;
-    },
-    { receber: 0, recebido: 0 }
-  );
-
-  const totalPagar = despesas
-    .filter((d) => (d.statusPagamento || d.status || 'pendente') !== 'pago')
-    .reduce((acc, d) => acc + Number(d.valor || 0), 0);
-
-  const recentClientes = [...clientes]
-    .sort((a, b) => toMillisSafe(b.updatedAt || b.createdAt) - toMillisSafe(a.updatedAt || a.createdAt))
-    .slice(0, 12);
-  const recentVendas = [...vendas]
-    .sort((a, b) => toMillisSafe(b.dataVenda || b.createdAt) - toMillisSafe(a.dataVenda || a.createdAt))
-    .slice(0, 12);
-  const recentPlantios = [...plantios]
-    .sort((a, b) => toMillisSafe(b.updatedAt || b.createdAt) - toMillisSafe(a.updatedAt || a.createdAt))
-    .slice(0, 12);
-  const audit = auditSnap.docs
-    .map((d) => ({ ...d.data(), id: d.id }))
-    .sort((a, b) => toMillisSafe(b.createdAt) - toMillisSafe(a.createdAt))
-    .slice(0, 12);
-
-  const settings = tenantSettingsSnap.exists() ? tenantSettingsSnap.data() : {};
-
-  state.data = {
-    tenantId,
-    summary: {
-      totalClientes: clientes.length,
-      totalVendas: vendas.length,
-      totalPlantios: plantios.length,
-      totalDespesas: despesas.length,
-      totalReceber: totals.receber,
-      totalRecebido: totals.recebido,
-      totalPagar,
-      maintenanceMode: settings.maintenanceMode === true,
-      maintenanceMessage: settings.maintenanceMessage || '',
-    },
-    recentClientes,
-    recentVendas,
-    recentPlantios,
-    audit,
-  };
-};
-
-const loadAllTenantsForSupport = async () => {
-  const usersSnap = await withTimeout(getDocs(collection(db, 'users')), LOAD_TIMEOUT_MS, 'lista global de usuários');
-  const tenants = usersSnap.docs
-    .map((d) => ({ id: d.id, ...(d.data() || {}) }))
-    .map((u) => ({
-      uid: u.id,
-      label: `${u.name || u.displayName || u.email || u.id} (${u.email || 'sem-email'})`,
-      role: u.role || 'sem-role',
-      email: u.email || '',
-      name: u.name || u.displayName || '',
-    }))
-    .sort((a, b) => String(a.label).localeCompare(String(b.label), 'pt-BR'));
-  return tenants;
-};
-
-const logSupportAction = async (action, note, metadata = {}) => {
-  if (!state.user || !state.selectedTenantId) return;
+async function logSupportAction({ action, note, metadata }) {
   await addDoc(collection(db, 'support_audit'), {
     tenantId: state.selectedTenantId,
     userId: state.selectedTenantId,
     createdBy: state.user.uid,
     action,
-    note: note || null,
-    actorUid: state.user.uid,
-    actorName: state.profile?.name || state.profile?.displayName || state.user.email || null,
+    note,
     metadata,
     createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
   });
-};
+}
 
-const setMaintenanceMode = async (enabled, message) => {
-  if (!state.user || !state.selectedTenantId) return;
-  await setDoc(
-    doc(db, 'tenant_settings', state.selectedTenantId),
-    {
-      tenantId: state.selectedTenantId,
-      userId: state.selectedTenantId,
-      createdBy: state.user.uid,
-      maintenanceMode: enabled,
-      maintenanceMessage: message?.trim() || null,
-      maintenanceUpdatedByUid: state.user.uid,
-      maintenanceUpdatedByName: state.profile?.name || state.profile?.displayName || state.user.email || null,
-      maintenanceUpdatedAt: serverTimestamp(),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-};
+function openAuditModal(title, callback) {
+  state.pendingAuditAction = callback;
+  el.auditModalTitle.textContent = title;
+  el.auditNote.value = '';
+  el.auditModal.classList.remove('hidden');
+}
 
-const loadVendaForSupport = async (vendaId) => {
-  if (!vendaId) throw new Error('Informe o ID da venda.');
-  const saleSnap = await getDoc(doc(db, 'vendas', vendaId));
-  if (!saleSnap.exists()) throw new Error('Venda não encontrada.');
-  const venda = { ...saleSnap.data(), id: saleSnap.id };
-  const vendaTenantId = venda.tenantId || venda.userId || '';
-  if (!vendaTenantId) throw new Error('Venda sem tenantId/userId.');
-  return { venda, vendaTenantId };
-};
+function closeAuditModal() {
+  state.pendingAuditAction = null;
+  el.auditModal.classList.add('hidden');
+}
 
-const applySupportSaleFix = async ({ vendaId, nextStatus, nextValorTotal, note }) => {
-  if (!state.user) throw new Error('Sessão inválida.');
-  const { venda, vendaTenantId } = await loadVendaForSupport(vendaId);
+function openRecordModal(title, contentHtml, onSubmit) {
+  el.recordModalTitle.textContent = title;
+  el.recordModalForm.innerHTML = contentHtml;
+  el.recordModal.classList.remove('hidden');
+  state.pendingEditContext = { onSubmit };
+}
 
-  if (state.selectedTenantId && vendaTenantId !== state.selectedTenantId) {
-    throw new Error(
-      `A venda pertence ao tenant ${vendaTenantId}, mas o tenant selecionado é ${state.selectedTenantId}.`
-    );
+function closeRecordModal() {
+  state.pendingEditContext = null;
+  el.recordModal.classList.add('hidden');
+  el.recordModalForm.innerHTML = '';
+}
+
+function getEditableFields(config) {
+  return config.columns.filter((c) => c.editable);
+}
+
+function parseValueByType(type, raw) {
+  if (type === 'number') {
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
   }
+  if (type === 'boolean') return raw === 'true';
+  return raw;
+}
 
-  const payload = {
-    statusPagamento: nextStatus || venda.statusPagamento || 'pago',
+async function auditedUpdate({ collectionName, docId, before, patch, action, note }) {
+  await logSupportAction({
+    action,
+    note,
+    metadata: { collectionName, docId, before, after: patch },
+  });
+  await updateDoc(doc(db, collectionName, docId), {
+    ...patch,
     updatedAt: serverTimestamp(),
-    suporteUltimaCorrecaoPorUid: state.user.uid,
-    suporteUltimaCorrecaoPorNome: state.profile?.name || state.user.email || null,
-  };
+    supportUpdatedBy: state.user.uid,
+  });
+}
 
-  if (nextValorTotal !== '' && nextValorTotal !== null && nextValorTotal !== undefined) {
-    const parsed = Number(nextValorTotal);
-    if (!Number.isFinite(parsed) || parsed < 0) throw new Error('Valor total inválido.');
-    payload.valorTotal = parsed;
+async function auditedDelete({ collectionName, docId, before, action, note }) {
+  await logSupportAction({
+    action,
+    note,
+    metadata: { collectionName, docId, before, after: null },
+  });
+  await deleteDoc(doc(db, collectionName, docId));
+}
+
+async function loadRows(collectionName) {
+  const rows = await queryTenantCollection(collectionName);
+  rows.sort((a, b) => (toDate(b.updatedAt || b.createdAt)?.getTime() || 0) - (toDate(a.updatedAt || a.createdAt)?.getTime() || 0));
+  state.cachedRows[collectionName] = rows;
+  return rows;
+}
+
+function buildRowActions(config, row) {
+  if (config.readOnly) return '';
+  const actions = [];
+
+  if (config.actions.edit) {
+    actions.push(`<button class="btn btn-soft" data-action="edit" data-id="${row.id}">Editar</button>`);
+  }
+  if (config.actions.delete) {
+    actions.push(`<button class="btn btn-danger" data-action="delete" data-id="${row.id}">Apagar</button>`);
+  }
+  if (config.actions.forceStatus) {
+    actions.push(`<button class="btn btn-outline" data-action="force-status" data-id="${row.id}">` + `${escapeHtml(config.actions.forceStatus.label)}</button>`);
   }
 
-  await updateDoc(doc(db, 'vendas', venda.id), payload);
-  await logSupportAction(
-    'sale_fix',
-    note || 'Correção manual de venda efetuada via suporte.',
-    {
-      source: 'support-portal-web',
-      vendaId: venda.id,
-      tenantId: vendaTenantId,
-      before: {
-        statusPagamento: venda.statusPagamento || null,
-        valorTotal: Number(venda.valorTotal || 0),
-      },
-      after: {
-        statusPagamento: payload.statusPagamento,
-        valorTotal: payload.valorTotal !== undefined ? payload.valorTotal : Number(venda.valorTotal || 0),
-      },
-    }
-  );
-  return vendaTenantId;
-};
+  return `<div class="table-actions">${actions.join('')}</div>`;
+}
 
-const buildLoginView = () => `
-  <section class="card">
-    <h2>Login de suporte</h2>
-    <p class="line-meta">Use credencial autorizada (owner/admin ou usuário com isSupportAgent).</p>
-    <div class="row">
-      <div class="col-6">
-        <label for="emailInput">E-mail</label>
-        <input id="emailInput" type="email" placeholder="suporte@empresa.com" />
-      </div>
-      <div class="col-6">
-        <label for="passwordInput">Senha</label>
-        <input id="passwordInput" type="password" placeholder="••••••••" />
-      </div>
-      <div class="col-12 btns">
-        <button id="loginBtn" class="primary">Entrar no portal</button>
-      </div>
-    </div>
-    ${state.statusMessage ? `<div class="${state.statusError ? 'error' : 'ok'}">${escape(state.statusMessage)}</div>` : ''}
-  </section>
-`;
+function buildTableHtml(config, rows, collectionName) {
+  const table = ensureTableState(collectionName);
+  const term = table.search.toLowerCase().trim();
 
-const buildDeniedView = () => `
-  <section class="card">
-    <h2>Acesso negado</h2>
-    <p class="line-meta">
-      Seu usuário está autenticado, mas sem permissão de suporte. Exigido: role admin dono da conta ou
-      <code>isSupportAgent: true</code> no documento <code>users/{uid}</code>.
-    </p>
-  </section>
-`;
+  const filtered = rows.filter((row) => {
+    if (!term) return true;
+    return config.columns.some((c) => String(row[c.key] ?? '').toLowerCase().includes(term));
+  });
 
-const buildStatusTag = (status) => {
-  const css = status === 'pago' ? 'status-pago' : status === 'cancelado' ? 'status-cancelado' : 'status-pendente';
-  return `<span class="status-tag ${css}">${status.toUpperCase()}</span>`;
-};
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  table.page = Math.min(table.page, totalPages);
+  const start = (table.page - 1) * PAGE_SIZE;
+  const pageRows = filtered.slice(start, start + PAGE_SIZE);
 
-const buildPortalView = () => {
-  const data = state.data;
-  if (!data) {
-    return `
-      <section class="card">
-        <p>Carregando dados de suporte...</p>
-        ${state.statusMessage ? `<div class="${state.statusError ? 'error' : 'ok'}">${escape(state.statusMessage)}</div>` : ''}
-        <div class="btns" style="margin-top:8px">
-          <button id="retryLoadBtn" class="primary">Tentar novamente</button>
-        </div>
-      </section>
-    `;
-  }
-
-  const tenantOptions = state.tenants
-    .map((t) => `<option value="${escape(t.uid)}" ${t.uid === state.selectedTenantId ? 'selected' : ''}>${escape(t.label)}</option>`)
-    .join('');
-
-  const clientesRows = data.recentClientes
-    .map(
-      (c) => `
-      <li>
-        <div class="line-main">${escape(c.nome || 'Sem nome')}</div>
-        <div class="line-meta">${escape(c.telefone || c.email || c.documento || 'Sem contato')}</div>
-      </li>
-    `
-    )
-    .join('');
-
-  const clientMap = new Map(data.recentClientes.map((c) => [c.id, c.nome || 'Cliente']));
-
-  const vendasRows = data.recentVendas
-    .map((v) => {
-      const status = getFinancialStatus(v);
-      const clienteNome = v.clienteId ? clientMap.get(v.clienteId) || 'Cliente' : 'Avulso';
-      return `
-        <li>
-          <div class="line-main">${escape(clienteNome)} • ${fmtCurrency(v.valorTotal || 0)} • ${buildStatusTag(status)}</div>
-          <div class="line-meta">${escape(fmtDate(v.dataVenda))} • ${escape(v.id)}</div>
-        </li>
-      `;
+  const head = config.columns.map((c) => `<th>${escapeHtml(c.label)}</th>`).join('');
+  const body = pageRows
+    .map((row) => {
+      const cols = config.columns.map((c) => `<td>${getCellValue(row, c)}</td>`).join('');
+      const actions = `<td>${buildRowActions(config, row)}</td>`;
+      return `<tr data-row-id="${row.id}">${cols}${actions}</tr>`;
     })
     .join('');
 
-  const plantiosRows = data.recentPlantios
-    .map(
-      (p) => `
-      <li>
-        <div class="line-main">${escape(p.cultura || 'Cultura')} • ${escape(p.status || 'sem status')}</div>
-        <div class="line-meta">Lote: ${escape(p.codigoLote || 'N/A')} • Atualizado: ${escape(fmtDate(p.updatedAt || p.createdAt))}</div>
-      </li>
-    `
-    )
-    .join('');
+  return `
+    <div class="card">
+      <h2>${escapeHtml(config.title)}</h2>
+      <div class="row">
+        <input class="input" id="search-${collectionName}" placeholder="Pesquisar na coleção..." value="${escapeHtml(table.search)}" />
+      </div>
+      <div class="table-wrap" style="margin-top:10px;">
+        <table>
+          <thead><tr>${head}<th>Ações</th></tr></thead>
+          <tbody>${body || `<tr><td colspan="${config.columns.length + 1}">Sem registos.</td></tr>`}</tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:10px;justify-content:space-between;align-items:center;">
+        <small>${filtered.length} registo(s)</small>
+        <div class="row">
+          <button class="btn btn-outline" data-action="prev-page" data-collection="${collectionName}">Anterior</button>
+          <span>Página ${table.page}/${totalPages}</span>
+          <button class="btn btn-outline" data-action="next-page" data-collection="${collectionName}">Seguinte</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
 
-  const auditRows = data.audit
-    .map(
-      (a) => `
-      <li>
-        <div class="line-main">${escape(a.action)} • ${escape(a.actorName || a.actorUid || 'suporte')}</div>
-        <div class="line-meta">${escape(a.note || 'sem nota')} • ${escape(fmtDate(a.createdAt))}</div>
-      </li>
+function buildSidebar() {
+  if (!state.allowed) {
+    el.sidebar.innerHTML = `
+      <div class="sidebar-brand">
+        <h2>SGE Support</h2>
+        <p>Acesso restrito</p>
+      </div>
+    `;
+    return;
+  }
+
+  const sections = MENU.map(
+    (group) => `
+      <div class="sidebar-group">
+        <h3>${escapeHtml(group.section)}</h3>
+        ${group.items
+          .map(
+            (item) =>
+              `<button class="nav-btn ${state.currentView === item.id ? 'active' : ''}" data-nav="${item.id}">${escapeHtml(item.label)}</button>`
+          )
+          .join('')}
+      </div>
     `
-    )
+  ).join('');
+
+  el.sidebar.innerHTML = `
+    <div class="sidebar-brand">
+      <h2>SGE Support</h2>
+      <p>Painel Nível 3</p>
+    </div>
+    ${sections}
+  `;
+}
+
+async function renderOverview() {
+  if (!state.selectedTenantId) {
+    return '<div class="card">Selecione um tenant para iniciar.</div>';
+  }
+
+  const [estufas, contasReceber, despesas, lotes] = await Promise.all([
+    queryTenantCollection('estufas'),
+    queryTenantCollection('contas_receber'),
+    queryTenantCollection('despesas'),
+    queryTenantCollection('hidroponia_lotes'),
+  ]);
+
+  const totalReceber = contasReceber.reduce((acc, x) => acc + Number(x.valor || 0), 0);
+  const totalPagar = despesas.reduce((acc, x) => acc + Number(x.valor || 0), 0);
+  const lotesAtivos = lotes.filter((l) => String(l.status || '').toLowerCase() !== 'encerrado').length;
+
+  const settingsRef = doc(db, 'tenant_settings', state.selectedTenantId);
+  const settingsSnap = await getDoc(settingsRef);
+  const settings = settingsSnap.exists() ? settingsSnap.data() : {};
+
+  return `
+    <div class="card">
+      <h2>KPIs Globais</h2>
+      <div class="grid cols-4">
+        <div class="kpi"><span class="label">Nº de Estufas</span><span class="value">${estufas.length}</span></div>
+        <div class="kpi"><span class="label">Total a Receber</span><span class="value">${formatCurrency(totalReceber)}</span></div>
+        <div class="kpi"><span class="label">Total a Pagar</span><span class="value">${formatCurrency(totalPagar)}</span></div>
+        <div class="kpi"><span class="label">Lotes Hidroponia Ativos</span><span class="value">${lotesAtivos}</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Tenant Settings</h2>
+      <div class="form-grid">
+        <div>
+          <label for="maintenanceEnabled">Modo manutenção global</label>
+          <select id="maintenanceEnabled">
+            <option value="false" ${settings.maintenanceMode ? '' : 'selected'}>Desativado</option>
+            <option value="true" ${settings.maintenanceMode ? 'selected' : ''}>Ativado</option>
+          </select>
+        </div>
+        <div>
+          <label for="maintenanceMessage">Mensagem de manutenção</label>
+          <input id="maintenanceMessage" class="input" value="${escapeHtml(settings.maintenanceMessage || '')}" placeholder="Mensagem para utilizadores" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px;justify-content:flex-end;">
+        <button id="saveMaintenance" class="btn btn-primary">Guardar Configuração</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Impersonation</h2>
+      <p>Abre a App principal com o tenant selecionado em modo suporte.</p>
+      <div class="row">
+        <button id="impersonateBtn" class="btn btn-outline">Gerar Contexto de Impersonation</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderLogin() {
+  el.viewTitle.textContent = 'Portal de Suporte Nível 3 · Login';
+  el.mainContent.innerHTML = `
+    <div class="card login-card">
+      <div class="login-hero">
+        <h2>Acesso seguro do suporte</h2>
+        <p>Painel dedicado para operação técnica, auditoria e manutenção assistida.</p>
+      </div>
+      <div class="grid">
+        <div>
+          <label for="loginEmail">E-mail</label>
+          <input id="loginEmail" class="input" type="email" placeholder="suporte@empresa.com" />
+        </div>
+        <div>
+          <label for="loginPassword">Palavra-passe</label>
+          <input id="loginPassword" class="input" type="password" placeholder="••••••••" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px;justify-content:flex-end;">
+        <button id="loginBtn" class="btn btn-primary">Entrar</button>
+      </div>
+      <p class="support-note">Acesso permitido somente para contas autorizadas com perfil de suporte.</p>
+    </div>
+  `;
+}
+
+function renderTenantSelector() {
+  const opts = state.tenants
+    .map((t) => `<option value="${escapeHtml(t.uid)}" ${state.selectedTenantId === t.uid ? 'selected' : ''}>${escapeHtml(t.label)}</option>`)
     .join('');
 
   return `
-    <section class="card">
-      <div class="row">
-        <div class="col-6">
-          <label for="tenantSelect">Tenant alvo</label>
-          <select id="tenantSelect">${tenantOptions}</select>
-        </div>
-        <div class="col-6">
-          <label for="searchInput">Busca rápida</label>
-          <input id="searchInput" placeholder="cliente, id venda, lote..." />
-        </div>
-        <div class="col-12 btns">
-          <button id="refreshBtn" class="primary">Atualizar diagnóstico</button>
-          <button id="diagBtn" class="soft">Registrar diagnóstico</button>
-          <button id="fixBtn" class="soft">Registrar correção</button>
+    <div class="card">
+      <h2>Tenant Ativo</h2>
+      <div class="form-grid">
+        <div>
+          <label for="tenantSelector">Cliente / Tenant</label>
+          <select id="tenantSelector">${opts}</select>
         </div>
       </div>
-      ${state.statusMessage ? `<div class="${state.statusError ? 'error' : 'ok'}">${escape(state.statusMessage)}</div>` : ''}
-    </section>
-
-    <section class="card">
-      <h3>Correção rápida de venda (suporte)</h3>
-      <div class="row">
-        <div class="col-4">
-          <label for="fixVendaIdInput">ID da venda</label>
-          <input id="fixVendaIdInput" placeholder="ex.: AbC123..." />
-        </div>
-        <div class="col-4">
-          <label for="fixStatusSelect">Novo status</label>
-          <select id="fixStatusSelect">
-            <option value="pago">PAGO</option>
-            <option value="pendente">PENDENTE</option>
-            <option value="atrasado">ATRASADO</option>
-            <option value="cancelado">CANCELADO</option>
-          </select>
-        </div>
-        <div class="col-4">
-          <label for="fixValorInput">Novo valor total (opcional)</label>
-          <input id="fixValorInput" type="number" min="0" step="0.01" placeholder="ex.: 250.00" />
-        </div>
-        <div class="col-12">
-          <label for="fixNoteInput">Motivo da correção (auditoria)</label>
-          <textarea id="fixNoteInput" placeholder="Ex.: cliente Tião informou lançamento incorreto de valor/status."></textarea>
-        </div>
-        <div class="col-12 btns">
-          <button id="applySaleFixBtn" class="primary">Aplicar correção da venda</button>
-        </div>
-      </div>
-    </section>
-
-    <section class="row">
-      <div class="col-4"><div class="metric"><div class="k">Clientes</div><div class="v">${data.summary.totalClientes}</div></div></div>
-      <div class="col-4"><div class="metric"><div class="k">Vendas</div><div class="v">${data.summary.totalVendas}</div></div></div>
-      <div class="col-4"><div class="metric"><div class="k">Plantios</div><div class="v">${data.summary.totalPlantios}</div></div></div>
-      <div class="col-4"><div class="metric warning"><div class="k">A Receber</div><div class="v">${fmtCurrency(data.summary.totalReceber)}</div></div></div>
-      <div class="col-4"><div class="metric success"><div class="k">Recebido</div><div class="v">${fmtCurrency(data.summary.totalRecebido)}</div></div></div>
-      <div class="col-4"><div class="metric danger"><div class="k">A Pagar</div><div class="v">${fmtCurrency(data.summary.totalPagar)}</div></div></div>
-    </section>
-
-    <section class="card">
-      <h3>Modo manutenção</h3>
-      <div class="row">
-        <div class="col-8">
-          <label for="maintenanceMessage">Mensagem de manutenção</label>
-          <textarea id="maintenanceMessage" placeholder="Ex.: ajustes financeiros em andamento">${escape(
-            data.summary.maintenanceMessage || ''
-          )}</textarea>
-        </div>
-        <div class="col-4">
-          <label>Status atual</label>
-          <div class="btns">
-            <button id="enableMaintenanceBtn" class="warn">Ativar</button>
-            <button id="disableMaintenanceBtn" class="soft">Desativar</button>
-          </div>
-          <p class="line-meta">
-            Atual: <strong>${data.summary.maintenanceMode ? 'ATIVO' : 'INATIVO'}</strong>
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <section class="row">
-      <div class="col-6 card">
-        <h3>Clientes recentes</h3>
-        <ul class="list" id="clientesList">${clientesRows || '<li><span class="line-meta">Sem registros</span></li>'}</ul>
-      </div>
-      <div class="col-6 card">
-        <h3>Vendas recentes</h3>
-        <ul class="list" id="vendasList">${vendasRows || '<li><span class="line-meta">Sem registros</span></li>'}</ul>
-      </div>
-    </section>
-
-    <section class="row">
-      <div class="col-6 card">
-        <h3>Plantios recentes</h3>
-        <ul class="list">${plantiosRows || '<li><span class="line-meta">Sem registros</span></li>'}</ul>
-      </div>
-      <div class="col-6 card">
-        <h3>Auditoria de suporte</h3>
-        <ul class="list">${auditRows || '<li><span class="line-meta">Sem registros</span></li>'}</ul>
-      </div>
-    </section>
+    </div>
   `;
-};
+}
 
-const render = () => {
-  if (!state.user) {
-    root.innerHTML = buildLoginView();
-    logoutBtn.classList.add('hidden');
-    bindLoginEvents();
+async function renderMain() {
+  if (!state.allowed) {
+    renderLogin();
     return;
   }
 
-  logoutBtn.classList.remove('hidden');
+  const viewConfig = MODULE_CONFIG[state.currentView];
+  el.viewTitle.textContent = viewConfig?.title || 'Dashboard & Alertas';
 
-  if (!state.supportAllowed) {
-    root.innerHTML = buildDeniedView();
-    return;
+  let viewHtml = '';
+  if (state.currentView === 'overview') {
+    viewHtml = await renderOverview();
+  } else {
+    const rows = await loadRows(viewConfig.collection);
+    viewHtml = buildTableHtml(viewConfig, rows, viewConfig.collection);
   }
 
-  root.innerHTML = buildPortalView();
-  bindPortalEvents();
-};
+  el.mainContent.innerHTML = `${renderTenantSelector()}${viewHtml}`;
+}
 
-const bindLoginEvents = () => {
-  const loginBtn = document.getElementById('loginBtn');
-  if (!loginBtn) return;
-  loginBtn.addEventListener('click', async () => {
-    const emailInput = document.getElementById('emailInput');
-    const passwordInput = document.getElementById('passwordInput');
-    const email = emailInput?.value?.trim() || '';
-    const password = passwordInput?.value || '';
-    if (!email || !password) {
-      setStatus('Informe e-mail e senha.', true);
+async function getProfile(uid) {
+  const snap = await getDoc(doc(db, 'users', uid));
+  return snap.exists() ? snap.data() : null;
+}
+
+function canAccess(user, profile) {
+  if (!user || !profile) return false;
+  return profile.role === 'admin' || profile.isSupportAgent === true || user.uid === FIXED_SUPPORT_UID;
+}
+
+async function loadTenants() {
+  const snap = await getDocs(collection(db, 'users'));
+  state.tenants = snap.docs
+    .map((d) => ({ uid: d.id, ...(d.data() || {}) }))
+    .map((u) => ({
+      uid: u.uid,
+      label: `${u.name || u.displayName || u.email || u.uid} (${u.email || 'sem-email'})`,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'pt-PT'));
+
+  if (!state.selectedTenantId && state.tenants[0]) state.selectedTenantId = state.tenants[0].uid;
+}
+
+function attachGlobalListeners() {
+  el.logoutBtn.addEventListener('click', async () => {
+    await signOut(auth);
+  });
+
+  el.sidebar.addEventListener('click', async (event) => {
+    const btn = event.target.closest('[data-nav]');
+    if (!btn) return;
+    state.currentView = btn.dataset.nav;
+    buildSidebar();
+    await safeRenderMain();
+  });
+
+  el.mainContent.addEventListener('click', async (event) => {
+    const actionBtn = event.target.closest('[data-action]');
+    if (!actionBtn) return;
+
+    const action = actionBtn.dataset.action;
+    const collectionName = actionBtn.dataset.collection || MODULE_CONFIG[state.currentView]?.collection;
+    const config = Object.values(MODULE_CONFIG).find((x) => x.collection === collectionName);
+    if (!config) return;
+
+    const rowEl = actionBtn.closest('tr[data-row-id]');
+    const rowId = actionBtn.dataset.id || rowEl?.dataset.rowId;
+    const rows = state.cachedRows[collectionName] || [];
+    const row = rows.find((r) => r.id === rowId);
+    if (!row) return;
+
+    if (action === 'edit') {
+      const fields = getEditableFields(config)
+        .map((f) => {
+          const value = f.type === 'date' ? (toDate(row[f.key])?.toISOString().slice(0, 10) || '') : row[f.key] ?? '';
+          const inputType = f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text';
+          return `
+            <div>
+              <label>${escapeHtml(f.label)}</label>
+              <input class="input" name="${escapeHtml(f.key)}" type="${inputType}" value="${escapeHtml(value)}" />
+            </div>
+          `;
+        })
+        .join('');
+
+      const html = `
+        <div class="form-grid">${fields}</div>
+        <div>
+          <label for="editAuditNote">Justificação de auditoria</label>
+          <textarea id="editAuditNote" name="auditNote" required minlength="8" placeholder="Justifique a alteração."></textarea>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-outline" type="button" id="cancelRecordEdit">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Guardar Alterações</button>
+        </div>
+      `;
+
+      openRecordModal(`Editar ${config.title}`, html, async (formData) => {
+        const patch = {};
+        getEditableFields(config).forEach((f) => {
+          if (!formData.has(f.key)) return;
+          patch[f.key] = parseValueByType(f.type, formData.get(f.key));
+        });
+        const note = String(formData.get('auditNote') || '').trim();
+        if (!note || note.length < 8) throw new Error('Justificação mínima de 8 caracteres é obrigatória.');
+
+        await auditedUpdate({
+          collectionName,
+          docId: row.id,
+          before: row,
+          patch,
+          action: `${collectionName}.update`,
+          note,
+        });
+      });
       return;
     }
-    try {
-      setStatus('Autenticando...');
-      await signInWithEmailAndPassword(auth, email, password);
-      setStatus('');
-    } catch (error) {
-      setStatus(error?.message || 'Falha no login.', true);
+
+    if (action === 'delete') {
+      openAuditModal(`Apagar registo ${row.id}`, async (note) => {
+        await auditedDelete({
+          collectionName,
+          docId: row.id,
+          before: row,
+          action: `${collectionName}.delete`,
+          note,
+        });
+      });
+      return;
+    }
+
+    if (action === 'force-status' && config.actions.forceStatus) {
+      const next = prompt(
+        `Novo status (${config.actions.forceStatus.options.join(' / ')}):`,
+        row[config.actions.forceStatus.field] || config.actions.forceStatus.options[0]
+      );
+      if (!next) return;
+      openAuditModal(`Forçar status em ${row.id}`, async (note) => {
+        await auditedUpdate({
+          collectionName,
+          docId: row.id,
+          before: row,
+          patch: { [config.actions.forceStatus.field]: String(next).trim() },
+          action: `${collectionName}.forceStatus`,
+          note,
+        });
+      });
+      return;
+    }
+
+    if (action === 'prev-page' || action === 'next-page') {
+      const ts = ensureTableState(collectionName);
+      ts.page = Math.max(1, ts.page + (action === 'next-page' ? 1 : -1));
+      await safeRenderMain();
     }
   });
-};
 
-const applySearchFilter = () => {
-  const input = document.getElementById('searchInput');
-  if (!input) return;
-  const value = String(input.value || '').toLowerCase().trim();
-  ['clientesList', 'vendasList'].forEach((listId) => {
-    const list = document.getElementById(listId);
-    if (!list) return;
-    Array.from(list.querySelectorAll('li')).forEach((li) => {
-      const text = li.textContent?.toLowerCase() || '';
-      li.style.display = !value || text.includes(value) ? '' : 'none';
-    });
-  });
-};
-
-const bindPortalEvents = () => {
-  const retryLoadBtn = document.getElementById('retryLoadBtn');
-  retryLoadBtn?.addEventListener('click', async () => {
-    setStatus('Recarregando...');
-    try {
-      await loadSupportData();
-      setStatus('Dados carregados.');
-    } catch (error) {
-      setStatus(error?.message || 'Falha ao carregar dados de suporte.', true);
-    }
-    render();
-  });
-
-  const tenantSelect = document.getElementById('tenantSelect');
-  const refreshBtn = document.getElementById('refreshBtn');
-  const diagBtn = document.getElementById('diagBtn');
-  const fixBtn = document.getElementById('fixBtn');
-  const enableMaintenanceBtn = document.getElementById('enableMaintenanceBtn');
-  const disableMaintenanceBtn = document.getElementById('disableMaintenanceBtn');
-  const searchInput = document.getElementById('searchInput');
-  const applySaleFixBtn = document.getElementById('applySaleFixBtn');
-
-  tenantSelect?.addEventListener('change', async () => {
-    state.selectedTenantId = tenantSelect.value;
-    setStatus('Carregando tenant...');
-    await loadSupportData();
-    setStatus('Tenant carregado.');
-    render();
-  });
-
-  refreshBtn?.addEventListener('click', async () => {
-    setStatus('Atualizando diagnóstico...');
-    await loadSupportData();
-    setStatus('Diagnóstico atualizado.');
-    render();
-  });
-
-  diagBtn?.addEventListener('click', async () => {
-    await logSupportAction('diagnostic', 'Diagnóstico remoto executado no portal separado.', {
-      source: 'support-portal-web',
-    });
-    setStatus('Diagnóstico registrado.');
-    await loadSupportData();
-    render();
-  });
-
-  fixBtn?.addEventListener('click', async () => {
-    await logSupportAction('correction', 'Correção remota registrada no portal separado.', {
-      source: 'support-portal-web',
-    });
-    setStatus('Correção registrada.');
-    await loadSupportData();
-    render();
-  });
-
-  enableMaintenanceBtn?.addEventListener('click', async () => {
-    const message = document.getElementById('maintenanceMessage')?.value || '';
-    await setMaintenanceMode(true, message);
-    await logSupportAction('maintenance_enabled', 'Modo manutenção ativado no portal separado.', {
-      source: 'support-portal-web',
-    });
-    setStatus('Modo manutenção ativado.');
-    await loadSupportData();
-    render();
-  });
-
-  disableMaintenanceBtn?.addEventListener('click', async () => {
-    const message = document.getElementById('maintenanceMessage')?.value || '';
-    await setMaintenanceMode(false, message);
-    await logSupportAction('maintenance_disabled', 'Modo manutenção desativado no portal separado.', {
-      source: 'support-portal-web',
-    });
-    setStatus('Modo manutenção desativado.');
-    await loadSupportData();
-    render();
-  });
-
-  searchInput?.addEventListener('input', applySearchFilter);
-
-  applySaleFixBtn?.addEventListener('click', async () => {
-    try {
-      const vendaId = document.getElementById('fixVendaIdInput')?.value?.trim() || '';
-      const nextStatus = document.getElementById('fixStatusSelect')?.value || 'pago';
-      const nextValorRaw = document.getElementById('fixValorInput')?.value;
-      const nextValorTotal = nextValorRaw === '' ? '' : Number(nextValorRaw);
-      const note = document.getElementById('fixNoteInput')?.value?.trim() || '';
-
-      setStatus('Aplicando correção de venda...');
-      const tenantFromSale = await applySupportSaleFix({ vendaId, nextStatus, nextValorTotal, note });
-      state.selectedTenantId = tenantFromSale;
-      await loadSupportData();
-      setStatus(`Venda ${vendaId} corrigida com sucesso no tenant ${tenantFromSale}.`);
-      render();
-    } catch (error) {
-      setStatus(error?.message || 'Falha ao corrigir venda.', true);
+  el.mainContent.addEventListener('input', async (event) => {
+    const input = event.target;
+    if (input.id.startsWith('search-')) {
+      const collectionName = input.id.replace('search-', '');
+      const ts = ensureTableState(collectionName);
+      ts.search = input.value;
+      ts.page = 1;
+      await safeRenderMain();
     }
   });
-};
 
-logoutBtn.addEventListener('click', async () => {
-  await signOut(auth);
-  setStatus('Sessão encerrada.');
-});
+  el.mainContent.addEventListener('change', async (event) => {
+    const target = event.target;
+    if (target.id === 'tenantSelector') {
+      state.selectedTenantId = target.value;
+      state.cachedRows = {};
+      await safeRenderMain();
+    }
+  });
 
-onAuthStateChanged(auth, async (firebaseUser) => {
-  state.user = firebaseUser || null;
-  state.profile = null;
-  state.supportAllowed = false;
-  state.tenants = [];
-  state.selectedTenantId = '';
-  state.data = null;
+  el.mainContent.addEventListener('click', async (event) => {
+    if (event.target.id === 'saveMaintenance') {
+      try {
+        const enabled = document.getElementById('maintenanceEnabled').value === 'true';
+        const message = document.getElementById('maintenanceMessage').value.trim();
 
-  if (!firebaseUser) {
-    render();
-    return;
-  }
+        openAuditModal('Alterar modo de manutenção global', async (note) => {
+          const beforeSnap = await getDoc(doc(db, 'tenant_settings', state.selectedTenantId));
+          const before = beforeSnap.exists() ? beforeSnap.data() : null;
+          const patch = {
+            tenantId: state.selectedTenantId,
+            userId: state.selectedTenantId,
+            maintenanceMode: enabled,
+            maintenanceMessage: message || null,
+            maintenanceUpdatedByUid: state.user.uid,
+            maintenanceUpdatedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          };
 
+          await logSupportAction({
+            action: 'tenant_settings.update_maintenance',
+            note,
+            metadata: {
+              collectionName: 'tenant_settings',
+              docId: state.selectedTenantId,
+              before,
+              after: { maintenanceMode: enabled, maintenanceMessage: message || null },
+            },
+          });
+
+          await setDoc(doc(db, 'tenant_settings', state.selectedTenantId), patch, { merge: true });
+        });
+      } catch (error) {
+        setStatus(error.message || 'Erro ao preparar atualização de manutenção.', true);
+      }
+    }
+
+    if (event.target.id === 'impersonateBtn') {
+      const payload = {
+        tenantId: state.selectedTenantId,
+        by: state.user.uid,
+        createdAt: new Date().toISOString(),
+      };
+      localStorage.setItem('sge_support_impersonation', JSON.stringify(payload));
+      setStatus('Contexto de impersonation guardado no localStorage: sge_support_impersonation');
+    }
+  });
+
+  el.recordModalClose.addEventListener('click', closeRecordModal);
+  el.auditModalClose.addEventListener('click', closeAuditModal);
+  el.auditCancelBtn.addEventListener('click', closeAuditModal);
+
+  el.recordModalForm.addEventListener('click', (event) => {
+    if (event.target.id === 'cancelRecordEdit') closeRecordModal();
+  });
+
+  el.recordModalForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!state.pendingEditContext?.onSubmit) return;
+
+    const formData = new FormData(el.recordModalForm);
+    try {
+      await state.pendingEditContext.onSubmit(formData);
+      closeRecordModal();
+      setStatus('Alteração aplicada com auditoria.');
+      await safeRenderMain();
+    } catch (error) {
+      setStatus(error.message || 'Falha ao guardar alteração.', true);
+    }
+  });
+
+  el.auditModalForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const note = el.auditNote.value.trim();
+    if (!note || note.length < 8) {
+      setStatus('Justificação mínima de 8 caracteres é obrigatória.', true);
+      return;
+    }
+    if (!state.pendingAuditAction) return;
+
+    try {
+      await state.pendingAuditAction(note);
+      closeAuditModal();
+      setStatus('Operação concluída com auditoria.');
+      await safeRenderMain();
+    } catch (error) {
+      setStatus(error.message || 'Falha na operação auditada.', true);
+    }
+  });
+}
+
+async function safeRenderMain() {
   try {
-    const userSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
-    state.profile = userSnap.exists() ? userSnap.data() : {};
-
-    const isOwnerAdmin = state.profile?.role === 'admin';
-    const isSupportAgent = state.profile?.isSupportAgent === true;
-    state.supportAllowed = isOwnerAdmin || isSupportAgent || firebaseUser.uid === FIXED_SUPPORT_UID;
-
-    if (state.supportAllowed) {
-      state.tenants = await loadAllTenantsForSupport();
-      state.selectedTenantId = state.tenants[0]?.uid || '';
+    clearStatus();
+    buildSidebar();
+    await renderMain();
+    appRoot?.classList.toggle('logged-out', !state.allowed);
+    el.logoutBtn.classList.toggle('hidden', !state.allowed);
+    if (state.user && state.allowed) {
+      const txt = `${state.profile?.name || state.user.email || state.user.uid}`;
+      el.userBadge.textContent = txt;
+      el.userBadge.classList.remove('hidden');
     } else {
-      const ownLabel = state.profile?.name ? `Minha Estufa (${state.profile.name})` : 'Minha Estufa (Principal)';
-      const tenants = [{ uid: firebaseUser.uid, label: ownLabel }];
-      state.tenants = tenants;
-      state.selectedTenantId = firebaseUser.uid;
+      el.userBadge.classList.add('hidden');
     }
-
-    if (state.supportAllowed && state.selectedTenantId) {
-      await loadSupportData();
-    }
-
-    setStatus('');
   } catch (error) {
-    setStatus(error?.message || 'Falha ao carregar perfil de suporte.', true);
+    setStatus(error.message || 'Erro ao renderizar painel.', true);
   }
+}
 
-  render();
-});
+async function bootstrapAuth() {
+  onAuthStateChanged(auth, async (user) => {
+    state.user = user;
+    state.profile = null;
+    state.allowed = false;
+
+    if (!user) {
+      state.tenants = [];
+      state.selectedTenantId = '';
+      await safeRenderMain();
+      return;
+    }
+
+    try {
+      const profile = await getProfile(user.uid);
+      state.profile = profile;
+      state.allowed = canAccess(user, profile);
+
+      if (!state.allowed) {
+        setStatus('Acesso negado. Permissão insuficiente para o portal de suporte.', true);
+        await signOut(auth);
+        return;
+      }
+
+      await loadTenants();
+      await safeRenderMain();
+    } catch (error) {
+      setStatus(error.message || 'Falha ao validar permissões.', true);
+    }
+  });
+}
+
+function attachLoginHandler() {
+  el.mainContent.addEventListener('click', async (event) => {
+    if (event.target.id !== 'loginBtn') return;
+    const email = document.getElementById('loginEmail')?.value?.trim();
+    const password = document.getElementById('loginPassword')?.value;
+    if (!email || !password) {
+      setStatus('Informe e-mail e palavra-passe.', true);
+      return;
+    }
+
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      setStatus('Sessão autenticada.');
+    } catch (error) {
+      setStatus(error.message || 'Falha no login.', true);
+    }
+  });
+}
+
+function init() {
+  attachGlobalListeners();
+  attachLoginHandler();
+  buildSidebar();
+  renderLogin();
+  bootstrapAuth();
+}
+
+init();

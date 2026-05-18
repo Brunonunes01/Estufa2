@@ -65,7 +65,7 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
         showSuccess('Estufa excluída com sucesso.');
       }
 
-      navigation.navigate('EstufasList');
+      navigation.navigate('MainTabs', { screen: 'OperacaoTab' });
     },
     onError: () => {
       showError('Falha ao excluir a estufa.');
@@ -170,7 +170,7 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
       <View style={[styles.centered, { padding: 20 }]}> 
         <MaterialCommunityIcons name="alert-circle-outline" size={48} color={COLORS.danger} style={{ marginBottom: 10 }} />
         <Text style={styles.errorText}>Não foi possível carregar a estufa.</Text>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.navigate('EstufasList')}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.navigate('MainTabs', { screen: 'OperacaoTab' })}>
           <Text style={styles.backBtnText}>Voltar para Estufas</Text>
         </TouchableOpacity>
       </View>
@@ -207,7 +207,7 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
           title: 'Relatórios',
           icon: 'chart-box-outline',
           color: COLORS.info,
-          onPress: () => navigation.navigate('VendasList'),
+          onPress: () => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' }),
         },
         {
           key: 'hub-finance',
@@ -263,7 +263,7 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
           title: 'Relatórios',
           icon: 'chart-box-outline',
           color: COLORS.info,
-          onPress: () => navigation.navigate('VendasList'),
+          onPress: () => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' }),
         },
         {
           key: 'hub-finance',
