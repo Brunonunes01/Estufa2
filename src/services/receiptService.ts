@@ -1,6 +1,7 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as XLSX from 'xlsx';
 import { Venda } from '../types/domain';
 import { COLORS } from '../constants/theme';
 
@@ -44,6 +45,29 @@ interface ReceiptData {
   nomeEstufa: string;
 }
 
+export interface SalesAccountingItem {
+  codigo: string;
+  data: string;
+  cliente: string;
+  documentoCliente?: string;
+  estufa: string;
+  lote?: string;
+  produto: string;
+  quantidade: string;
+  precoUnitario: number;
+  valorTotal: number;
+  metodoPagamento: string;
+  status: string;
+  vencimento?: string;
+  recebidoPor?: string;
+}
+
+export interface SalesAccountingPdfData {
+  empresa: string;
+  periodo: string;
+  itens: SalesAccountingItem[];
+}
+
 const SHARE_LOCK_KEY = '__sge_pdf_share_lock__';
 const isShareLocked = () => Boolean((globalThis as any)[SHARE_LOCK_KEY]);
 const setShareLocked = (value: boolean) => {
@@ -79,6 +103,28 @@ const escapeHtml = (value?: string | null) => {
     .replace(/>/g, '&gt;')
     .replace(/\"/g, '&quot;')
     .replace(/'/g, '&#39;');
+};
+
+const downloadPdfOnWeb = async (uri: string, fileName: string) => {
+  if (typeof document === 'undefined') return false;
+
+  let href = uri;
+  if (!href.startsWith('data:')) {
+    try {
+      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      href = `data:application/pdf;base64,${base64}`;
+    } catch {
+      return false;
+    }
+  }
+
+  const anchor = document.createElement('a');
+  anchor.href = href;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  return true;
 };
 
 export const shareSalesReportPdf = async (data: SalesReportPdfData) => {
@@ -398,11 +444,19 @@ export const shareSalesReportPdf = async (data: SalesReportPdfData) => {
     }
     await FileSystem.copyAsync({ from: uri, to: destinoUri });
 
-    await Sharing.shareAsync(destinoUri, {
-      UTI: '.pdf',
-      mimeType: 'application/pdf',
-      dialogTitle: nomeArquivo,
-    });
+    const canShare = await Sharing.isAvailableAsync();
+    if (canShare) {
+      await Sharing.shareAsync(destinoUri, {
+        UTI: '.pdf',
+        mimeType: 'application/pdf',
+        dialogTitle: nomeArquivo,
+      });
+    } else {
+      const downloaded = await downloadPdfOnWeb(destinoUri, nomeArquivo);
+      if (!downloaded) {
+        throw new Error('Nao foi possivel compartilhar ou baixar o PDF neste dispositivo.');
+      }
+    }
   } catch (error) {
     console.error('Erro ao gerar PDF do relatório:', error);
     throw new Error('Não foi possível gerar o PDF do relatório.');
@@ -461,4 +515,250 @@ export const shareVendaReceipt = async (data: ReceiptData) => {
       },
     ],
   });
+};
+
+export const shareSalesAccountingPdf = async (data: SalesAccountingPdfData) => {
+  if (isShareLocked()) return;
+  setShareLocked(true);
+  try {
+    const totalGeral = data.itens.reduce((acc, item) => acc + Number(item.valorTotal || 0), 0);
+    const totalPago = data.itens
+      .filter((item) => String(item.status).toUpperCase() === 'PAGO')
+      .reduce((acc, item) => acc + Number(item.valorTotal || 0), 0);
+    const totalPendente = data.itens
+      .filter((item) => String(item.status).toUpperCase() !== 'PAGO')
+      .reduce((acc, item) => acc + Number(item.valorTotal || 0), 0);
+
+    const rows = data.itens
+      .map(
+        (item) => `
+        <tr>
+          <td>${escapeHtml(item.data)}</td>
+          <td>${escapeHtml(item.cliente)}</td>
+          <td>${escapeHtml(item.documentoCliente || '-')}</td>
+          <td>${escapeHtml(item.estufa)}</td>
+          <td>${escapeHtml(item.lote || '-')}</td>
+          <td>${escapeHtml(item.produto)}</td>
+          <td>${escapeHtml(item.quantidade)}</td>
+          <td style="text-align:right;">${fmtMoeda(item.precoUnitario)}</td>
+          <td style="text-align:right;">${fmtMoeda(item.valorTotal)}</td>
+          <td>${escapeHtml(item.metodoPagamento)}</td>
+          <td>${escapeHtml(item.status)}</td>
+          <td>${escapeHtml(item.vencimento || '-')}</td>
+          <td>${escapeHtml(item.recebidoPor || '-')}</td>
+        </tr>
+      `
+      )
+      .join('');
+
+    const groupedByClient = new Map<string, SalesAccountingItem[]>();
+    data.itens.forEach((item) => {
+      const key = item.cliente || 'Cliente nao identificado';
+      const prev = groupedByClient.get(key) || [];
+      prev.push(item);
+      groupedByClient.set(key, prev);
+    });
+
+    const clientSections = Array.from(groupedByClient.entries())
+      .sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))
+      .map(([cliente, items]) => {
+        const subtotal = items.reduce((acc, item) => acc + Number(item.valorTotal || 0), 0);
+        const subtotalPago = items
+          .filter((item) => String(item.status).toUpperCase() === 'PAGO')
+          .reduce((acc, item) => acc + Number(item.valorTotal || 0), 0);
+        const subtotalPendente = subtotal - subtotalPago;
+
+        const lines = items
+          .sort((a, b) => a.data.localeCompare(b.data))
+          .map(
+            (item) => `
+              <tr>
+                <td>${escapeHtml(item.data)}</td>
+                <td>${escapeHtml(item.produto)}</td>
+                <td>${escapeHtml(item.quantidade)}</td>
+                <td style="text-align:right;">${fmtMoeda(item.valorTotal)}</td>
+                <td>${escapeHtml(item.metodoPagamento)}</td>
+                <td>${escapeHtml(item.status)}</td>
+                <td>${escapeHtml(item.recebidoPor || '-')}</td>
+              </tr>
+            `
+          )
+          .join('');
+
+        return `
+          <div class="client-block">
+            <div class="client-header">
+              <div>
+                <div class="client-name">${escapeHtml(cliente)}</div>
+                <div class="client-doc">Documento: ${escapeHtml(items[0]?.documentoCliente || '-')}</div>
+              </div>
+              <div class="client-totals">
+                <span>Total: ${fmtMoeda(subtotal)}</span>
+                <span>Pago: ${fmtMoeda(subtotalPago)}</span>
+                <span>Pendente: ${fmtMoeda(subtotalPendente)}</span>
+              </div>
+            </div>
+            <table class="mini-table">
+              <thead>
+                <tr>
+                  <th>Data</th><th>Produto</th><th>Quantidade</th><th>Valor</th><th>Metodo</th><th>Status</th><th>Recebido por</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${lines}
+              </tbody>
+            </table>
+          </div>
+        `;
+      })
+      .join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <style>
+          body { font-family: Arial, sans-serif; padding: 16px; color: #111827; }
+          h1 { margin: 0 0 4px; font-size: 20px; }
+          .meta { font-size: 12px; color: #4b5563; margin-bottom: 12px; }
+          .totals { display: flex; gap: 10px; margin-bottom: 12px; }
+          .card { border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 10px; }
+          .card .k { font-size: 10px; color: #6b7280; text-transform: uppercase; }
+          .card .v { font-size: 15px; font-weight: 700; }
+          table { width: 100%; border-collapse: collapse; font-size: 10px; }
+          th, td { border: 1px solid #d1d5db; padding: 6px; }
+          th { background: #f3f4f6; text-transform: uppercase; font-size: 9px; }
+          .section-title { margin: 14px 0 8px; font-size: 13px; font-weight: 700; }
+          .client-block { border: 1px solid #dbeafe; border-radius: 10px; margin-top: 10px; overflow: hidden; }
+          .client-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; background: #eff6ff; border-bottom: 1px solid #bfdbfe; padding: 8px 10px; }
+          .client-name { font-size: 13px; font-weight: 700; color: #1e3a8a; }
+          .client-doc { font-size: 10px; color: #334155; margin-top: 2px; }
+          .client-totals { display: flex; gap: 8px; flex-wrap: wrap; font-size: 10px; font-weight: 700; color: #1f2937; }
+          .mini-table { font-size: 9px; }
+          .footer { margin-top: 10px; font-size: 10px; color: #6b7280; }
+        </style>
+      </head>
+      <body>
+        <h1>Relatorio Contabil de Vendas</h1>
+        <div class="meta">Empresa: ${escapeHtml(data.empresa)} | Periodo: ${escapeHtml(data.periodo)} | Gerado em: ${escapeHtml(new Date().toLocaleString('pt-BR'))}</div>
+        <div class="totals">
+          <div class="card"><div class="k">Total de vendas</div><div class="v">${data.itens.length}</div></div>
+          <div class="card"><div class="k">Total geral</div><div class="v">${fmtMoeda(totalGeral)}</div></div>
+          <div class="card"><div class="k">Total pago</div><div class="v">${fmtMoeda(totalPago)}</div></div>
+          <div class="card"><div class="k">Total pendente</div><div class="v">${fmtMoeda(totalPendente)}</div></div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th><th>Cliente</th><th>Doc.</th><th>Estufa</th><th>Lote</th><th>Produto</th><th>Qtd.</th><th>Vlr Unit.</th><th>Vlr Total</th><th>Metodo</th><th>Status</th><th>Venc.</th><th>Recebido por</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows || '<tr><td colspan="13">Sem registros no periodo.</td></tr>'}
+          </tbody>
+        </table>
+        <div class="section-title">Resumo por cliente</div>
+        ${clientSections || '<div class="card">Sem clientes no periodo selecionado.</div>'}
+        <div class="footer">Relatorio para uso contabil. Valores em BRL.</div>
+      </body>
+      </html>
+    `;
+
+    const { uri } = await Print.printToFileAsync({ html });
+    const nomeArquivo = `Relatorio_Contabil_Vendas_${sanitizeFilenameSegment(data.empresa)}_${new Date().toISOString().slice(0, 10)}.pdf`;
+    const destinoUri = `${FileSystem.cacheDirectory}${nomeArquivo}`;
+    const existing = await FileSystem.getInfoAsync(destinoUri);
+    if (existing.exists) await FileSystem.deleteAsync(destinoUri, { idempotent: true });
+    await FileSystem.copyAsync({ from: uri, to: destinoUri });
+    const canShare = await Sharing.isAvailableAsync();
+    if (canShare) {
+      await Sharing.shareAsync(destinoUri, { UTI: '.pdf', mimeType: 'application/pdf', dialogTitle: nomeArquivo });
+    } else {
+      const downloaded = await downloadPdfOnWeb(destinoUri, nomeArquivo);
+      if (!downloaded) {
+        throw new Error('Nao foi possivel compartilhar ou baixar o PDF neste dispositivo.');
+      }
+    }
+  } finally {
+    setShareLocked(false);
+  }
+};
+
+export const exportSalesAccountingExcel = async (data: SalesAccountingPdfData) => {
+  const fileName = `Relatorio_Contabil_Vendas_${sanitizeFilenameSegment(data.empresa)}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+  const rows = data.itens.map((item) => ({
+    Data: item.data,
+    Cliente: item.cliente,
+    Documento: item.documentoCliente || '',
+    Estufa: item.estufa,
+    Lote: item.lote || '',
+    Produto: item.produto,
+    Quantidade: item.quantidade,
+    'Preco Unitario': Number(item.precoUnitario || 0),
+    'Valor Total': Number(item.valorTotal || 0),
+    'Metodo Pagamento': item.metodoPagamento,
+    Status: item.status,
+    Vencimento: item.vencimento || '',
+    'Recebido Por': item.recebidoPor || '',
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(rows, {
+    header: [
+      'Data',
+      'Cliente',
+      'Documento',
+      'Estufa',
+      'Lote',
+      'Produto',
+      'Quantidade',
+      'Preco Unitario',
+      'Valor Total',
+      'Metodo Pagamento',
+      'Status',
+      'Vencimento',
+      'Recebido Por',
+    ],
+  });
+
+  worksheet['!cols'] = [
+    { wch: 12 },
+    { wch: 28 },
+    { wch: 20 },
+    { wch: 20 },
+    { wch: 18 },
+    { wch: 28 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 16 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 24 },
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Relatorio');
+
+  if (typeof document !== 'undefined') {
+    XLSX.writeFile(workbook, fileName);
+    return;
+  }
+
+  const base64 = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
+  const destination = `${FileSystem.cacheDirectory}${fileName}`;
+  await FileSystem.writeAsStringAsync(destination, base64, { encoding: FileSystem.EncodingType.Base64 });
+
+  const canShare = await Sharing.isAvailableAsync();
+  if (canShare) {
+    await Sharing.shareAsync(destination, {
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      dialogTitle: fileName,
+      UTI: 'org.openxmlformats.spreadsheetml.sheet',
+    });
+    return;
+  }
+
+  throw new Error('Nao foi possivel compartilhar o arquivo Excel neste dispositivo.');
 };

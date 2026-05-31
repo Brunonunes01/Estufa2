@@ -21,24 +21,28 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#14532d"
-      }
+      },
+      "permissions": [
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS"
+      ]
     },
     "web": {
       "favicon": "./assets/icon.png"
     },
     "extra": {
       "eas": {
-        "projectId": "6cb20ebb-7cfe-4178-9a4f-b644d94feaac"
+        "projectId": "8987da0d-98d7-473c-ae50-b316546bfe5e"
       }
     },
     "plugins": [
-      "expo-web-browser",
       [
         "expo-contacts",
         {
           "contactsPermission": "Permitir que o Estufa Pro acesse seus contatos para importar dados de clientes."
         }
-      ]
+      ],
+      "expo-font"
     ]
   }
 }

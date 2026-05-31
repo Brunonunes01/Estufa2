@@ -69,6 +69,21 @@ const toNumber = (value: any, fallback = 0) => {
 const formatQuantity = (value: number) =>
   value.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
 
+const formatAddress = (entity: {
+  endereco?: string | null;
+  numero?: string | null;
+  complemento?: string | null;
+  bairro?: string | null;
+  cidade?: string | null;
+  estado?: string | null;
+  cep?: string | null;
+}) => {
+  const part1 = [entity.endereco, entity.numero, entity.complemento].filter(Boolean).join(', ');
+  const part2 = [entity.bairro, entity.cidade, entity.estado, entity.cep].filter(Boolean).join(' - ');
+  const full = [part1, part2].filter(Boolean).join(' | ');
+  return full || 'Nao informado';
+};
+
 const normalizeUnitLabel = (value?: string | null) => {
   const raw = String(value || '').trim().toLowerCase();
   if (!raw) return 'un';
@@ -170,6 +185,28 @@ const resolveLogoBase64 = async (logoAssetModule?: number, logoBase64?: string) 
   return blobToBase64(blob);
 };
 
+const downloadPdfOnWeb = async (uri: string, fileName: string) => {
+  if (typeof document === 'undefined') return false;
+
+  let href = uri;
+  if (!href.startsWith('data:')) {
+    try {
+      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      href = `data:application/pdf;base64,${base64}`;
+    } catch {
+      return false;
+    }
+  }
+
+  const anchor = document.createElement('a');
+  anchor.href = href;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  return true;
+};
+
 export const buildHtmlTemplate = (input: ComprovantePDFInput, logoBase64: string) => {
   const { colheita, cliente, plantio, nomeEstufa, nomeFazenda, cultura, contatoFazenda } = input;
   const dataOperacao = formatDateTime(colheita.dataVenda || colheita.dataColheita);
@@ -189,8 +226,10 @@ export const buildHtmlTemplate = (input: ComprovantePDFInput, logoBase64: string
   const statusClasse = statusPagamento === 'pago' ? 'status-paid' : 'status-pending';
   const statusLabel = statusPagamento.toUpperCase();
   const clienteNome = cliente?.nome || 'Cliente Avulso';
+  const clienteDocumento = cliente?.documento || 'Nao informado';
   const clienteTelefone = cliente?.telefone || 'Não informado';
   const clienteCidade = cliente?.cidade || 'Não informada';
+  const clienteEndereco = formatAddress(cliente || {});
   const metodoPagamento = colheita.metodoPagamento || colheita.formaPagamento || 'Não informado';
   const dataVencimento = colheita.dataVencimento ? formatDateTime(colheita.dataVencimento).date : '-';
   const lotePlantio = plantio?.codigoLote || colheita.codigoLote || friendlyCode(colheita.plantioId, 'PLANTIO');
@@ -343,7 +382,9 @@ export const buildHtmlTemplate = (input: ComprovantePDFInput, logoBase64: string
             <div class="grid-2">
               <div>
                 <div class="kv"><strong>Cliente:</strong> ${escapeHtml(clienteNome)}</div>
+                <div class="kv"><strong>Documento:</strong> ${escapeHtml(clienteDocumento)}</div>
                 <div class="kv"><strong>Contato:</strong> ${escapeHtml(clienteTelefone)} • ${escapeHtml(clienteCidade)}</div>
+                <div class="kv"><strong>Endereco:</strong> ${escapeHtml(clienteEndereco)}</div>
                 <div class="kv"><strong>Método de Pagamento:</strong> ${escapeHtml(String(metodoPagamento).toUpperCase())}</div>
               </div>
               <div>
@@ -394,6 +435,20 @@ export const buildHtmlTemplate = (input: ComprovantePDFInput, logoBase64: string
           </section>
 
           <section class="card">
+            <h2>Condições comerciais</h2>
+            <div class="grid-2">
+              <div>
+                <div class="kv"><strong>Quantidade total:</strong> ${escapeHtml(formatQuantity(quantidadeTotal))} ${escapeHtml(String(unidadeTotal))}</div>
+                <div class="kv"><strong>Preço médio por unidade:</strong> ${formatCurrency(precoMedio)}</div>
+              </div>
+              <div>
+                <div class="kv"><strong>Valor final:</strong> ${formatCurrency(valorTotal)}</div>
+                <div class="kv"><strong>Status do pagamento:</strong> ${escapeHtml(statusLabel)}</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
             <h2>Origem e rastreabilidade</h2>
             <div class="trace-box">
               <div class="trace-left">
@@ -421,7 +476,13 @@ export const buildHtmlTemplate = (input: ComprovantePDFInput, logoBase64: string
           <footer class="footer">
             Documento gerado automaticamente pelo Sistema de Gestão de Estufas.<br/>
             A rastreabilidade agrícola reforça a qualidade e a origem segura do produto.<br/>
-            ${escapeHtml(contatoFazenda || 'Para dúvidas, contacte a equipa da propriedade.')}
+            ${escapeHtml(contatoFazenda || 'Para duvidas, contate a equipe da propriedade.')}
+            <br/><br/>
+            ____________________________________________<br/>
+            Assinatura do produtor / responsavel
+            <br/><br/>
+            ____________________________________________<br/>
+            Assinatura do cliente / recebedor
           </footer>
         </div>
       </body>
@@ -458,14 +519,19 @@ export const compartilharPDF = async (input: ComprovantePDFInput) => {
     await FileSystem.copyAsync({ from: uri, to: destinoUri });
 
     const isAvailable = await Sharing.isAvailableAsync();
-    if (!isAvailable) {
-      throw new Error('Compartilhamento não disponível neste dispositivo.');
+    if (isAvailable) {
+      await Sharing.shareAsync(destinoUri, {
+        UTI: '.pdf',
+        mimeType: 'application/pdf',
+        dialogTitle: nomeArquivo,
+      });
+      return;
     }
-    await Sharing.shareAsync(destinoUri, {
-      UTI: '.pdf',
-      mimeType: 'application/pdf',
-      dialogTitle: nomeArquivo,
-    });
+
+    const downloaded = await downloadPdfOnWeb(destinoUri, nomeArquivo);
+    if (!downloaded) {
+      throw new Error('Nao foi possivel compartilhar ou baixar o PDF neste dispositivo.');
+    }
   } finally {
     setShareLocked(false);
   }

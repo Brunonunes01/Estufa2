@@ -27,8 +27,10 @@ type Props = NativeStackScreenProps<RootStackParamList, 'HidroponiaColheitaForm'
 const PAYMENT_METHODS = [
   { value: 'pix', label: 'PIX', icon: 'qrcode' },
   { value: 'dinheiro', label: 'Dinheiro', icon: 'cash' },
+  { value: 'boleto', label: 'Boleto', icon: 'barcode' },
   { value: 'cartao', label: 'Cartão', icon: 'credit-card' },
   { value: 'prazo', label: 'A Prazo', icon: 'calendar-clock' },
+  { value: 'outro', label: 'Outro', icon: 'dots-horizontal-circle-outline' },
 ];
 
 const UNIDADES = ['maços', 'un', 'kg', 'caixas'];

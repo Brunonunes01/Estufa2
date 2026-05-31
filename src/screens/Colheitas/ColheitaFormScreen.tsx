@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   View, Text, TextInput, ScrollView, Alert, StyleSheet,
   TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Modal, Switch
@@ -10,6 +10,7 @@ import { getVendaById } from '../../services/vendaService';
 import { listAllPlantios, unlockPlantioCycleForEarlySale } from '../../services/plantioService';
 import { listEstufas } from '../../services/estufaService';
 import { listClientes, createCliente } from '../../services/clienteService';
+import { createCaixaPessoa, listCaixaPessoas, CaixaPessoa } from '../../services/caixaPessoaService';
 import { useAuth } from '../../hooks/useAuth';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -19,7 +20,7 @@ import { queryClient, queryKeys } from '../../lib/queryClient';
 import { verifyCurrentUserPassword } from '../../services/securityService';
 import { useAppSettings } from '../../hooks/useAppSettings';
 
-type UnidadeColheita = "kg" | "caixa" | "unidade" | "maço";
+type UnidadeColheita = "kg" | "caixas" | "un" | "maços";
 type MetodoPagamento = "pix" | "dinheiro" | "boleto" | "prazo" | "cartao" | "outro";
 
 const ColheitaFormScreen = ({ route, navigation }: any) => {
@@ -35,17 +36,19 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
 
   const [plantiosDisponiveis, setPlantiosDisponiveis] = useState<Plantio[]>([]);
   const [clientesList, setClientesList] = useState<Cliente[]>([]);
+  const [caixaPessoas, setCaixaPessoas] = useState<CaixaPessoa[]>([]);
   const [estufasMap, setEstufasMap] = useState<Record<string, string>>({});
   const [loadingData, setLoadingData] = useState(false);
 
   const [selectedPlantioId, setSelectedPlantioId] = useState<string>(params.plantioId || '');
   const [quantidade, setQuantidade] = useState('');
-  const [unidade, setUnidade] = useState<UnidadeColheita>('caixa');
+  const [unidade, setUnidade] = useState<UnidadeColheita>('caixas');
   const [preco, setPreco] = useState('');
   const [pesoBruto, setPesoBruto] = useState('');
   const [pesoLiquido, setPesoLiquido] = useState('');
   const [selectedClienteId, setSelectedClienteId] = useState<string | null>(null);
   const [metodoPagamento, setMetodoPagamento] = useState<MetodoPagamento>('pix');
+  const [pagamentoPara, setPagamentoPara] = useState<string | null>(null);
   const [dataVenda, setDataVenda] = useState(new Date());
   const [isFinalHarvest, setIsFinalHarvest] = useState(false);
 
@@ -54,11 +57,44 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [novoClienteNome, setNovoClienteNome] = useState('');
   const [salvandoNovoCliente, setSalvandoNovoCliente] = useState(false);
+  const [modalCaixaVisible, setModalCaixaVisible] = useState(false);
+  const [novoCaixaNome, setNovoCaixaNome] = useState('');
+  const [salvandoNovaPessoaCaixa, setSalvandoNovaPessoaCaixa] = useState(false);
   const [unlockModalVisible, setUnlockModalVisible] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
   const [unlockReason, setUnlockReason] = useState('');
   const [unlocking, setUnlocking] = useState(false);
   const [saleUnlockedByAdmin, setSaleUnlockedByAdmin] = useState(false);
+  const [editAuthModalVisible, setEditAuthModalVisible] = useState(false);
+  const [editPassword, setEditPassword] = useState('');
+  const [editAuthorizing, setEditAuthorizing] = useState(false);
+  const [isEditAuthorized, setIsEditAuthorized] = useState(false);
+  const initialEditSnapshotRef = useRef<string | null>(null);
+
+  const buildEditSnapshot = (values: {
+    selectedPlantioId: string;
+    quantidade: string;
+    unidade: UnidadeColheita;
+    preco: string;
+    pesoBruto: string;
+    pesoLiquido: string;
+    selectedClienteId: string | null;
+    metodoPagamento: MetodoPagamento;
+    pagamentoPara: string | null;
+    dataVenda: Date;
+  }) =>
+    JSON.stringify({
+      selectedPlantioId: values.selectedPlantioId || '',
+      quantidade: Number(values.quantidade.replace(',', '.')) || 0,
+      unidade: values.unidade,
+      preco: Number(values.preco.replace(',', '.')) || 0,
+      pesoBruto: Number(values.pesoBruto.replace(',', '.')) || 0,
+      pesoLiquido: Number(values.pesoLiquido.replace(',', '.')) || 0,
+      selectedClienteId: values.selectedClienteId || null,
+      metodoPagamento: values.metodoPagamento,
+      pagamentoPara: values.pagamentoPara || null,
+      dataVenda: new Date(values.dataVenda).toISOString().slice(0, 10),
+    });
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -77,13 +113,18 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
 
         setLoadingData(true);
         try {
-            const [clientes, plantios, estufas] = await Promise.all([
+            const [clientes, pessoasCaixa, plantios, estufas] = await Promise.all([
                 listClientes(targetId),
+                listCaixaPessoas(targetId),
                 listAllPlantios(targetId),
                 listEstufas(targetId)
             ]);
 
             setClientesList(clientes);
+            setCaixaPessoas(pessoasCaixa);
+            if (!pagamentoPara && pessoasCaixa.length > 0) {
+              setPagamentoPara(pessoasCaixa[0].id);
+            }
             const mapE: any = {};
             estufas.forEach((e: any) => mapE[e.id] = e.nome);
             setEstufasMap(mapE);
@@ -120,7 +161,9 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                     setUnidade(venda.unidade as UnidadeColheita);
                     setPreco(venda.precoUnitario ? String(venda.precoUnitario) : '');
                     setSelectedClienteId(venda.clienteId || null);
-                    setMetodoPagamento((venda.metodoPagamento as MetodoPagamento) || 'pix');
+                    const metodoVenda = (venda.metodoPagamento as MetodoPagamento) || 'pix';
+                    setMetodoPagamento(metodoVenda);
+                    setPagamentoPara(metodoVenda === 'prazo' ? null : (venda.pagamentoPara as string) || pessoasCaixa[0]?.id || null);
                     setSelectedPlantioId(venda.plantioId);
                     setPesoBruto(venda.pesoBruto ? String(venda.pesoBruto) : '');
                     setPesoLiquido(venda.pesoLiquido ? String(venda.pesoLiquido) : '');
@@ -128,6 +171,25 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                         const dc = venda.dataColheita;
                         setDataVenda(dc.toDate ? dc.toDate() : new Date(dc.seconds * 1000));
                     }
+                    initialEditSnapshotRef.current = buildEditSnapshot({
+                      selectedPlantioId: venda.plantioId,
+                      quantidade: String(venda.quantidade),
+                      unidade: venda.unidade as UnidadeColheita,
+                      preco: venda.precoUnitario ? String(venda.precoUnitario) : '',
+                      pesoBruto: venda.pesoBruto ? String(venda.pesoBruto) : '',
+                      pesoLiquido: venda.pesoLiquido ? String(venda.pesoLiquido) : '',
+                      selectedClienteId: venda.clienteId || null,
+                      metodoPagamento: metodoVenda,
+                      pagamentoPara:
+                        metodoVenda === 'prazo'
+                          ? null
+                          : (venda.pagamentoPara as string) || pessoasCaixa[0]?.id || null,
+                      dataVenda: venda.dataColheita
+                        ? venda.dataColheita.toDate
+                          ? venda.dataColheita.toDate()
+                          : new Date(venda.dataColheita.seconds * 1000)
+                        : new Date(),
+                    });
                 } else {
                     throw new Error('Colheita vinculada à venda não encontrada.');
                 }
@@ -150,12 +212,42 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const precoPorKg = useMemo(() => {
     const pLiq = parseFloat(pesoLiquido.replace(',','.')) || 0;
     const prc = parseFloat(preco.replace(',','.')) || 0;
-    return (unidade === 'caixa' && pLiq > 0) ? prc / pLiq : 0;
+    return (unidade === 'caixas' && pLiq > 0) ? prc / pLiq : 0;
   }, [unidade, pesoLiquido, preco]);
 
   const loteSelecionado = useMemo(() => {
     return plantiosDisponiveis.find(p => p.id === selectedPlantioId);
   }, [selectedPlantioId, plantiosDisponiveis]);
+
+  const hasEditChanges = useMemo(() => {
+    if (!isEditMode) return true;
+    if (!initialEditSnapshotRef.current) return false;
+    const current = buildEditSnapshot({
+      selectedPlantioId,
+      quantidade,
+      unidade,
+      preco,
+      pesoBruto,
+      pesoLiquido,
+      selectedClienteId,
+      metodoPagamento,
+      pagamentoPara,
+      dataVenda,
+    });
+    return current !== initialEditSnapshotRef.current;
+  }, [
+    isEditMode,
+    selectedPlantioId,
+    quantidade,
+    unidade,
+    preco,
+    pesoBruto,
+    pesoLiquido,
+    selectedClienteId,
+    metodoPagamento,
+    pagamentoPara,
+    dataVenda,
+  ]);
 
   const minSaleDate = useMemo(() => {
     if (!loteSelecionado?.cicloDias || loteSelecionado.cicloDias <= 0) return null;
@@ -206,7 +298,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
             await deleteColheita(editingColheitaId, targetId);
             invalidateQueries();
             navigation.goBack();
-          } catch (e) { Alert.alert("Erro", "Falha ao excluir."); }
+          } catch (e: any) { Alert.alert("Erro", e?.message || "Falha ao excluir."); }
       }}
     ]);
   };
@@ -231,10 +323,30 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
     } catch (error) { Alert.alert("Erro", "Falha ao cadastrar."); } finally { setSalvandoNovoCliente(false); }
   };
 
+  const handleQuickRegisterCaixaPessoa = async () => {
+    if (!novoCaixaNome.trim()) return Alert.alert("AtenÃ§Ã£o", "Digite o nome");
+    if (!targetId) return;
+
+    setSalvandoNovaPessoaCaixa(true);
+    try {
+      const novoId = await createCaixaPessoa({ nome: novoCaixaNome.trim() }, targetId);
+      const novaPessoa = { id: novoId, nome: novoCaixaNome.trim(), ativo: true } as CaixaPessoa;
+      setCaixaPessoas((prev) => [...prev, novaPessoa].sort((a, b) => a.nome.localeCompare(b.nome)));
+      setPagamentoPara(novoId);
+      setModalCaixaVisible(false);
+      setNovoCaixaNome('');
+    } catch {
+      Alert.alert("Erro", "Falha ao cadastrar pessoa do caixa.");
+    } finally {
+      setSalvandoNovaPessoaCaixa(false);
+    }
+  };
+
   const persistColheita = async (allowBeforeCycleDays = false, reason?: string) => {
       if (!targetId) return Alert.alert("Atenção", "Sua sessão expirou. Entre novamente.");
       if (!selectedPlantioId) return Alert.alert("Atenção", "Escolha o ciclo para registrar a venda.");
       if (!quantidade) return Alert.alert("Atenção", "Digite a quantidade da venda.");
+      if (metodoPagamento !== 'prazo' && caixaPessoas.length > 0 && !pagamentoPara) return Alert.alert("Atenção", "Selecione quem recebeu no caixa.");
 
       setLoading(true);
       try {
@@ -253,6 +365,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
               clienteId: selectedClienteId,
               destino: 'venda_direta',
               metodoPagamento,
+              pagamentoPara,
               registradoPor: user?.name || 'App',
               observacoes: `Lote: ${plantioObj?.codigoLote || 'N/A'}`,
               dataVenda,
@@ -346,6 +459,15 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   };
 
   const handleSave = async () => {
+    if (isEditMode && !isEditAuthorized) {
+      if (!hasEditChanges) {
+        Alert.alert('Sem alteracoes', 'Altere algum campo para salvar a venda.');
+        return;
+      }
+      setEditPassword('');
+      setEditAuthModalVisible(true);
+      return;
+    }
     if (isCycleLockedForSale) {
       if (!canDeleteEstufa) {
         Alert.alert(
@@ -475,15 +597,15 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                     <Text style={styles.label}>Unidade</Text>
                     <View style={styles.pickerWrapper}>
                         <Picker selectedValue={unidade} onValueChange={(val: any) => setUnidade(val)} style={styles.picker} enabled={!isCycleLockedForSale}>
-                            <Picker.Item label="CX" value="caixa" />
+                            <Picker.Item label="CX" value="caixas" />
                             <Picker.Item label="KG" value="kg" />
-                            <Picker.Item label="UN" value="unidade" />
+                            <Picker.Item label="UN" value="un" />
                         </Picker>
                     </View>
                 </View>
             </View>
 
-            {unidade === 'caixa' && (
+            {unidade === 'caixas' && (
                 <View style={styles.row}>
                     <View style={{ flex: 1, marginRight: 10 }}>
                         <Text style={styles.label}>P. Bruto (kg)</Text>
@@ -499,7 +621,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
             <Text style={styles.label}>Preço Unitário (R$)</Text>
             <TextInput style={styles.input} keyboardType="numeric" value={preco} onChangeText={setPreco} placeholder="0.00" editable={!isCycleLockedForSale} />
 
-            {unidade === 'caixa' && precoPorKg > 0 && (
+            {unidade === 'caixas' && precoPorKg > 0 && (
                 <View style={styles.infoRow}>
                     <MaterialCommunityIcons name="scale" size={20} color={COLORS.primary} />
                     <Text style={styles.infoText}>Preço p/ Kg: R$ {precoPorKg.toFixed(2)}</Text>
@@ -515,13 +637,32 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
         <View style={[styles.card, isCycleLockedForSale && styles.lockedCard]}>
             <Text style={styles.sectionHeader}>Pagamento</Text>
             <View style={styles.pickerWrapper}>
-                <Picker selectedValue={metodoPagamento} onValueChange={(val: any) => setMetodoPagamento(val)} style={styles.picker} enabled={!isCycleLockedForSale}>
+                <Picker selectedValue={metodoPagamento} onValueChange={(val: any) => { setMetodoPagamento(val); if (val === 'prazo') setPagamentoPara(null); }} style={styles.picker} enabled={!isCycleLockedForSale}>
                     <Picker.Item label="Pix" value="pix" />
                     <Picker.Item label="Dinheiro" value="dinheiro" />
+                    <Picker.Item label="Boleto" value="boleto" />
                     <Picker.Item label="A Prazo" value="prazo" />
                     <Picker.Item label="Cartão" value="cartao" />
+                    <Picker.Item label="Outro" value="outro" />
                 </Picker>
             </View>
+
+            {metodoPagamento !== 'prazo' ? (
+              <>
+                <Text style={[styles.label, {marginTop: 15}]}>Recebido por (Caixa)</Text>
+                <View style={styles.rowAlign}>
+                    <View style={styles.pickerWrapper}>
+                        <Picker selectedValue={pagamentoPara} onValueChange={setPagamentoPara} style={styles.picker} enabled={!isCycleLockedForSale}>
+                            <Picker.Item label="Selecione uma pessoa..." value={null} />
+                            {caixaPessoas.map((pessoa) => <Picker.Item key={pessoa.id} label={pessoa.nome} value={pessoa.id} />)}
+                        </Picker>
+                    </View>
+                    <TouchableOpacity style={styles.addBtn} onPress={() => setModalCaixaVisible(true)}>
+                        <MaterialCommunityIcons name="account-plus" size={24} color={COLORS.textLight} />
+                    </TouchableOpacity>
+                </View>
+              </>
+            ) : null}
 
             {!isEditMode && (
               <View style={styles.finalHarvestRow}>
@@ -542,9 +683,13 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
             )}
         </View>
 
-        <TouchableOpacity style={[styles.saveBtn, isCycleLockedForSale && styles.saveBtnDisabled]} onPress={handleSave} disabled={loading || isCycleLockedForSale}>
-            {loading ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.saveText}>{isCycleLockedForSale ? 'Desbloqueie para continuar' : isEditMode ? 'Salvar Alterações' : 'Confirmar Venda'}</Text>}
-        </TouchableOpacity>
+        {!isEditMode || hasEditChanges ? (
+          <TouchableOpacity style={[styles.saveBtn, isCycleLockedForSale && styles.saveBtnDisabled]} onPress={handleSave} disabled={loading || isCycleLockedForSale}>
+              {loading ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.saveText}>{isCycleLockedForSale ? 'Desbloqueie para continuar' : isEditMode ? 'Salvar Alteracoes' : 'Confirmar Venda'}</Text>}
+          </TouchableOpacity>
+        ) : (
+          <Text style={[styles.finalHarvestHint, { textAlign: 'center', marginBottom: 20 }]}>Sem alteracoes para salvar.</Text>
+        )}
 
       </ScrollView>
 
@@ -557,6 +702,21 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
               <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={{color: COLORS.textSecondary}}>Cancelar</Text></TouchableOpacity>
               <TouchableOpacity onPress={handleQuickRegisterClient} style={styles.modalBtn}>
                 {salvandoNovoCliente ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={{color: COLORS.textLight, fontWeight: 'bold'}}>Salvar</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal animationType="fade" transparent visible={modalCaixaVisible} onRequestClose={() => setModalCaixaVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Nova Pessoa do Caixa</Text>
+            <TextInput style={styles.input} placeholder="Nome da pessoa" value={novoCaixaNome} onChangeText={setNovoCaixaNome} autoFocus />
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setModalCaixaVisible(false)}><Text style={{color: COLORS.textSecondary}}>Cancelar</Text></TouchableOpacity>
+              <TouchableOpacity onPress={handleQuickRegisterCaixaPessoa} style={styles.modalBtn}>
+                {salvandoNovaPessoaCaixa ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={{color: COLORS.textLight, fontWeight: 'bold'}}>Salvar</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -598,6 +758,53 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
               </TouchableOpacity>
               <TouchableOpacity onPress={handleUnlockWithAdmin} style={styles.modalBtn} disabled={unlocking}>
                 {unlocking ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={{color: COLORS.textLight, fontWeight: 'bold'}}>Desbloquear</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal animationType="fade" transparent visible={editAuthModalVisible} onRequestClose={() => setEditAuthModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Confirmar edicao da venda</Text>
+            <Text style={styles.unlockText}>Digite a senha do app para autorizar a alteracao desta venda.</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Senha"
+              value={editPassword}
+              onChangeText={setEditPassword}
+              secureTextEntry
+              autoCapitalize="none"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setEditAuthModalVisible(false)} disabled={editAuthorizing}>
+                <Text style={{color: COLORS.textSecondary}}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalBtn}
+                disabled={editAuthorizing}
+                onPress={async () => {
+                  if (!editPassword.trim()) {
+                    Alert.alert('Atencao', 'Digite a senha para continuar.');
+                    return;
+                  }
+                  setEditAuthorizing(true);
+                  try {
+                    const ok = await verifyCurrentUserPassword(editPassword.trim());
+                    if (!ok) {
+                      Alert.alert('Senha invalida', 'A senha informada esta incorreta.');
+                      return;
+                    }
+                    setIsEditAuthorized(true);
+                    setEditAuthModalVisible(false);
+                    await handleSave();
+                  } finally {
+                    setEditAuthorizing(false);
+                  }
+                }}
+              >
+                {editAuthorizing ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={{color: COLORS.textLight, fontWeight: 'bold'}}>Autorizar</Text>}
               </TouchableOpacity>
             </View>
           </View>

@@ -9,8 +9,8 @@ import {
   Timestamp,
   updateDoc,
   where,
-} from '../compat/firestore';
-import { db } from './firebaseConfig';
+} from '../compat/legacyDataApi';
+import { db } from './removedBackend';
 import { Venda } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { createTraceabilityEventSafely } from './traceabilityService';
@@ -39,6 +39,7 @@ export interface VendaFormData {
   unidade: string;
   precoUnitario: number;
   metodoPagamento?: string | null;
+  pagamentoPara?: string | null;
   dataVenda?: Date;
   observacoes?: string | null;
   colheitaId?: string;
@@ -85,6 +86,7 @@ const mapSupabaseVendaToDomain = (row: any): Venda => {
     statusPagamento: row.status_pagamento,
     formaPagamento: row.forma_pagamento || undefined,
     metodoPagamento: row.metodo_pagamento || null,
+    pagamentoPara: row.pagamento_para || null,
     observacoes: row.observacoes || undefined,
     quantidade: row.quantidade != null ? Number(row.quantidade) : fallbackItem?.quantidade,
     unidade: fallbackItem?.unidade,
@@ -142,6 +144,7 @@ const buildSupabaseVendaPayload = (
       status_pagamento: statusPagamento,
       forma_pagamento: data.metodoPagamento || 'pix',
       metodo_pagamento: data.metodoPagamento || 'pix',
+      pagamento_para: data.pagamentoPara || null,
       observacoes: data.observacoes || '',
       quantidade: Number(data.quantidade || 0),
       ciclo_desbloqueado_por_admin: !!data.cycleOverrideAudit,
@@ -203,6 +206,17 @@ const isReceivableStatus = (status?: Venda['statusPagamento'] | null, metodoPaga
   status === 'pendente' || status === 'atrasado' || (!status && metodoPagamento === 'prazo');
 
 const isReceivedStatus = (status?: Venda['statusPagamento'] | null) => status === 'pago';
+
+const isDeletePermissionError = (error: any): boolean => {
+  const message = String(error?.message || '').toLowerCase();
+  const code = String(error?.code || '').toUpperCase();
+  return (
+    code === '42501' ||
+    message.includes('permission denied') ||
+    message.includes('violates row-level security') ||
+    message.includes('row level security')
+  );
+};
 
 const validateVendaFormData = (data: VendaFormData) => {
   const quantidade = Number(data.quantidade || 0);
@@ -275,6 +289,7 @@ const buildVendaPayload = (
     statusPagamento,
     formaPagamento: (data.metodoPagamento || 'pix') as Venda['formaPagamento'],
     metodoPagamento: data.metodoPagamento || 'pix',
+    pagamentoPara: data.pagamentoPara || null,
     observacoes: data.observacoes || '',
     cultura: data.cultura || null,
     cicloDesbloqueadoPorAdmin: !!data.cycleOverrideAudit,
@@ -357,6 +372,7 @@ export const createVenda = async (data: VendaFormData, userId: string, options?:
             unidade: data.unidade || null,
             precoUnitario: Number(data.precoUnitario || 0),
             metodoPagamento: data.metodoPagamento || 'pix',
+            pagamentoPara: data.pagamentoPara || null,
             clienteId: data.clienteId || null,
             originType: payload.venda.origin_type || null,
             originId: payload.venda.origin_id || null,
@@ -423,6 +439,7 @@ export const createVenda = async (data: VendaFormData, userId: string, options?:
           unidade: data.unidade || null,
           precoUnitario: Number(data.precoUnitario || 0),
           metodoPagamento: data.metodoPagamento || 'pix',
+          pagamentoPara: data.pagamentoPara || null,
           clienteId: data.clienteId || null,
           originType: payload.originType || null,
           originId: payload.originId || null,
@@ -526,6 +543,8 @@ export const updateVenda = async (id: string, data: VendaFormData, userId: strin
           originId: data.originId !== undefined ? data.originId : venda.originId ?? null,
           estufaId: data.estufaId ?? venda.estufaId,
           clienteId: data.clienteId !== undefined ? data.clienteId : venda.clienteId ?? null,
+          pagamentoPara:
+            data.pagamentoPara !== undefined ? data.pagamentoPara : (venda as any).pagamentoPara ?? null,
           colheitaId: data.colheitaId ?? venda.colheitaId ?? undefined,
         } as VendaFormData;
         const payload = buildSupabaseVendaPayload(merged, tenantId, venda.traceabilityPublicToken || undefined);
@@ -575,6 +594,7 @@ export const updateVenda = async (id: string, data: VendaFormData, userId: strin
             unidade: data.unidade || null,
             precoUnitario: Number(data.precoUnitario || 0),
             metodoPagamento: data.metodoPagamento || payload.venda.metodo_pagamento || 'pix',
+            pagamentoPara: merged.pagamentoPara || null,
             clienteId: merged.clienteId || venda.clienteId || null,
             originType: payload.venda.origin_type || (venda as any).originType || null,
             originId: payload.venda.origin_id || (venda as any).originId || null,
@@ -644,6 +664,8 @@ export const updateVenda = async (id: string, data: VendaFormData, userId: strin
       originId: data.originId !== undefined ? data.originId : venda.originId ?? null,
       estufaId: data.estufaId ?? venda.estufaId,
       clienteId: data.clienteId !== undefined ? data.clienteId : venda.clienteId ?? null,
+      pagamentoPara:
+        data.pagamentoPara !== undefined ? data.pagamentoPara : (venda as any).pagamentoPara ?? null,
       colheitaId: data.colheitaId ?? venda.colheitaId ?? undefined,
     },
     tenantId,
@@ -681,6 +703,7 @@ export const updateVenda = async (id: string, data: VendaFormData, userId: strin
       unidade: data.unidade || null,
       precoUnitario: Number(data.precoUnitario || 0),
       metodoPagamento: data.metodoPagamento || payload.metodoPagamento || 'pix',
+      pagamentoPara: (payload as any).pagamentoPara || (venda as any).pagamentoPara || null,
       clienteId: data.clienteId || venda.clienteId || null,
       originType: payload.originType || (venda as any).originType || null,
       originId: payload.originId || (venda as any).originId || null,
@@ -745,14 +768,24 @@ export const deleteVenda = async (id: string, userId: string, options?: OfflineW
           .delete()
           .eq('venda_id', id)
           .eq('tenant_id', tenantId);
-        if (itemDeleteError) throw new Error(`Erro ao excluir itens da venda. ${itemDeleteError.message}`);
+        if (itemDeleteError) {
+          if (isDeletePermissionError(itemDeleteError)) {
+            throw new Error('Sem permissao para excluir itens da venda neste perfil.');
+          }
+          throw new Error(`Erro ao excluir itens da venda. ${itemDeleteError.message}`);
+        }
 
         const { error: vendaDeleteError } = await supabase
           .from('vendas')
           .delete()
           .eq('id', id)
           .eq('tenant_id', tenantId);
-        if (vendaDeleteError) throw new Error(`Erro ao excluir venda. ${vendaDeleteError.message}`);
+        if (vendaDeleteError) {
+          if (isDeletePermissionError(vendaDeleteError)) {
+            throw new Error('Sem permissao para excluir venda neste perfil.');
+          }
+          throw new Error(`Erro ao excluir venda. ${vendaDeleteError.message}`);
+        }
 
         await createTraceabilityEventSafely(tenantId, {
           plantioId: venda.plantioId || null,
@@ -993,12 +1026,18 @@ export const receberVenda = async (
   vendaId: string,
   userId: string,
   metodoRecebimento?: string,
+  pagamentoPara?: string | null,
   options?: OfflineWriteOptions
 ) => {
   const tenantId = assertTenantId(userId);
   return runOfflineWrite({
     action: 'receberVenda',
-    payload: { id: vendaId, userId: tenantId, metodoRecebimento: metodoRecebimento || null },
+    payload: {
+      id: vendaId,
+      userId: tenantId,
+      metodoRecebimento: metodoRecebimento || null,
+      pagamentoPara: pagamentoPara || null,
+    },
     options,
     onQueuedValue: () => undefined,
     write: async () => {
@@ -1013,6 +1052,7 @@ export const receberVenda = async (
             status_pagamento: 'pago',
             forma_pagamento: (metodoRecebimento || venda.formaPagamento || 'pix') as Venda['formaPagamento'],
             metodo_pagamento: metodoRecebimento || venda.metodoPagamento || 'pix',
+            pagamento_para: pagamentoPara || (venda as any).pagamentoPara || null,
             updated_at: new Date().toISOString(),
           })
           .eq('id', vendaId)
@@ -1030,6 +1070,7 @@ export const receberVenda = async (
           actorUid: tenantId,
           metadata: {
             metodoPagamento: metodoRecebimento || venda.metodoPagamento || venda.formaPagamento || 'pix',
+            pagamentoPara: pagamentoPara || (venda as any).pagamentoPara || null,
             previousStatusPagamento: venda.statusPagamento,
             newStatusPagamento: 'pago',
             originType: (venda as any).originType || null,
@@ -1057,6 +1098,7 @@ export const receberVenda = async (
         statusPagamento: 'pago',
         formaPagamento: (metodoRecebimento || venda.formaPagamento || 'pix') as Venda['formaPagamento'],
         metodoPagamento: metodoRecebimento || venda.metodoPagamento || 'pix',
+        pagamentoPara: pagamentoPara || (venda as any).pagamentoPara || null,
         updatedAt: Timestamp.now(),
       });
 
@@ -1071,6 +1113,7 @@ export const receberVenda = async (
         actorUid: tenantId,
         metadata: {
           metodoPagamento: metodoRecebimento || venda.metodoPagamento || venda.formaPagamento || 'pix',
+          pagamentoPara: pagamentoPara || (venda as any).pagamentoPara || null,
           previousStatusPagamento: venda.statusPagamento,
           newStatusPagamento: 'pago',
           originType: (venda as any).originType || null,

@@ -1,5 +1,5 @@
-import { addDoc, collection, getDocs, limit, orderBy, query, Timestamp, where } from '../compat/firestore';
-import { db } from './firebaseConfig';
+import { addDoc, collection, getDocs, limit, orderBy, query, Timestamp, where } from '../compat/legacyDataApi';
+import { db } from './removedBackend';
 import { assertTenantId } from './tenantGuard';
 import { RastreabilidadeEvento } from '../types/domain';
 import { isSupabaseBackend } from './backendConfig';
@@ -74,25 +74,42 @@ export const createTraceabilityEvent = async (userId: string, data: CreateTracea
   if (isSupabaseBackend()) {
     const supabase = getSupabaseClient();
     const now = new Date().toISOString();
-    const { data: inserted, error } = await supabase
-      .from('rastreabilidade_eventos')
-      .insert({
-        tenant_id: tenantId,
-        plantio_id: data.plantioId || null,
-        hydro_lote_id: data.hydroLoteId || null,
-        estufa_id: data.estufaId || null,
-        entidade: data.entidade,
-        entidade_id: data.entidadeId,
-        acao: data.acao,
-        descricao: data.descricao,
-        motivo: data.motivo || null,
-        actor_uid: data.actorUid || null,
-        actor_name: data.actorName || null,
-        metadata: data.metadata || {},
-        event_at: now,
-      })
-      .select('id')
-      .single();
+    const basePayload = {
+      tenant_id: tenantId,
+      plantio_id: data.plantioId || null,
+      hydro_lote_id: data.hydroLoteId || null,
+      estufa_id: data.estufaId || null,
+      entidade: data.entidade,
+      entidade_id: data.entidadeId,
+      acao: data.acao,
+      descricao: data.descricao,
+      motivo: data.motivo || null,
+      actor_name: data.actorName || null,
+      metadata: data.metadata || {},
+      event_at: now,
+    };
+
+    const insertWithActorUid = async (actorUid: string | null) =>
+      supabase
+        .from('rastreabilidade_eventos')
+        .insert({
+          ...basePayload,
+          actor_uid: actorUid,
+        })
+        .select('id')
+        .single();
+
+    let { data: inserted, error } = await insertWithActorUid(data.actorUid || null);
+
+    const isActorFkError =
+      !!error &&
+      String(error?.message || '')
+        .toLowerCase()
+        .includes('rastreabilidade_eventos_actor_uid_fkey');
+
+    if (isActorFkError) {
+      ({ data: inserted, error } = await insertWithActorUid(null));
+    }
 
     if (error || !inserted?.id) {
       throw new Error(`Falha ao registrar rastreabilidade: ${error?.message || ''}`.trim());

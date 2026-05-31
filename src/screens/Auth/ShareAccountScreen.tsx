@@ -1,27 +1,44 @@
 // src/screens/Auth/ShareAccountScreen.tsx
 import React, { useState, useEffect } from 'react';
 import { 
-    View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, FlatList, ActivityIndicator, SafeAreaView, KeyboardAvoidingView, Platform, ScrollView 
+    View, Text, StyleSheet, Alert, FlatList, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView 
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Clipboard from 'expo-clipboard';
+import { 
+  SegmentedButtons, 
+  TextInput, 
+  Button, 
+  Card, 
+  useTheme as usePaperTheme,
+  Surface
+} from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import {
     generateShareCode,
     redeemShareCode,
     getSharedTenants,
+    listTenantMembers,
+    removeTenantMember,
     SHARE_CODE_DEFAULT_LENGTH,
+    TenantMember,
 } from '../../services/shareService';
 import { Tenant } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { useAppTheme } from '../../hooks/useAppTheme';
 
 export default function ShareAccountScreen({ navigation }: any) {
-    const { user, selectedTenantId } = useAuth();
+    const { user, selectedTenantId, availableTenants, refreshUserProfile, changeTenant } = useAuth();
+    const appTheme = useAppTheme();
+    const paperTheme = usePaperTheme();
     
     // Controle de Abas: 'minhas' = quem acessa a minha estufa | 'parceiros' = estufas que eu acesso
-    const [activeTab, setActiveTab] = useState<'minhas' | 'parceiros'>('parceiros');
+    const [activeTab, setActiveTab] = useState('parceiros');
 
     // Estados para GERAÇÃO (Dono)
     const [generatedCode, setGeneratedCode] = useState<string | null>(null);
+    const [generatedAt, setGeneratedAt] = useState<Date | null>(null);
     const [loadingGen, setLoadingGen] = useState(false);
 
     // Estados para RESGATE (Convidado)
@@ -31,36 +48,69 @@ export default function ShareAccountScreen({ navigation }: any) {
     // Lista de Compartilhamentos
     const [sharedTenants, setSharedTenants] = useState<Tenant[]>([]);
     const [loadingList, setLoadingList] = useState(false);
+    const [tenantMembers, setTenantMembers] = useState<TenantMember[]>([]);
+    const [loadingMembers, setLoadingMembers] = useState(false);
+    const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+    const [memberSearch, setMemberSearch] = useState('');
+    const currentTenant = availableTenants.find((tenant) => tenant.uid === selectedTenantId) || null;
 
     useEffect(() => {
         if (activeTab === 'parceiros') {
             loadSharedList();
         }
-    }, [activeTab]);
+        if (activeTab === 'minhas') {
+            loadTenantMembers();
+        }
+    }, [activeTab, selectedTenantId, user?.uid]);
 
     const loadSharedList = async () => {
         if (!user) return;
         setLoadingList(true);
-        const list = await getSharedTenants(user.uid);
-        setSharedTenants(list);
-        setLoadingList(false);
+        try {
+            const list = await getSharedTenants(user.uid);
+            setSharedTenants(list);
+        } catch (error) {
+            console.error('Erro ao buscar parceiros:', error);
+        } finally {
+            setLoadingList(false);
+        }
+    };
+
+    const loadTenantMembers = async () => {
+        if (!user?.uid || !selectedTenantId) return;
+        setLoadingMembers(true);
+        try {
+            const members = await listTenantMembers(selectedTenantId, user.uid);
+            setTenantMembers(members.filter((member) => member.userId !== user.uid));
+        } catch (error: any) {
+            console.error('Erro ao buscar membros do tenant:', error);
+            setTenantMembers([]);
+            const msg = String(error?.message || '');
+            if (msg.toLowerCase().includes('somente administradores')) {
+                Alert.alert('Sem permissão', 'Apenas administradores deste tenant podem gerenciar parceiros.');
+            }
+        } finally {
+            setLoadingMembers(false);
+        }
     };
 
     const handleGenerate = async () => {
         if (!user) return;
+        const tenantParaCompartilhar = selectedTenantId || '';
+        if (!tenantParaCompartilhar) {
+            Alert.alert('Atenção', 'Selecione uma conta/tenant antes de gerar o convite.');
+            return;
+        }
+
         setLoadingGen(true);
         try {
-            const tenantParaCompartilhar = user.uid;
-            if (selectedTenantId && selectedTenantId !== user.uid) {
-                Alert.alert(
-                    'Conta compartilhada selecionada',
-                    'Convites só podem ser gerados pela conta principal. O código será gerado para "Minha Estufa (Principal)".'
-                );
-            }
-            const code = await generateShareCode(tenantParaCompartilhar, "Estufa de " + (user.name || "Produtor"), user.name || "Produtor");
+            const tenantInfo = availableTenants.find((tenant) => tenant.uid === tenantParaCompartilhar);
+            const tenantName = tenantInfo?.name || `Estufa de ${user.name || 'Produtor'}`;
+            const code = await generateShareCode(tenantParaCompartilhar, tenantName, user.name || 'Produtor');
             setGeneratedCode(code);
-        } catch (error) {
-            Alert.alert("Erro", "Falha ao gerar código. Verifique sua conexão.");
+            setGeneratedAt(new Date());
+        } catch (error: any) {
+            Alert.alert("Erro", error?.message || "Falha ao gerar código. Verifique sua conexão.");
         } finally {
             setLoadingGen(false);
         }
@@ -70,7 +120,9 @@ export default function ShareAccountScreen({ navigation }: any) {
         if (!inputCode) return Alert.alert("Atenção", "Digite o código de convite.");
         setLoadingRedeem(true);
         try {
-            await redeemShareCode(inputCode, user!.uid);
+            const tenantId = await redeemShareCode(inputCode, user!.uid);
+            await refreshUserProfile();
+            changeTenant(tenantId);
             Alert.alert("Sucesso!", "Acesso vinculado com sucesso!");
             setInputCode('');
             loadSharedList();
@@ -81,67 +133,151 @@ export default function ShareAccountScreen({ navigation }: any) {
         }
     };
 
+    const handleCopyCode = async () => {
+        if (!generatedCode) return;
+        await Clipboard.setStringAsync(generatedCode);
+        Alert.alert('Copiado', 'Código copiado para a área de transferência.');
+    };
+
+    const handleRemoveMember = (member: TenantMember) => {
+        if (!user?.uid || !selectedTenantId) return;
+        Alert.alert(
+            'Remover parceiro',
+            `Deseja remover ${member.name} desta estufa?`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Remover',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            setRemovingMemberId(member.userId);
+                            await removeTenantMember(selectedTenantId, member.userId, user.uid);
+                            await loadTenantMembers();
+                            Alert.alert('Sucesso', 'Parceiro removido.');
+                        } catch (error: any) {
+                            Alert.alert('Erro', error?.message || 'Não foi possível remover o parceiro.');
+                        } finally {
+                            setRemovingMemberId(null);
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
     const formatDate = (value?: string | number | { toDate?: () => Date }) => {
         if (!value) return 'Data desconhecida';
         const date = typeof value === 'number'
           ? new Date(value)
           : typeof value === 'string'
             ? new Date(value)
-            : value.toDate
-              ? value.toDate()
+            : (value as any).toDate
+              ? (value as any).toDate()
               : new Date();
         return date.toLocaleDateString('pt-BR');
     };
 
+    const formatDateTime = (value?: string | number | { toDate?: () => Date }) => {
+        if (!value) return 'Nao informado';
+        const date = typeof value === 'number'
+          ? new Date(value)
+          : typeof value === 'string'
+            ? new Date(value)
+            : (value as any).toDate
+              ? (value as any).toDate()
+              : new Date();
+        return date.toLocaleString('pt-BR');
+    };
+
+    const filteredMembers = tenantMembers.filter((member) => {
+        const query = memberSearch.trim().toLowerCase();
+        if (!query) return true;
+        return (
+            member.name.toLowerCase().includes(query) ||
+            String(member.email || '').toLowerCase().includes(query)
+        );
+    });
+
+    const buildMemberAuditSummary = (member: TenantMember) => {
+        const tenantName = currentTenant?.name || 'Tenant atual';
+        return [
+            'Resumo de acesso - Auditoria',
+            `Tenant: ${tenantName}`,
+            `Parceiro: ${member.name}`,
+            `Email: ${member.email || 'Nao informado'}`,
+            `Perfil: ${member.role}`,
+            `Permissoes: leitura(${member.canRead ? 'sim' : 'nao'}), escrita(${member.canWrite ? 'sim' : 'nao'}), exclusao(${member.canDelete ? 'sim' : 'nao'}), compartilhar(${member.canManageSharing ? 'sim' : 'nao'})`,
+            `Vinculado em: ${formatDateTime(member.sharedAt)}`,
+            `Ultimo acesso: ${formatDateTime(member.lastAccessAt)}`,
+        ].join('\n');
+    };
+
+    const handleCopyMemberSummary = async (member: TenantMember) => {
+        const summary = buildMemberAuditSummary(member);
+        await Clipboard.setStringAsync(summary);
+        Alert.alert('Copiado', 'Resumo de acesso copiado para auditoria.');
+    };
+
     // Card para a aba de Parceiros (Estufas que eu fui convidado)
     const renderParceiroItem = ({ item }: { item: Tenant }) => (
-        <View style={styles.card}>
-            <View style={[styles.cardIcon, { backgroundColor: COLORS.infoSoft }]}>
-                <MaterialCommunityIcons name="account-group" size={24} color={COLORS.info} />
-            </View>
-            <View style={styles.cardContent}>
-                <Text style={styles.cardTitle}>{item.name}</Text>
-                
-                <View style={styles.metaRow}>
-                    <MaterialCommunityIcons name="account-arrow-left" size={16} color={COLORS.textSecondary} />
-                    <Text style={styles.metaText}>
-                        Proprietário: <Text style={styles.bold}>{item.sharedBy || 'Parceiro'}</Text>
-                    </Text>
+        <Card style={[styles.card, { backgroundColor: appTheme.surfaceBackground, borderColor: appTheme.border }]} mode="outlined">
+            <Card.Content style={styles.cardRow}>
+                <Surface style={[styles.cardIcon, { backgroundColor: appTheme.infoSoft }]} elevation={0}>
+                    <MaterialCommunityIcons name="account-group" size={24} color={appTheme.info} />
+                </Surface>
+                <View style={styles.cardContent}>
+                    <Text style={[styles.cardTitle, { color: appTheme.textPrimary }]}>{item.name}</Text>
+                    
+                    <View style={styles.metaRow}>
+                        <MaterialCommunityIcons name="account-arrow-left" size={16} color={appTheme.textSecondary} />
+                        <Text style={[styles.metaText, { color: appTheme.textSecondary }]}>
+                            Proprietário: <Text style={[styles.bold, { color: appTheme.textPrimary }]}>{item.sharedBy || 'Parceiro'}</Text>
+                        </Text>
+                    </View>
+                    
+                    <View style={styles.metaRow}>
+                        <MaterialCommunityIcons name="calendar-check" size={16} color={appTheme.textSecondary} />
+                        <Text style={[styles.metaText, { color: appTheme.textSecondary }]}>
+                            Vinculado em: <Text style={[styles.bold, { color: appTheme.textPrimary }]}>{formatDate(item.sharedAt)}</Text>
+                        </Text>
+                    </View>
                 </View>
-                
-                <View style={styles.metaRow}>
-                    <MaterialCommunityIcons name="calendar-check" size={16} color={COLORS.textSecondary} />
-                    <Text style={styles.metaText}>
-                        Vinculado em: <Text style={styles.bold}>{formatDate(item.sharedAt)}</Text>
-                    </Text>
-                </View>
-            </View>
-        </View>
+            </Card.Content>
+        </Card>
     );
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={[styles.container, { backgroundColor: appTheme.pageBackground }]}>
             <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                 
-                {/* CABEÇALHO COM ABAS */}
-                <View style={styles.tabContainer}>
-                    <TouchableOpacity 
-                        style={[styles.tab, activeTab === 'parceiros' && styles.activeTab]}
-                        onPress={() => setActiveTab('parceiros')}
-                    >
-                        <Text style={[styles.tabText, activeTab === 'parceiros' && styles.activeTabText]}>
-                            Acessar Parceiros
-                        </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity 
-                        style={[styles.tab, activeTab === 'minhas' && styles.activeTab]}
-                        onPress={() => setActiveTab('minhas')}
-                    >
-                        <Text style={[styles.tabText, activeTab === 'minhas' && styles.activeTabText]}>
-                            Convidar Pessoas
-                        </Text>
-                    </TouchableOpacity>
+                <View style={styles.header}>
+                  <SegmentedButtons
+                    value={activeTab}
+                    onValueChange={setActiveTab}
+                    buttons={[
+                      {
+                        value: 'parceiros',
+                        label: 'Parceiros',
+                        icon: 'account-multiple-outline',
+                        showSelectedCheck: true,
+                      },
+                      {
+                        value: 'minhas',
+                        label: 'Convidar',
+                        icon: 'key-outline',
+                        showSelectedCheck: true,
+                      },
+                    ]}
+                    style={styles.segmented}
+                    theme={{
+                      colors: {
+                        secondaryContainer: COLORS.primarySoft,
+                        onSecondaryContainer: COLORS.primary,
+                        outline: appTheme.border,
+                      }
+                    }}
+                  />
                 </View>
 
                 <View style={styles.content}>
@@ -149,43 +285,49 @@ export default function ShareAccountScreen({ navigation }: any) {
                     {/* ABA: PARCEIROS (Contas de terceiros) */}
                     {activeTab === 'parceiros' && (
                         <View style={{ flex: 1 }}>
-                            <Text style={styles.sectionTitle}>Vincular Nova Conta</Text>
-                            <Text style={styles.subtitle}>Digite o código fornecido pelo dono da estufa.</Text>
+                            <Text style={[styles.sectionTitle, { color: appTheme.textPrimary }]}>Vincular Nova Conta</Text>
+                            <Text style={[styles.subtitle, { color: appTheme.textSecondary }]}>Insira o código fornecido pelo proprietário da estufa.</Text>
                             
-                            <View style={styles.inputContainer}>
+                            <View style={styles.redeemRow}>
                                 <TextInput 
-                                    style={styles.input}
-                                    placeholder="Ex: 9F1A3B..."
-                                    placeholderTextColor={COLORS.textPlaceholder}
+                                    mode="outlined"
+                                    placeholder="Ex: 9F1A3B"
                                     value={inputCode}
                                     onChangeText={text => setInputCode(text.toUpperCase())}
                                     maxLength={SHARE_CODE_DEFAULT_LENGTH}
                                     autoCapitalize="characters"
+                                    style={styles.redeemInput}
+                                    outlineColor={appTheme.border}
+                                    activeOutlineColor={appTheme.info}
                                 />
-                                <TouchableOpacity 
-                                    style={styles.redeemBtn} 
+                                <Button 
+                                    mode="contained" 
                                     onPress={handleRedeem}
+                                    loading={loadingRedeem}
                                     disabled={loadingRedeem}
+                                    style={styles.redeemBtn}
+                                    buttonColor={appTheme.info}
+                                    contentStyle={{ height: 50 }}
                                 >
-                                    {loadingRedeem ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.btnText}>Vincular</Text>}
-                                </TouchableOpacity>
+                                    Vincular
+                                </Button>
                             </View>
 
-                            <Text style={[styles.sectionTitle, {marginTop: 30, marginBottom: 15}]}>Estufas que tenho acesso</Text>
+                            <Text style={[styles.sectionTitle, {marginTop: 30, marginBottom: 15, color: appTheme.textPrimary }]}>Acessos Ativos</Text>
                             {loadingList ? (
-                                <ActivityIndicator style={{marginTop: 20}} color={COLORS.info} />
+                                <ActivityIndicator style={{marginTop: 20}} color={appTheme.info} />
                             ) : (
                                 <FlatList
                                     data={sharedTenants}
                                     keyExtractor={item => item.uid}
                                     renderItem={renderParceiroItem}
                                     ListEmptyComponent={
-                                        <View style={styles.emptyState}>
-                                            <MaterialCommunityIcons name="link-variant-off" size={40} color={COLORS.borderDark} />
-                                            <Text style={styles.emptyText}>Você não está vinculado a nenhuma estufa de terceiros.</Text>
-                                        </View>
+                                        <Surface style={[styles.emptyState, { backgroundColor: appTheme.surfaceBackground, borderColor: appTheme.border }]} mode="flat">
+                                            <MaterialCommunityIcons name="link-variant-off" size={48} color={appTheme.textSecondary} style={{ opacity: 0.3 }} />
+                                            <Text style={[styles.emptyText, { color: appTheme.textSecondary }]}>Nenhum parceiro vinculado ainda.</Text>
+                                        </Surface>
                                     }
-                                    contentContainerStyle={{ paddingBottom: 20 }}
+                                    contentContainerStyle={{ paddingBottom: 40 }}
                                 />
                             )}
                         </View>
@@ -195,40 +337,169 @@ export default function ShareAccountScreen({ navigation }: any) {
                     {activeTab === 'minhas' && (
                         <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
                             
-                            <View style={styles.inviteHeader}>
-                                <MaterialCommunityIcons name="shield-account-outline" size={48} color={COLORS.success} />
-                                <Text style={[styles.sectionTitle, {marginTop: 10, textAlign: 'center'}]}>Compartilhar Minha Estufa</Text>
-                                <Text style={[styles.subtitle, {textAlign: 'center', paddingHorizontal: 20}]}>
-                                    Permita que funcionários ou sócios acessem e registrem informações na sua estufa.
+                            <View style={styles.inviteHero}>
+                                <Surface style={[styles.heroIconCircle, { backgroundColor: appTheme.successSoft }]} elevation={0}>
+                                  <MaterialCommunityIcons name="shield-account-outline" size={48} color={appTheme.success} />
+                                </Surface>
+                                <Text style={[styles.sectionTitle, {marginTop: 20, textAlign: 'center', color: appTheme.textPrimary }]}>
+                                  Compartilhar Minha Estufa
+                                </Text>
+                                <Text style={[styles.subtitle, {textAlign: 'center', color: appTheme.textSecondary, paddingHorizontal: 20}]}>
+                                    Conceda acesso a colaboradores ou sócios para visualizar e registrar manejos em tempo real.
                                 </Text>
                             </View>
 
                             {generatedCode ? (
-                                <View style={styles.codeDisplay}>
-                                    <MaterialCommunityIcons name="check-circle" size={32} color={COLORS.success} style={{marginBottom: 10}}/>
-                                    <Text style={styles.codeLabel}>Seu código de convite é:</Text>
-                                    <Text style={styles.codeValue}>{generatedCode}</Text>
-                                    <Text style={styles.codeWarning}>Envie este código para a pessoa. Ele expira em 24h.</Text>
-                                    
-                                    <TouchableOpacity onPress={() => setGeneratedCode(null)} style={styles.secondaryBtn}>
-                                        <Text style={styles.secondaryBtnText}>Gerar outro código</Text>
-                                    </TouchableOpacity>
-                                </View>
+                                <Card style={[styles.codeCard, { backgroundColor: appTheme.successSoft, borderColor: appTheme.success }]} mode="outlined">
+                                    <Card.Content style={{ alignItems: 'center' }}>
+                                      <MaterialCommunityIcons name="check-circle" size={40} color={appTheme.success} />
+                                      <Text style={[styles.codeLabel, { color: appTheme.success }]}>Código Gerado com Sucesso</Text>
+                                      <Text style={[styles.codeValue, { color: appTheme.textPrimary }]}>{generatedCode}</Text>
+                                      <Text style={[styles.codeWarning, { color: appTheme.textSecondary }]}> 
+                                        Compartilhe este código. Ele é válido por 24 horas.
+                                      </Text>
+                                      {generatedAt ? (
+                                        <Text style={[styles.codeMeta, { color: appTheme.textSecondary }]}> 
+                                          Gerado em: {generatedAt.toLocaleString('pt-BR')} | Expira em: {new Date(generatedAt.getTime() + 24 * 60 * 60 * 1000).toLocaleString('pt-BR')}
+                                        </Text>
+                                      ) : null}
+                                      <Button
+                                        mode="contained-tonal"
+                                        onPress={handleCopyCode}
+                                        icon="content-copy"
+                                        style={{ marginTop: 12 }}
+                                      >
+                                        Copiar código
+                                      </Button>
+                                      
+                                      <Button 
+                                        mode="text" 
+                                        onPress={() => {
+                                          setGeneratedCode(null);
+                                          setGeneratedAt(null);
+                                        }}
+                                        textColor={appTheme.success}
+                                        style={{ marginTop: 10 }}
+                                      >
+                                        GERAR NOVO CÓDIGO
+                                      </Button>
+                                    </Card.Content>
+                                </Card>
                             ) : (
-                                <TouchableOpacity 
-                                    style={styles.generateBtn} 
+                                <Button 
+                                    mode="contained" 
                                     onPress={handleGenerate}
+                                    loading={loadingGen}
                                     disabled={loadingGen}
+                                    buttonColor={appTheme.success}
+                                    style={styles.generateBtn}
+                                    contentStyle={styles.generateBtnContent}
+                                    labelStyle={styles.generateBtnLabel}
+                                    icon="key-plus"
                                 >
-                                    {loadingGen ? (
-                                        <ActivityIndicator color={COLORS.textLight} />
-                                    ) : (
-                                        <>
-                                            <MaterialCommunityIcons name="key-plus" size={24} color={COLORS.textLight} style={{marginRight: 10}} />
-                                            <Text style={[styles.btnText, {fontSize: 18}]}>Criar Convite</Text>
-                                        </>
-                                    )}
-                                </TouchableOpacity>
+                                    GERAR CONVITE
+                                </Button>
+                            )}
+
+                            <Text style={[styles.sectionTitle, { marginTop: 26, marginBottom: 12, color: appTheme.textPrimary }]}> 
+                                Parceiros com acesso
+                            </Text>
+
+                            <TextInput
+                                mode="outlined"
+                                placeholder="Filtrar por nome ou e-mail"
+                                value={memberSearch}
+                                onChangeText={setMemberSearch}
+                                left={<TextInput.Icon icon="magnify" />}
+                                style={{ marginBottom: 10 }}
+                                outlineColor={appTheme.border}
+                                activeOutlineColor={appTheme.success}
+                            />
+
+                            <Surface style={[styles.tenantInfoCard, { backgroundColor: appTheme.surfaceBackground, borderColor: appTheme.border }]} elevation={0}>
+                                <View style={styles.metaRow}>
+                                    <MaterialCommunityIcons name="greenhouse" size={16} color={appTheme.textSecondary} />
+                                    <Text style={[styles.metaText, { color: appTheme.textSecondary }]}>Estufa compartilhada: <Text style={[styles.bold, { color: appTheme.textPrimary }]}>{currentTenant?.name || 'Tenant atual'}</Text></Text>
+                                </View>
+                                <View style={styles.metaRow}>
+                                    <MaterialCommunityIcons name="account-tie" size={16} color={appTheme.textSecondary} />
+                                    <Text style={[styles.metaText, { color: appTheme.textSecondary }]}>Responsavel: <Text style={[styles.bold, { color: appTheme.textPrimary }]}>{currentTenant?.ownerName || user?.name || 'Nao informado'}</Text></Text>
+                                </View>
+                            </Surface>
+
+                            {loadingMembers ? (
+                                <ActivityIndicator style={{ marginTop: 14 }} color={appTheme.success} />
+                            ) : filteredMembers.length === 0 ? (
+                                <Surface style={[styles.emptyState, { backgroundColor: appTheme.surfaceBackground, borderColor: appTheme.border }]} mode="flat">
+                                    <MaterialCommunityIcons name="account-off-outline" size={44} color={appTheme.textSecondary} style={{ opacity: 0.35 }} />
+                                    <Text style={[styles.emptyText, { color: appTheme.textSecondary }]}>{tenantMembers.length === 0 ? 'Nenhum parceiro ativo nesta estufa.' : 'Nenhum parceiro encontrado para o filtro.'}</Text>
+                                </Surface>
+                            ) : (
+                                <View style={{ marginTop: 4, gap: 10 }}>
+                                    {filteredMembers.map((member) => {
+                                        const isRemoving = removingMemberId === member.userId;
+                                        return (
+                                            <Card
+                                                key={member.userId}
+                                                style={[styles.card, { backgroundColor: appTheme.surfaceBackground, borderColor: appTheme.border }]}
+                                                mode="outlined"
+                                            >
+                                                <Card.Content style={styles.cardRow}>
+                                                    <Surface style={[styles.cardIcon, { backgroundColor: appTheme.successSoft }]} elevation={0}>
+                                                        <MaterialCommunityIcons name="account-check-outline" size={22} color={appTheme.success} />
+                                                    </Surface>
+                                                    <View style={styles.cardContent}>
+                                                        <Text style={[styles.cardTitle, { color: appTheme.textPrimary }]}>{member.name}</Text>
+                                                        {member.email ? (
+                                                            <View style={styles.metaRow}>
+                                                                <MaterialCommunityIcons name="email-outline" size={16} color={appTheme.textSecondary} />
+                                                                <Text style={[styles.metaText, { color: appTheme.textSecondary }]}>{member.email}</Text>
+                                                            </View>
+                                                        ) : null}
+                                                        <View style={styles.metaRow}>
+                                                            <MaterialCommunityIcons name="calendar-check" size={16} color={appTheme.textSecondary} />
+                                                            <Text style={[styles.metaText, { color: appTheme.textSecondary }]}> 
+                                                                Vinculado em: <Text style={[styles.bold, { color: appTheme.textPrimary }]}>{formatDate(member.sharedAt)}</Text>
+                                                            </Text>
+                                                        </View>
+                                                        <View style={styles.metaRow}>
+                                                            <MaterialCommunityIcons name="clock-outline" size={16} color={appTheme.textSecondary} />
+                                                            <Text style={[styles.metaText, { color: appTheme.textSecondary }]}> 
+                                                                Ultimo acesso: <Text style={[styles.bold, { color: appTheme.textPrimary }]}>{formatDate(member.lastAccessAt)}</Text>
+                                                            </Text>
+                                                        </View>
+                                                        <View style={styles.metaRow}>
+                                                            <MaterialCommunityIcons name="shield-account" size={16} color={appTheme.textSecondary} />
+                                                            <Text style={[styles.metaText, { color: appTheme.textSecondary }]}> 
+                                                                Perfil: <Text style={[styles.bold, { color: appTheme.textPrimary }]}>{member.role}</Text>
+                                                            </Text>
+                                                        </View>
+                                                    </View>
+                                                    <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                                                        <Button
+                                                            mode="text"
+                                                            icon="content-copy"
+                                                            onPress={() => void handleCopyMemberSummary(member)}
+                                                            compact
+                                                        >
+                                                            Copiar
+                                                        </Button>
+                                                        <Button
+                                                            mode="text"
+                                                            textColor={appTheme.danger}
+                                                            onPress={() => handleRemoveMember(member)}
+                                                            loading={isRemoving}
+                                                            disabled={isRemoving}
+                                                            compact
+                                                        >
+                                                            Remover
+                                                        </Button>
+                                                    </View>
+                                                </Card.Content>
+                                            </Card>
+                                        );
+                                    })}
+                                </View>
                             )}
 
                         </ScrollView>
@@ -241,76 +512,68 @@ export default function ShareAccountScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: COLORS.background },
-    
-    // ABAS
-    tabContainer: { flexDirection: 'row', backgroundColor: COLORS.surface, padding: 8, marginHorizontal: 24, marginTop: 20, borderRadius: RADIUS.lg, ...SHADOWS.card },
-    tab: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: RADIUS.sm },
-    activeTab: { backgroundColor: COLORS.infoSoft },
-    tabText: { fontWeight: '600', color: COLORS.textSecondary },
-    activeTabText: { color: COLORS.info, fontWeight: 'bold' },
+    container: { flex: 1 },
+    header: { paddingHorizontal: 20, paddingTop: 10, marginBottom: 10 },
+    segmented: { borderRadius: RADIUS.md },
 
     content: { padding: 24, flex: 1 },
     
-    sectionTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 8 },
-    subtitle: { fontSize: 14, color: COLORS.textSecondary, marginBottom: 20, lineHeight: 20 },
+    sectionTitle: { fontSize: 20, fontWeight: '800', marginBottom: 6 },
+    subtitle: { fontSize: 14, marginBottom: 20, lineHeight: 20 },
     
-    // INPUTS
-    inputContainer: { flexDirection: 'row', gap: 12 },
-    input: { 
-        flex: 1, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
-        borderRadius: RADIUS.md, paddingHorizontal: 16, height: 56, fontSize: TYPOGRAPHY.title,
-        color: COLORS.textPrimary, fontWeight: 'bold', letterSpacing: 2
-    },
-    redeemBtn: { 
-        backgroundColor: COLORS.info, borderRadius: RADIUS.md, paddingHorizontal: 24, 
-        justifyContent: 'center', alignItems: 'center' 
-    },
-    btnText: { color: COLORS.textLight, fontWeight: 'bold', fontSize: 16 },
+    // REDEEM
+    redeemRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+    redeemInput: { flex: 1, backgroundColor: 'transparent' },
+    redeemBtn: { borderRadius: RADIUS.md, marginTop: 6 },
 
-    // CARDS LISTA
-    card: { 
-        backgroundColor: COLORS.surface, flexDirection: 'row', padding: 16, borderRadius: RADIUS.lg,
-        marginBottom: 12, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border,
-        ...SHADOWS.card
-    },
+    // LISTA
+    card: { marginBottom: 12, borderRadius: RADIUS.lg, borderWidth: 1 },
+    cardRow: { flexDirection: 'row', alignItems: 'center' },
     cardIcon: { 
-        width: 48, height: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 16 
+        width: 52, height: 52, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 16 
     },
     cardContent: { flex: 1 },
-    cardTitle: { fontSize: TYPOGRAPHY.title, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 },
-    metaRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-    metaText: { fontSize: 13, color: COLORS.textSecondary, marginLeft: 6 },
-    bold: { fontWeight: '700', color: COLORS.textPrimary },
+    cardTitle: { fontSize: 17, fontWeight: '800', marginBottom: 4 },
+    metaRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
+    metaText: { fontSize: 13, marginLeft: 6 },
+    bold: { fontWeight: '700' },
 
-    emptyState: { alignItems: 'center', justifyContent: 'center', padding: 30, backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, borderStyle: 'dashed', borderWidth: 1, borderColor: COLORS.borderDark },
-    emptyText: { textAlign: 'center', color: COLORS.textPlaceholder, marginTop: 10, lineHeight: 20 },
-
-    // ABA CONVIDAR
-    inviteHeader: { alignItems: 'center', marginBottom: 30, marginTop: 20 },
-    generateBtn: { 
-        backgroundColor: COLORS.success, borderRadius: RADIUS.lg, paddingVertical: 18, 
-        flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
-        shadowColor: COLORS.success, shadowOffset: { width: 0, height: 4 }, 
-        shadowOpacity: 0.3, shadowRadius: 8, elevation: 5
+    emptyState: { 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      padding: 40, 
+      borderRadius: RADIUS.xl, 
+      borderStyle: 'dashed', 
+      borderWidth: 2,
+      marginTop: 20
     },
+    emptyText: { textAlign: 'center', marginTop: 12, fontSize: 15, opacity: 0.7 },
+
+    // INVITE
+    inviteHero: { alignItems: 'center', marginBottom: 30, marginTop: 10 },
+    heroIconCircle: { width: 90, height: 90, borderRadius: RADIUS.xl, justifyContent: 'center', alignItems: 'center' },
+    generateBtn: { borderRadius: RADIUS.md, marginTop: 10 },
+    generateBtnContent: { height: 56 },
+    generateBtnLabel: { fontSize: 16, fontWeight: '800', letterSpacing: 1 },
     
-    // CÓDIGO GERADO
-    codeDisplay: { 
-        backgroundColor: COLORS.successSoft, padding: 30, borderRadius: RADIUS.lg,
-        alignItems: 'center', borderWidth: 1, borderColor: COLORS.border
-    },
-    codeLabel: { fontSize: 14, color: COLORS.success, fontWeight: '600' },
+    // CODE
+    codeCard: { borderRadius: RADIUS.xl, borderWidth: 1.5, marginTop: 10 },
+    codeLabel: { fontSize: 14, fontWeight: '700', marginTop: 12, textTransform: 'uppercase' },
     codeValue: {
-        fontSize: 28,
+        fontSize: 34,
         fontWeight: '900',
-        color: COLORS.secondary,
-        marginVertical: 15,
-        letterSpacing: 2,
+        marginVertical: 16,
+        letterSpacing: 4,
         textAlign: 'center',
     },
-    codeWarning: { fontSize: 13, color: COLORS.success, marginBottom: 20 },
-    
-    secondaryBtn: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: RADIUS.sm, backgroundColor: COLORS.whiteAlpha10 },
-    secondaryBtnText: { color: COLORS.success, fontWeight: 'bold' }
+    codeWarning: { fontSize: 13, textAlign: 'center', paddingHorizontal: 20 },
+    codeMeta: { fontSize: 11, textAlign: 'center', marginTop: 8, paddingHorizontal: 20 },
+    tenantInfoCard: {
+      borderRadius: RADIUS.md,
+      borderWidth: 1,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      marginBottom: 10,
+      ...SHADOWS.card,
+    },
 });

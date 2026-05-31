@@ -10,6 +10,7 @@ import { Picker } from '@react-native-picker/picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
+import EmptyState from '../../components/ui/EmptyState';
 
 const generateYearList = () => {
   const currentYear = new Date().getFullYear();
@@ -42,6 +43,9 @@ const RelatoriosScreen = () => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
+  const formatCurrency = (value: number) =>
+    value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
   useEffect(() => {
     const loadData = async () => {
       if (!targetId) return;
@@ -64,6 +68,8 @@ const RelatoriosScreen = () => {
 
   const stats = useMemo(() => {
     const receitaTotal = vendas.reduce((acc, v) => {
+      const status = String(v.statusPagamento || '').toLowerCase().trim();
+      if (status === 'cancelado') return acc;
       const item = v.itens?.[0];
       const fallbackTotal = Number(item?.quantidade || 0) * Number(item?.valorUnitario || 0);
       return acc + Number(v.valorTotal || fallbackTotal || 0);
@@ -95,24 +101,27 @@ const RelatoriosScreen = () => {
       );
     }
 
+    const semMovimento = stats.receitaTotal <= 0 && stats.despesaTotal <= 0;
+    const maxReferencia = Math.max(stats.receitaTotal, stats.despesaTotal, 1);
+
     return (
       <>
         <View style={styles.cardsRow}>
-          <View style={[styles.kpiCard, { borderLeftColor: COLORS.success, borderLeftWidth: 4 }]}>
+          <View style={[styles.kpiCard, { borderLeftColor: COLORS.success, borderLeftWidth: 4 }]}> 
             <Text style={styles.kpiLabel}>Receitas</Text>
-            <Text style={[styles.kpiValue, { color: COLORS.success }]}>R$ {stats.receitaTotal.toFixed(2)}</Text>
+            <Text style={[styles.kpiValue, { color: COLORS.success }]}>{formatCurrency(stats.receitaTotal)}</Text>
           </View>
-          <View style={[styles.kpiCard, { borderLeftColor: COLORS.danger, borderLeftWidth: 4 }]}>
+          <View style={[styles.kpiCard, { borderLeftColor: COLORS.danger, borderLeftWidth: 4 }]}> 
             <Text style={styles.kpiLabel}>Despesas</Text>
-            <Text style={[styles.kpiValue, { color: COLORS.danger }]}>R$ {stats.despesaTotal.toFixed(2)}</Text>
+            <Text style={[styles.kpiValue, { color: COLORS.danger }]}>{formatCurrency(stats.despesaTotal)}</Text>
           </View>
         </View>
 
         <View style={[styles.lucroCard, { backgroundColor: stats.lucroLiquido >= 0 ? COLORS.infoSoft : COLORS.warning + '20' }]}>
           <View>
             <Text style={styles.lucroLabel}>Resultado Líquido</Text>
-            <Text style={[styles.lucroValue, { color: stats.lucroLiquido >= 0 ? COLORS.primary : COLORS.danger }]}>
-              R$ {stats.lucroLiquido.toFixed(2)}
+            <Text style={[styles.lucroValue, { color: stats.lucroLiquido >= 0 ? COLORS.primary : COLORS.danger }]}> 
+              {formatCurrency(stats.lucroLiquido)}
             </Text>
           </View>
           <View style={styles.margemBadge}>
@@ -126,26 +135,39 @@ const RelatoriosScreen = () => {
           <View style={styles.barContainer}>
             <View style={styles.barLabelRow}>
               <Text style={styles.barLabel}>Receitas</Text>
-              <Text style={styles.barAmount}>R$ {stats.receitaTotal.toFixed(2)}</Text>
+              <Text style={styles.barAmount}>{formatCurrency(stats.receitaTotal)}</Text>
             </View>
             <View style={styles.barTrack}>
-              <View style={[styles.barFill, { backgroundColor: COLORS.success, width: '100%' }]} />
+              <View
+                style={[
+                  styles.barFill,
+                  { backgroundColor: COLORS.success, width: `${(stats.receitaTotal / maxReferencia) * 100}%` },
+                ]}
+              />
             </View>
           </View>
 
           <View style={styles.barContainer}>
             <View style={styles.barLabelRow}>
               <Text style={styles.barLabel}>Despesas</Text>
-              <Text style={styles.barAmount}>R$ {stats.despesaTotal.toFixed(2)}</Text>
+              <Text style={styles.barAmount}>{formatCurrency(stats.despesaTotal)}</Text>
             </View>
             <View style={styles.barTrack}>
               <View style={[styles.barFill, { 
                 backgroundColor: COLORS.danger, 
-                width: stats.receitaTotal > 0 ? `${Math.min((stats.despesaTotal / stats.receitaTotal) * 100, 100)}%` : '0%' 
+                width: `${(stats.despesaTotal / maxReferencia) * 100}%`
               }]} />
             </View>
           </View>
         </View>
+
+        {semMovimento ? (
+          <EmptyState
+            icon="chart-box-outline"
+            title="Sem movimentacao no periodo"
+            description="Nao ha vendas nem despesas para o mes selecionado."
+          />
+        ) : null}
 
         <View style={styles.chartCard}>
           <Text style={styles.chartTitle}>Distribuição de Custos</Text>
@@ -163,7 +185,7 @@ const RelatoriosScreen = () => {
                   <View style={styles.catTrack}>
                     <View style={[styles.catFill, { width: `${percent}%` }]} />
                   </View>
-                  <Text style={styles.catValue}>R$ {cat.valor.toFixed(2)}</Text>
+                  <Text style={styles.catValue}>{formatCurrency(cat.valor)}</Text>
                 </View>
               );
             })

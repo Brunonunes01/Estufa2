@@ -11,6 +11,30 @@ import { Plantio, Venda, Estufa } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
+const toDate = (value: any): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value?.toDate === 'function') {
+    const d = value.toDate();
+    return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
+  }
+  if (typeof value?.seconds === 'number') {
+    const d = new Date(value.seconds * 1000);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getVendaQuantidade = (venda: Venda) =>
+  Number((venda as any).quantidade || venda.itens?.[0]?.quantidade || 0);
+
+const getVendaTotal = (venda: Venda) => {
+  const item = venda.itens?.[0];
+  const fallbackTotal = Number(item?.quantidade || 0) * Number(item?.valorUnitario || 0);
+  return Number(venda.valorTotal || fallbackTotal || 0);
+};
+
 const fetchCycleAnalysisData = async (plantio: Plantio, tenantId: string) => {
   if (!plantio.estufaId) {
     throw new Error('Este plantio não está associado a uma estufa.');
@@ -50,26 +74,32 @@ const RelatorioOperacionalScreen = () => {
     }
 
     const { vendas, estufa } = analysisData;
-    const { custoAcumulado = 0, dataInicio } = selectedPlantio;
+    const { custoAcumulado = 0 } = selectedPlantio;
     const estufaArea = estufa.area || 0;
 
-    const totalKgVendidos = vendas.reduce((acc, v) => acc + (v.quantidade || 0), 0);
-    const receitaTotal = vendas.reduce((acc, v) => acc + (v.valorTotal || 0), 0);
+    const totalVolumeVendido = vendas.reduce((acc, v) => acc + getVendaQuantidade(v), 0);
+    const receitaTotal = vendas.reduce((acc, v) => {
+      const status = String(v.statusPagamento || '').toLowerCase().trim();
+      if (status === 'cancelado') return acc;
+      return acc + getVendaTotal(v);
+    }, 0);
     
-    const custoPorKg = totalKgVendidos > 0 ? custoAcumulado / totalKgVendidos : 0;
-    const produtividadeKgM2 = estufaArea > 0 ? totalKgVendidos / estufaArea : 0;
+    const custoPorUnidade = totalVolumeVendido > 0 ? custoAcumulado / totalVolumeVendido : 0;
+    const produtividadeUnM2 = estufaArea > 0 ? totalVolumeVendido / estufaArea : 0;
     
     let cicloDias = 0;
-    if (dataInicio?.seconds) {
-      const dataFim = vendas.length > 0
-        ? vendas.reduce((latest, v) => Math.max(latest, v.dataVenda.seconds), 0)
-        : Date.now() / 1000;
-      cicloDias = Math.floor((dataFim - dataInicio.seconds) / (60 * 60 * 24));
+    const inicioCiclo = toDate(selectedPlantio.dataPlantio || selectedPlantio.dataInicio);
+    if (inicioCiclo) {
+      const datasVenda = vendas
+        .map((v) => toDate(v.dataVenda))
+        .filter((d): d is Date => !!d);
+      const fimCiclo = datasVenda.length > 0 ? new Date(Math.max(...datasVenda.map((d) => d.getTime()))) : new Date();
+      cicloDias = Math.floor((fimCiclo.getTime() - inicioCiclo.getTime()) / (1000 * 60 * 60 * 24));
     }
     
     const lucro = receitaTotal - custoAcumulado;
 
-    return { totalKgVendidos, receitaTotal, custoPorKg, produtividadeKgM2, cicloDias, lucro, custoAcumulado };
+    return { totalVolumeVendido, receitaTotal, custoPorUnidade, produtividadeUnM2, cicloDias, lucro, custoAcumulado };
   }, [selectedPlantio, analysisData]);
 
   const renderPicker = () => (
@@ -84,7 +114,7 @@ const RelatorioOperacionalScreen = () => {
         {plantios?.map(p => (
           <Picker.Item 
             key={p.id} 
-            label={`${p.cultura} (${p.codigoLote}) - ${p.status}`} 
+            label={`${p.cultura} (${p.codigoLote || 'sem lote'}) - ${p.status}`} 
             value={p.id} 
           />
         ))}
@@ -110,27 +140,30 @@ const RelatorioOperacionalScreen = () => {
       return <Text style={styles.emptyText}>Selecione um ciclo para ver a análise.</Text>;
     }
 
-    const { totalKgVendidos, receitaTotal, custoPorKg, produtividadeKgM2, cicloDias, lucro, custoAcumulado } = calculatedMetrics;
+    const { totalVolumeVendido, receitaTotal, custoPorUnidade, produtividadeUnM2, cicloDias, lucro, custoAcumulado } = calculatedMetrics;
+
+    const formatCurrency = (value: number) =>
+      value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
     return (
       <View>
         <View style={styles.cardsRow}>
-          <MetricCard icon="cash" label="Receita Total" value={`R$ ${receitaTotal.toFixed(2)}`} unit="" color={COLORS.success} />
-          <MetricCard icon="cash-minus" label="Custo Total" value={`R$ ${custoAcumulado.toFixed(2)}`} unit="" color={COLORS.danger} />
+          <MetricCard icon="cash" label="Receita Total" value={formatCurrency(receitaTotal)} unit="" color={COLORS.success} />
+          <MetricCard icon="cash-minus" label="Custo Total" value={formatCurrency(custoAcumulado)} unit="" color={COLORS.danger} />
         </View>
         <View style={[styles.lucroCard, { backgroundColor: lucro >= 0 ? COLORS.successSoft : COLORS.dangerSoft }]}>
             <Text style={styles.lucroLabel}>Resultado do Ciclo</Text>
-            <Text style={[styles.lucroValue, { color: lucro >= 0 ? COLORS.success : COLORS.danger }]}>
-              {lucro >= 0 ? 'Lucro de' : 'Prejuízo de'} R$ {Math.abs(lucro).toFixed(2)}
+            <Text style={[styles.lucroValue, { color: lucro >= 0 ? COLORS.success : COLORS.danger }]}> 
+              {lucro >= 0 ? 'Lucro de' : 'Prejuízo de'} {formatCurrency(Math.abs(lucro))}
             </Text>
         </View>
 
         <View style={styles.cardsRow}>
-          <MetricCard icon="weight-kilogram" label="Total Vendido" value={totalKgVendidos.toFixed(2)} unit="kg" />
-          <MetricCard icon="cash-100" label="Custo / kg" value={`R$ ${custoPorKg.toFixed(2)}`} unit="" />
+          <MetricCard icon="package-variant" label="Volume Vendido" value={totalVolumeVendido.toFixed(2)} unit="unid" />
+          <MetricCard icon="cash-100" label="Custo Medio" value={formatCurrency(custoPorUnidade)} unit="/ unid" />
         </View>
         <View style={styles.cardsRow}>
-          <MetricCard icon="layers-outline" label="Produtividade" value={produtividadeKgM2.toFixed(2)} unit="kg/m²" />
+          <MetricCard icon="layers-outline" label="Produtividade" value={produtividadeUnM2.toFixed(2)} unit="unid/m²" />
           <MetricCard icon="calendar-clock" label="Duração do Ciclo" value={cicloDias} unit="dias" />
         </View>
       </View>

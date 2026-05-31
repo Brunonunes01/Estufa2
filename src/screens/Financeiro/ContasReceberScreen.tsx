@@ -8,6 +8,7 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
@@ -19,6 +20,7 @@ import { useThemeMode } from '../../hooks/useThemeMode';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { listContasAReceber, receberConta } from '../../services/colheitaService';
 import { listClientes } from '../../services/clienteService';
+import { CaixaPessoa, createCaixaPessoa, listCaixaPessoas } from '../../services/caixaPessoaService';
 import { Venda } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { queryClient, queryKeys } from '../../lib/queryClient';
@@ -35,12 +37,17 @@ const ContasReceberScreen = ({ navigation }: any) => {
 
   const [contas, setContas] = useState<Venda[]>([]);
   const [clientesMap, setClientesMap] = useState<Record<string, string>>({});
+  const [caixaPessoas, setCaixaPessoas] = useState<CaixaPessoa[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingAction, setLoadingAction] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedConta, setSelectedConta] = useState<Venda | null>(null);
   const [metodoRecebimento, setMetodoRecebimento] = useState('pix');
+  const [pagamentoPara, setPagamentoPara] = useState<string | null>(null);
+  const [modalCaixaVisible, setModalCaixaVisible] = useState(false);
+  const [novoCaixaNome, setNovoCaixaNome] = useState('');
+  const [salvandoCaixaPessoa, setSalvandoCaixaPessoa] = useState(false);
 
   const carregarDados = async () => {
     const targetId = selectedTenantId || user?.uid;
@@ -48,9 +55,10 @@ const ContasReceberScreen = ({ navigation }: any) => {
 
     setLoading(true);
     try {
-      const [listaContas, listaClientes] = await Promise.all([
+      const [listaContas, listaClientes, listaCaixaPessoas] = await Promise.all([
         listContasAReceber(targetId),
         listClientes(targetId),
+        listCaixaPessoas(targetId),
       ]);
 
       const map: Record<string, string> = {};
@@ -60,6 +68,10 @@ const ContasReceberScreen = ({ navigation }: any) => {
 
       setClientesMap(map);
       setContas(listaContas);
+      setCaixaPessoas(listaCaixaPessoas);
+      if (!pagamentoPara && listaCaixaPessoas.length > 0) {
+        setPagamentoPara(listaCaixaPessoas[0].id);
+      }
     } catch (error) {
       console.error(error);
     } finally {
@@ -115,16 +127,21 @@ const ContasReceberScreen = ({ navigation }: any) => {
   const handleOpenReceber = (item: Venda) => {
     setSelectedConta(item);
     setMetodoRecebimento('pix');
+    setPagamentoPara((item as any).pagamentoPara || caixaPessoas[0]?.id || null);
     setModalVisible(true);
   };
 
   const confirmRecebimento = async () => {
     const targetId = selectedTenantId || user?.uid;
     if (!selectedConta || !targetId) return;
+    if (caixaPessoas.length > 0 && !pagamentoPara) {
+      Alert.alert('Atenção', 'Selecione quem recebeu no caixa.');
+      return;
+    }
 
     setLoadingAction(true);
     try {
-      await receberConta(selectedConta.id, targetId, metodoRecebimento);
+      await receberConta(selectedConta.id, targetId, metodoRecebimento, pagamentoPara);
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(targetId) });
       queryClient.invalidateQueries({ queryKey: ['vendas-list', targetId] });
       setModalVisible(false);
@@ -135,6 +152,28 @@ const ContasReceberScreen = ({ navigation }: any) => {
       Alert.alert('Erro', 'Não foi possível registrar o recebimento.');
     } finally {
       setLoadingAction(false);
+    }
+  };
+
+  const handleSalvarPessoaCaixa = async () => {
+    const targetId = selectedTenantId || user?.uid;
+    if (!targetId) return;
+    if (!novoCaixaNome.trim()) {
+      Alert.alert('Atenção', 'Digite o nome da pessoa.');
+      return;
+    }
+    setSalvandoCaixaPessoa(true);
+    try {
+      const id = await createCaixaPessoa({ nome: novoCaixaNome.trim() }, targetId);
+      const novaPessoa = { id, nome: novoCaixaNome.trim(), ativo: true } as CaixaPessoa;
+      setCaixaPessoas((prev) => [...prev, novaPessoa].sort((a, b) => a.nome.localeCompare(b.nome)));
+      setPagamentoPara(id);
+      setNovoCaixaNome('');
+      setModalCaixaVisible(false);
+    } catch {
+      Alert.alert('Erro', 'Não foi possível cadastrar pessoa do caixa.');
+    } finally {
+      setSalvandoCaixaPessoa(false);
     }
   };
 
@@ -273,6 +312,10 @@ const ContasReceberScreen = ({ navigation }: any) => {
                 <Text style={[styles.resumoValuePrice, { color: theme.info }]}>
                   {formatCurrency(getVendaTotal(selectedConta))}
                 </Text>
+                <Text style={[styles.resumoLabel, { color: theme.textSecondary, marginTop: 10 }]}>Metodo original</Text>
+                <Text style={[styles.resumoValue, { color: theme.textPrimary }]}>
+                  {formatMetodo(selectedConta.metodoPagamento || selectedConta.formaPagamento || undefined)}
+                </Text>
               </View>
             ) : null}
 
@@ -292,6 +335,24 @@ const ContasReceberScreen = ({ navigation }: any) => {
               </Picker>
             </View>
 
+            <Text style={[styles.labelPicker, { color: theme.textPrimary }]}>Recebido por (Caixa)</Text>
+            <View style={styles.dateRow}>
+              <View style={[styles.pickerWrapper, { flex: 1, borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
+                <Picker selectedValue={pagamentoPara} onValueChange={setPagamentoPara} style={{ color: theme.textPrimary }}>
+                  <Picker.Item label="Selecione uma pessoa..." value={null} />
+                  {caixaPessoas.map((pessoa) => (
+                    <Picker.Item key={pessoa.id} label={pessoa.nome} value={pessoa.id} />
+                  ))}
+                </Picker>
+              </View>
+              <TouchableOpacity
+                style={[styles.dateBtn, { marginLeft: 8, flex: 0, width: 54, justifyContent: 'center', borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}
+                onPress={() => setModalCaixaVisible(true)}
+              >
+                <MaterialCommunityIcons name="account-plus" size={18} color={theme.info} />
+              </TouchableOpacity>
+            </View>
+
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={[styles.cancelBtn, { borderColor: theme.border }]}
@@ -307,6 +368,43 @@ const ContasReceberScreen = ({ navigation }: any) => {
                 disabled={loadingAction}
               >
                 <Text style={styles.confirmText}>{loadingAction ? 'Salvando...' : 'Confirmar'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={modalCaixaVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalCaixaVisible(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
+          <View style={[styles.modalContent, { backgroundColor: theme.surfaceBackground }]}>
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Nova Pessoa do Caixa</Text>
+            <TextInput
+              style={[styles.input, { borderColor: theme.border, backgroundColor: theme.surfaceMuted, color: theme.textPrimary }]}
+              placeholder="Nome da pessoa"
+              placeholderTextColor={theme.textSecondary}
+              value={novoCaixaNome}
+              onChangeText={setNovoCaixaNome}
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.cancelBtn, { borderColor: theme.border }]}
+                onPress={() => setModalCaixaVisible(false)}
+                disabled={salvandoCaixaPessoa}
+              >
+                <Text style={[styles.cancelText, { color: theme.textSecondary }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmBtn, { backgroundColor: theme.info }]}
+                onPress={handleSalvarPessoaCaixa}
+                disabled={salvandoCaixaPessoa}
+              >
+                <Text style={styles.confirmText}>{salvandoCaixaPessoa ? 'Salvando...' : 'Salvar'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -399,7 +497,23 @@ const styles = StyleSheet.create({
   resumoValue: { marginTop: 4, fontSize: 16, fontWeight: '800' },
   resumoValuePrice: { marginTop: 4, fontSize: 22, fontWeight: '900' },
   labelPicker: { fontSize: TYPOGRAPHY.body, fontWeight: '700', marginBottom: 8 },
+  dateRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   pickerWrapper: { borderWidth: 1, borderRadius: RADIUS.sm, marginBottom: 20 },
+  dateBtn: {
+    height: 50,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: TYPOGRAPHY.body,
+    marginBottom: 16,
+  },
   modalActions: { flexDirection: 'row', gap: 10 },
   cancelBtn: {
     flex: 1,

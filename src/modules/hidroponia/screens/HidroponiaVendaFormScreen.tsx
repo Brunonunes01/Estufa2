@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -24,15 +24,17 @@ import { COLORS } from '../../../constants/theme';
 import { Cliente } from '../../../types/domain';
 import { queryClient, queryKeys } from '../../../lib/queryClient';
 import { listClientes, createCliente } from '../../../services/clienteService';
+import { createCaixaPessoa, listCaixaPessoas, CaixaPessoa } from '../../../services/caixaPessoaService';
 import { getVendaById, updateVenda, deleteVenda } from '../../../services/vendaService';
 import { getHydroLoteById, listHydroLotes } from '../services/hidroponiaLoteService';
 import { listHydroOcupacoesByLote } from '../services/hidroponiaOcupacaoService';
 import { HydroLote, HydroOcupacao } from '../types';
 import { registrarVendaHidroponicaPorLote } from '../services/hidroponiaColheitaService';
 import { useAppSettings } from '../../../hooks/useAppSettings';
+import { verifyCurrentUserPassword } from '../../../services/securityService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'HidroponiaVendaForm'>;
-type UnidadeVenda = 'kg' | 'caixa' | 'unidade' | 'maço';
+type UnidadeVenda = 'kg' | 'caixas' | 'un' | 'maços';
 type MetodoPagamento = 'pix' | 'dinheiro' | 'boleto' | 'prazo' | 'cartao' | 'outro';
 
 const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
@@ -42,6 +44,7 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
   const targetId = selectedTenantId || user?.uid;
   const params = route.params || {};
   const isEditMode = !!params.vendaId;
+  const [isEditAuthorized, setIsEditAuthorized] = useState(false);
 
   const [loadingData, setLoadingData] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -49,14 +52,16 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
 
   const [lotes, setLotes] = useState<HydroLote[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [caixaPessoas, setCaixaPessoas] = useState<CaixaPessoa[]>([]);
   const [selectedLoteId, setSelectedLoteId] = useState<string>(params.loteId || '');
   const [loteInfo, setLoteInfo] = useState<HydroLote | null>(null);
   const [ocupacoesAtivas, setOcupacoesAtivas] = useState<HydroOcupacao[]>([]);
 
   const [quantidade, setQuantidade] = useState('');
-  const [unidade, setUnidade] = useState<UnidadeVenda>('caixa');
+  const [unidade, setUnidade] = useState<UnidadeVenda>('caixas');
   const [precoUnitario, setPrecoUnitario] = useState('');
   const [metodoPagamento, setMetodoPagamento] = useState<MetodoPagamento>('pix');
+  const [pagamentoPara, setPagamentoPara] = useState<string | null>(null);
   const [selectedClienteId, setSelectedClienteId] = useState<string | null>(null);
   const [dataVenda, setDataVenda] = useState(new Date());
   const [produtoDescricao, setProdutoDescricao] = useState('');
@@ -65,6 +70,38 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
   const [modalClienteVisible, setModalClienteVisible] = useState(false);
   const [novoClienteNome, setNovoClienteNome] = useState('');
   const [salvandoCliente, setSalvandoCliente] = useState(false);
+  const [modalCaixaVisible, setModalCaixaVisible] = useState(false);
+  const [novoCaixaNome, setNovoCaixaNome] = useState('');
+  const [salvandoCaixaPessoa, setSalvandoCaixaPessoa] = useState(false);
+  const [editAuthModalVisible, setEditAuthModalVisible] = useState(false);
+  const [editPassword, setEditPassword] = useState('');
+  const [editAuthorizing, setEditAuthorizing] = useState(false);
+  const initialEditSnapshotRef = useRef<string | null>(null);
+
+  const buildEditSnapshot = (values: {
+    selectedLoteId: string;
+    quantidade: string;
+    unidade: UnidadeVenda;
+    precoUnitario: string;
+    metodoPagamento: MetodoPagamento;
+    pagamentoPara: string | null;
+    selectedClienteId: string | null;
+    dataVenda: Date;
+    produtoDescricao: string;
+    observacoes: string;
+  }) =>
+    JSON.stringify({
+      selectedLoteId: values.selectedLoteId || '',
+      quantidade: Number(values.quantidade.replace(',', '.')) || 0,
+      unidade: values.unidade,
+      precoUnitario: Number(values.precoUnitario.replace(',', '.')) || 0,
+      metodoPagamento: values.metodoPagamento,
+      pagamentoPara: values.pagamentoPara || null,
+      selectedClienteId: values.selectedClienteId || null,
+      dataVenda: new Date(values.dataVenda).toISOString().slice(0, 10),
+      produtoDescricao: values.produtoDescricao.trim(),
+      observacoes: values.observacoes.trim(),
+    });
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -94,6 +131,36 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
     return qtd * preco;
   }, [precoUnitario, quantidade]);
 
+  const hasEditChanges = useMemo(() => {
+    if (!isEditMode) return true;
+    if (!initialEditSnapshotRef.current) return false;
+    const current = buildEditSnapshot({
+      selectedLoteId,
+      quantidade,
+      unidade,
+      precoUnitario,
+      metodoPagamento,
+      pagamentoPara,
+      selectedClienteId,
+      dataVenda,
+      produtoDescricao,
+      observacoes,
+    });
+    return current !== initialEditSnapshotRef.current;
+  }, [
+    isEditMode,
+    selectedLoteId,
+    quantidade,
+    unidade,
+    precoUnitario,
+    metodoPagamento,
+    pagamentoPara,
+    selectedClienteId,
+    dataVenda,
+    produtoDescricao,
+    observacoes,
+  ]);
+
   const carregarSnapshotLote = async (tenantId: string, loteId: string) => {
     const [lote, ocupacoes] = await Promise.all([
       getHydroLoteById(loteId, tenantId),
@@ -115,11 +182,16 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
       if (!targetId) return;
       setLoadingData(true);
       try {
-        const [clientesData, lotesData] = await Promise.all([
+        const [clientesData, pessoasCaixa, lotesData] = await Promise.all([
           listClientes(targetId),
+          listCaixaPessoas(targetId),
           listHydroLotes(targetId),
         ]);
         setClientes(clientesData);
+        setCaixaPessoas(pessoasCaixa);
+        if (!pagamentoPara && pessoasCaixa.length > 0) {
+          setPagamentoPara(pessoasCaixa[0].id);
+        }
         setLotes(lotesData);
 
         if (isEditMode && params.vendaId) {
@@ -146,12 +218,14 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
 
           setSelectedLoteId(hydroLoteId);
           setQuantidade(String((venda as any).quantidade || venda.itens?.[0]?.quantidade || ''));
-          setUnidade(((venda as any).unidade || venda.itens?.[0]?.unidade || 'caixa') as UnidadeVenda);
+          setUnidade(((venda as any).unidade || venda.itens?.[0]?.unidade || 'caixas') as UnidadeVenda);
           setPrecoUnitario(
             String((venda as any).precoUnitario || venda.itens?.[0]?.valorUnitario || '')
           );
           setSelectedClienteId(venda.clienteId || null);
-          setMetodoPagamento((venda.metodoPagamento as MetodoPagamento) || 'pix');
+          const metodoVenda = (venda.metodoPagamento as MetodoPagamento) || 'pix';
+          setMetodoPagamento(metodoVenda);
+          setPagamentoPara(metodoVenda === 'prazo' ? null : (venda.pagamentoPara as string) || pessoasCaixa[0]?.id || null);
           setObservacoes(venda.observacoes || '');
           setProdutoDescricao(((venda as any).cultura as string) || venda.itens?.[0]?.descricao || '');
 
@@ -159,6 +233,19 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
           if (rawDate) {
             const date = rawDate.toDate ? rawDate.toDate() : new Date(rawDate.seconds * 1000);
             setDataVenda(date);
+            initialEditSnapshotRef.current = buildEditSnapshot({
+              selectedLoteId: hydroLoteId,
+              quantidade: String((venda as any).quantidade || venda.itens?.[0]?.quantidade || ''),
+              unidade: ((venda as any).unidade || venda.itens?.[0]?.unidade || 'caixas') as UnidadeVenda,
+              precoUnitario: String((venda as any).precoUnitario || venda.itens?.[0]?.valorUnitario || ''),
+              metodoPagamento: metodoVenda,
+              pagamentoPara:
+                metodoVenda === 'prazo' ? null : (venda.pagamentoPara as string) || pessoasCaixa[0]?.id || null,
+              selectedClienteId: venda.clienteId || null,
+              dataVenda: date,
+              produtoDescricao: ((venda as any).cultura as string) || venda.itens?.[0]?.descricao || '',
+              observacoes: venda.observacoes || '',
+            });
           }
         } else if (!params.loteId && lotesData.length === 1) {
           setSelectedLoteId(lotesData[0].id);
@@ -201,8 +288,8 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
             await deleteVenda(params.vendaId!, targetId);
             invalidateQueries();
             navigation.goBack();
-          } catch {
-            Alert.alert('Erro', 'Não foi possível excluir a venda.');
+          } catch (error: any) {
+            Alert.alert('Erro', error?.message || 'Não foi possível excluir a venda.');
           }
         },
       },
@@ -231,7 +318,37 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
     }
   };
 
+  const handleSalvarNovaPessoaCaixa = async () => {
+    if (!targetId) return;
+    if (!novoCaixaNome.trim()) {
+      Alert.alert('Atenção', 'Digite o nome da pessoa do caixa.');
+      return;
+    }
+    setSalvandoCaixaPessoa(true);
+    try {
+      const pessoaId = await createCaixaPessoa({ nome: novoCaixaNome.trim() }, targetId);
+      const novaPessoa = { id: pessoaId, nome: novoCaixaNome.trim(), ativo: true } as CaixaPessoa;
+      setCaixaPessoas((prev) => [...prev, novaPessoa].sort((a, b) => a.nome.localeCompare(b.nome)));
+      setPagamentoPara(pessoaId);
+      setNovoCaixaNome('');
+      setModalCaixaVisible(false);
+    } catch {
+      Alert.alert('Erro', 'Não foi possível cadastrar pessoa do caixa.');
+    } finally {
+      setSalvandoCaixaPessoa(false);
+    }
+  };
+
   const handleSave = async () => {
+    if (isEditMode && !isEditAuthorized) {
+      if (!hasEditChanges) {
+        Alert.alert('Sem alteracoes', 'Altere algum campo para salvar a venda.');
+        return;
+      }
+      setEditPassword('');
+      setEditAuthModalVisible(true);
+      return;
+    }
     if (!targetId) {
       Alert.alert('Sessão expirada', 'Entre novamente para continuar.');
       return;
@@ -249,6 +366,10 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
     }
     if (preco < 0) {
       Alert.alert('Atenção', 'Preço unitário inválido.');
+      return;
+    }
+    if (metodoPagamento !== 'prazo' && caixaPessoas.length > 0 && !pagamentoPara) {
+      Alert.alert('Atenção', 'Selecione quem recebeu no caixa.');
       return;
     }
 
@@ -287,6 +408,7 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
         unidade,
         precoUnitario: preco,
         metodoPagamento,
+        pagamentoPara,
         dataVenda,
         observacoes: observacaoFinal,
         itemDescricao: descricaoDefault,
@@ -304,6 +426,7 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
             precoUnitario: preco,
             clienteId: selectedClienteId,
             metodoPagamento,
+            pagamentoPara,
             dataColheita: dataVenda,
             observacoes: observacaoFinal,
             itemDescricao: descricaoDefault,
@@ -429,10 +552,10 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
               <Text style={styles.label}>Unidade</Text>
               <View style={styles.pickerWrapper}>
                 <Picker selectedValue={unidade} onValueChange={(value) => setUnidade(value as UnidadeVenda)} style={styles.picker} enabled={!isEditMode}>
-                  <Picker.Item label="CX" value="caixa" />
+                  <Picker.Item label="CX" value="caixas" />
                   <Picker.Item label="KG" value="kg" />
-                  <Picker.Item label="UN" value="unidade" />
-                  <Picker.Item label="MAÇO" value="maço" />
+                  <Picker.Item label="UN" value="un" />
+                  <Picker.Item label="MAÇO" value="maços" />
                 </Picker>
               </View>
             </View>
@@ -460,7 +583,7 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
           <View style={styles.pickerWrapper}>
             <Picker
               selectedValue={metodoPagamento}
-              onValueChange={(value) => setMetodoPagamento(value as MetodoPagamento)}
+              onValueChange={(value) => { setMetodoPagamento(value as MetodoPagamento); if (value === 'prazo') setPagamentoPara(null); }}
               style={styles.picker}
             >
               <Picker.Item label="Pix" value="pix" />
@@ -471,6 +594,24 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
               <Picker.Item label="Outro" value="outro" />
             </Picker>
           </View>
+          {metodoPagamento !== 'prazo' ? (
+            <>
+              <Text style={[styles.label, { marginTop: 14 }]}>Recebido por (Caixa)</Text>
+              <View style={styles.rowAlign}>
+                <View style={styles.pickerWrapper}>
+                  <Picker selectedValue={pagamentoPara} onValueChange={setPagamentoPara} style={styles.picker}>
+                    <Picker.Item label="Selecione uma pessoa..." value={null} />
+                    {caixaPessoas.map((pessoa) => (
+                      <Picker.Item key={pessoa.id} label={pessoa.nome} value={pessoa.id} />
+                    ))}
+                  </Picker>
+                </View>
+                <TouchableOpacity style={styles.addBtn} onPress={() => setModalCaixaVisible(true)}>
+                  <MaterialCommunityIcons name="account-plus" size={22} color={COLORS.textLight} />
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : null}
 
           <Text style={[styles.label, { marginTop: 14 }]}>Observações</Text>
           <TextInput
@@ -482,13 +623,17 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
           />
         </View>
 
-        <TouchableOpacity style={styles.saveBtn} onPress={() => void handleSave()} disabled={saving}>
-          {saving ? (
-            <ActivityIndicator color={COLORS.textLight} />
-          ) : (
-            <Text style={styles.saveText}>{isEditMode ? 'Salvar Alterações' : 'Confirmar Venda'}</Text>
-          )}
-        </TouchableOpacity>
+        {!isEditMode || hasEditChanges ? (
+          <TouchableOpacity style={styles.saveBtn} onPress={() => void handleSave()} disabled={saving}>
+            {saving ? (
+              <ActivityIndicator color={COLORS.textLight} />
+            ) : (
+              <Text style={styles.saveText}>{isEditMode ? 'Salvar Alteracoes' : 'Confirmar Venda'}</Text>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <Text style={[styles.infoText, { textAlign: 'center', marginTop: 8 }]}>Sem alteracoes para salvar.</Text>
+        )}
       </ScrollView>
 
       <Modal animationType="fade" transparent visible={modalClienteVisible} onRequestClose={() => setModalClienteVisible(false)}>
@@ -512,6 +657,79 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
                 ) : (
                   <Text style={{ color: COLORS.textLight, fontWeight: '700' }}>Salvar</Text>
                 )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal animationType="fade" transparent visible={modalCaixaVisible} onRequestClose={() => setModalCaixaVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Nova Pessoa do Caixa</Text>
+            <TextInput
+              style={styles.input}
+              value={novoCaixaNome}
+              onChangeText={setNovoCaixaNome}
+              placeholder="Nome da pessoa"
+              autoFocus
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setModalCaixaVisible(false)}>
+                <Text style={{ color: COLORS.textSecondary }}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalBtn} onPress={handleSalvarNovaPessoaCaixa} disabled={salvandoCaixaPessoa}>
+                {salvandoCaixaPessoa ? (
+                  <ActivityIndicator color={COLORS.textLight} />
+                ) : (
+                  <Text style={{ color: COLORS.textLight, fontWeight: '700' }}>Salvar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal animationType="fade" transparent visible={editAuthModalVisible} onRequestClose={() => setEditAuthModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Confirmar edicao da venda</Text>
+            <Text style={[styles.infoText, { marginBottom: 10 }]}>Digite a senha do app para autorizar a alteracao.</Text>
+            <TextInput
+              style={styles.input}
+              value={editPassword}
+              onChangeText={setEditPassword}
+              secureTextEntry
+              autoCapitalize="none"
+              placeholder="Senha"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setEditAuthModalVisible(false)} disabled={editAuthorizing}>
+                <Text style={{ color: COLORS.textSecondary }}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalBtn}
+                disabled={editAuthorizing}
+                onPress={async () => {
+                  if (!editPassword.trim()) {
+                    Alert.alert('Atencao', 'Digite a senha para continuar.');
+                    return;
+                  }
+                  setEditAuthorizing(true);
+                  try {
+                    const ok = await verifyCurrentUserPassword(editPassword.trim());
+                    if (!ok) {
+                      Alert.alert('Senha invalida', 'A senha informada esta incorreta.');
+                      return;
+                    }
+                    setIsEditAuthorized(true);
+                    setEditAuthModalVisible(false);
+                    await handleSave();
+                  } finally {
+                    setEditAuthorizing(false);
+                  }
+                }}
+              >
+                {editAuthorizing ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={{ color: COLORS.textLight, fontWeight: '700' }}>Autorizar</Text>}
               </TouchableOpacity>
             </View>
           </View>
