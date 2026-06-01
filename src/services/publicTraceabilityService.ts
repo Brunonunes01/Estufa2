@@ -27,6 +27,8 @@ export const resolveTraceabilityPublicToken = (record: { id?: string; traceabili
 
 export const getPublicTraceabilityBaseUrl = () => {
   const envUrl = String(process.env.EXPO_PUBLIC_TRACEABILITY_PUBLIC_URL || '').trim();
+  if (!envUrl) return '';
+  if (['disabled', 'off', 'none', 'false', '0'].includes(envUrl.toLowerCase())) return '';
   return envUrl ? envUrl.replace(/\/+$/, '') : '';
 };
 

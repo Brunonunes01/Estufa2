@@ -1,5 +1,5 @@
-import { collection, getDocs, query, where } from '../compat/firestore';
-import { db } from './firebaseConfig';
+import { collection, getDocs, query, where } from '../compat/legacyDataApi';
+import { db } from './removedBackend';
 import { Despesa, Plantio, Venda } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { isSupabaseBackend } from './backendConfig';

@@ -10,7 +10,7 @@ Este documento define as diretrizes obrigatórias para a evolução do frontend 
 
 ## 2. Padrões de Arquitetura
 
-*   **Logic Isolation:** Nenhuma lógica de negócio ou chamada direta ao Firebase deve residir dentro das Screens. Use **Custom Hooks** para estado e **Services** para persistência.
+*   **Logic Isolation:** Nenhuma lógica de negócio ou acesso a dados fora da camada de services deve residir dentro das Screens. Use **Custom Hooks** para estado e **Services** para persistência.
 *   **Multi-tenancy:** Toda e qualquer query ou mutação deve obrigatoriamente validar o `tenantId`. O uso do `tenantGuard.ts` é mandatório.
 *   **Componentização:** Componentes reutilizáveis (botões, cards, inputs) devem ser colocados em `src/components/ui/`. Componentes específicos de funcionalidade devem ficar em subpastas (ex: `src/components/dashboard/`).
 
@@ -30,7 +30,7 @@ Ao criar uma nova funcionalidade, siga esta ordem:
 ## 5. Validação Obrigatória
 
 *   Antes de finalizar qualquer tarefa, o desenvolvedor deve garantir que o `typecheck` (`npm run typecheck`) passe sem erros.
-*   Mudanças que impactem o dashboard devem ser validadas no fluxo de frontend (hooks, services e telas) sem dependência de Cloud Functions.
+*   Mudanças que impactem o dashboard devem ser validadas no fluxo de frontend (hooks, services e telas) sem dependência de rotinas server-side antigas.
 
 ---
 *Este documento é a base para a manutenção da qualidade Sênior do projeto.*

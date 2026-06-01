@@ -8,7 +8,7 @@ interface AuthContextData {
   loading: boolean;
   selectedTenantId: string;
   changeTenant: (uid: string) => void;
-  availableTenants: { uid: string; name: string; type?: 'owner' | 'shared'; ownerName?: string }[];
+  availableTenants: { uid: string; name: string; type?: 'owner' | 'shared'; ownerName?: string; role?: 'guest' | 'operator' | 'admin' }[];
   signIn: (email: string, password: string) => Promise<void>;
   refreshUserProfile: () => Promise<void>;
 }
@@ -28,7 +28,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
   const [availableTenants, setAvailableTenants] = useState<
-    { uid: string; name: string; type?: 'owner' | 'shared'; ownerName?: string }[]
+    { uid: string; name: string; type?: 'owner' | 'shared'; ownerName?: string; role?: 'guest' | 'operator' | 'admin' }[]
   >([]);
 
   const ensureSupabaseProfileAndTenants = useCallback(
@@ -77,16 +77,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const isOwner = tenant?.owner_user_id === authUser.id;
         return {
           uid: m.tenant_id,
-          name: isOwner ? 'Minha Estufa (Principal)' : tenant?.name || 'Estufa Compartilhada',
+          name: tenant?.name || (isOwner ? 'Minha Estufa' : 'Estufa Compartilhada'),
           type: (isOwner ? 'owner' : 'shared') as 'owner' | 'shared',
           ownerName: isOwner ? fallbackName : undefined,
+          role: (m.role || 'guest') as 'guest' | 'operator' | 'admin',
         };
       });
 
       setAvailableTenants(tenantOptions);
       setSelectedTenantId((prev) => {
         if (prev && tenantOptions.some((t) => t.uid === prev)) return prev;
-        return tenantOptions[0]?.uid || '';
+        const ownerTenant = tenantOptions.find((item) => item.type === 'owner');
+        return ownerTenant?.uid || tenantOptions[0]?.uid || '';
       });
 
       const role =

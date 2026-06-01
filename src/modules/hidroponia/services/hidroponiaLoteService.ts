@@ -8,8 +8,8 @@ import {
   Timestamp,
   updateDoc,
   where,
-} from '../../../compat/firestore';
-import { db } from '../../../services/firebaseConfig';
+} from '../../../compat/legacyDataApi';
+import { db } from '../../../services/removedBackend';
 import { listEstufas } from '../../../services/estufaService';
 import { assertTenantId } from '../../../services/tenantGuard';
 import { createTraceabilityEventSafely } from '../../../services/traceabilityService';

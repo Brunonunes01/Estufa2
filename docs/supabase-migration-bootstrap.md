@@ -51,6 +51,6 @@ npm run supabase:types
 ## 6) Próxima migração recomendada
 - `0002_etl_staging_and_import.sql`:
   - tabelas temporárias de import
-  - funções de upsert por `firebase_id`
+  - funções de upsert por `supabase_id`
   - estratégia idempotente de replay
 

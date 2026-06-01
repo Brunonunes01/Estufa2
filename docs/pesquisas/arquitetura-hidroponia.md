@@ -78,7 +78,7 @@ Essa estrutura deixa claro o que so existe para hidroponia: fases, bancadas, lei
 
 ## Configuracao do Produto
 
-Adicionar em `AppSettingsContext` ou, idealmente, em configuracoes do tenant no Firestore.
+Adicionar em `AppSettingsContext` ou, idealmente, em configuracoes do tenant no banco anterior.
 
 ### Configuracao Local
 
@@ -170,7 +170,7 @@ export interface HydroReservatorio {
 
 Por que dentro da estufa? Porque isso e estrutura fisica. Nao e lote. Nao e ciclo.
 
-## Novas Colecoes Firestore
+## Novas Colecoes banco anterior
 
 ### `hidroponia_lotes`
 
@@ -612,7 +612,7 @@ Hidroponia
 
 O detalhe fica no `HidroponiaDashboardScreen`.
 
-## Indices Firestore Provaveis
+## Indices banco anterior Provaveis
 
 Criar indices para:
 

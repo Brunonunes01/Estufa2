@@ -9,8 +9,8 @@ import {
   updateDoc, 
   deleteDoc, 
   Timestamp 
-} from '../compat/firestore';
-import { db } from './firebaseConfig';
+} from '../compat/legacyDataApi';
+import { db } from './removedBackend';
 import { Estufa, HydroMotor, HydroSetor } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { cancelActivePlantiosByEstufa } from './plantioService';
@@ -127,7 +127,7 @@ const buildSupabaseEstufaPayload = (data: Partial<Estufa>, tenantId: string) => 
   legacy_subdivisoes: data.subdivisoes ?? null,
 });
 
-const createEstufaFirebase = async (data: Partial<Estufa>, tenantId: string) => {
+const createEstufaLegacy = async (data: Partial<Estufa>, tenantId: string) => {
   validateHydroMotorBindings(data.setores, data.motores);
   const novaEstufa = {
     ...data,
@@ -156,7 +156,7 @@ const createEstufaSupabase = async (data: Partial<Estufa>, tenantId: string) => 
   return inserted.id as string;
 };
 
-const listEstufasFirebase = async (tenantId: string): Promise<Estufa[]> => {
+const listEstufasLegacy = async (tenantId: string): Promise<Estufa[]> => {
   const [byUserIdResult, byTenantIdResult] = await Promise.allSettled([
     getDocs(query(collection(db, 'estufas'), where('userId', '==', tenantId))),
     getDocs(query(collection(db, 'estufas'), where('tenantId', '==', tenantId))),
@@ -183,7 +183,7 @@ const listEstufasSupabase = async (tenantId: string): Promise<Estufa[]> => {
   return (data || []).map(mapSupabaseEstufaToDomain);
 };
 
-const getEstufaByIdFirebase = async (id: string, tenantId: string): Promise<Estufa | null> => {
+const getEstufaByIdLegacy = async (id: string, tenantId: string): Promise<Estufa | null> => {
   const docRef = doc(db, 'estufas', id);
   const docSnap = await getDoc(docRef);
   if (!docSnap.exists()) return null;
@@ -206,8 +206,8 @@ const getEstufaByIdSupabase = async (id: string, tenantId: string): Promise<Estu
   return data ? mapSupabaseEstufaToDomain(data) : null;
 };
 
-const updateEstufaFirebase = async (id: string, data: Partial<Estufa>, tenantId: string) => {
-  const estufa = await getEstufaByIdFirebase(id, tenantId);
+const updateEstufaLegacy = async (id: string, data: Partial<Estufa>, tenantId: string) => {
+  const estufa = await getEstufaByIdLegacy(id, tenantId);
   if (!estufa) throw new Error('Estufa não encontrada.');
   if (data.motores !== undefined || data.setores !== undefined) {
     const nextSetores = data.setores !== undefined ? data.setores : estufa.setores;
@@ -235,8 +235,8 @@ const updateEstufaSupabase = async (id: string, data: Partial<Estufa>, tenantId:
   if (error) throw new Error(`Erro ao atualizar estufa. ${error.message}`);
 };
 
-const deleteEstufaFirebase = async (id: string, tenantId: string) => {
-  const estufa = await getEstufaByIdFirebase(id, tenantId);
+const deleteEstufaLegacy = async (id: string, tenantId: string) => {
+  const estufa = await getEstufaByIdLegacy(id, tenantId);
   if (!estufa) throw new Error('Estufa não encontrada para exclusão.');
   await cancelActivePlantiosByEstufa(tenantId, id);
   await deleteDoc(doc(db, 'estufas', id));
@@ -260,7 +260,7 @@ export const createEstufa = async (data: Partial<Estufa>, userId: string, option
     write: async () => {
       try {
         if (isSupabaseBackend()) return await createEstufaSupabase(data, tenantId);
-        return await createEstufaFirebase(data, tenantId);
+        return await createEstufaLegacy(data, tenantId);
       } catch (error) {
         console.error("Erro ao criar estufa:", error);
         throw new Error("Erro ao salvar estufa no banco de dados.");
@@ -273,7 +273,7 @@ export const listEstufas = async (userId: string): Promise<Estufa[]> => {
   const tenantId = assertTenantId(userId);
   try {
     if (isSupabaseBackend()) return await listEstufasSupabase(tenantId);
-    return await listEstufasFirebase(tenantId);
+    return await listEstufasLegacy(tenantId);
   } catch (error) {
     console.error("Erro ao listar estufas:", error);
     throw new Error("Erro ao buscar lista de estufas.");
@@ -284,7 +284,7 @@ export const getEstufaById = async (id: string, userId: string): Promise<Estufa 
   const tenantId = assertTenantId(userId);
   try {
     if (isSupabaseBackend()) return await getEstufaByIdSupabase(id, tenantId);
-    return await getEstufaByIdFirebase(id, tenantId);
+    return await getEstufaByIdLegacy(id, tenantId);
   } catch (error) {
     console.error("Erro ao buscar estufa por ID:", error);
     throw error;
@@ -304,7 +304,7 @@ export const updateEstufa = async (id: string, data: Partial<Estufa>, userId: st
           await updateEstufaSupabase(id, data, tenantId);
           return;
         }
-        await updateEstufaFirebase(id, data, tenantId);
+        await updateEstufaLegacy(id, data, tenantId);
       } catch (error) {
         console.error("Erro ao atualizar estufa:", error);
         throw error instanceof Error ? error : new Error("Erro ao atualizar estufa.");
@@ -326,7 +326,7 @@ export const deleteEstufa = async (id: string, userId: string, options?: Offline
           await deleteEstufaSupabase(id, tenantId);
           return;
         }
-        await deleteEstufaFirebase(id, tenantId);
+        await deleteEstufaLegacy(id, tenantId);
       } catch (error) {
         console.error("Erro ao eliminar estufa:", error);
         throw error instanceof Error ? error : new Error("Não foi possível excluir a estufa.");

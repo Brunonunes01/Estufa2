@@ -10,8 +10,8 @@ import {
   updateDoc,
   deleteDoc,
   runTransaction,
-} from '../compat/firestore';
-import { db } from './firebaseConfig';
+} from '../compat/legacyDataApi';
+import { db } from './removedBackend';
 import { Insumo } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { OfflineWriteOptions } from './offline/offlineStorage';
@@ -65,7 +65,7 @@ const buildSupabaseInsumoPayload = (data: Partial<InsumoFormData>, tenantId: str
   observacoes: data.observacoes ?? null,
 });
 
-const createInsumoFirebase = async (data: InsumoFormData, tenantId: string) => {
+const createInsumoLegacy = async (data: InsumoFormData, tenantId: string) => {
   const now = Timestamp.now();
   const novoInsumo = {
     ...data,
@@ -86,7 +86,7 @@ const createInsumoSupabase = async (data: InsumoFormData, tenantId: string) => {
   return inserted.id as string;
 };
 
-const updateInsumoFirebase = async (insumoId: string, data: Partial<InsumoFormData>, tenantId: string) => {
+const updateInsumoLegacy = async (insumoId: string, data: Partial<InsumoFormData>, tenantId: string) => {
   const insumo = await getInsumoById(insumoId, tenantId);
   if (!insumo) throw new Error('Insumo não encontrado.');
   await updateDoc(doc(db, 'insumos', insumoId), { ...data, updatedAt: Timestamp.now() });
@@ -102,7 +102,7 @@ const updateInsumoSupabase = async (insumoId: string, data: Partial<InsumoFormDa
   if (error) throw new Error(`Erro ao atualizar insumo. ${error.message}`);
 };
 
-const listInsumosFirebase = async (tenantId: string): Promise<Insumo[]> => {
+const listInsumosLegacy = async (tenantId: string): Promise<Insumo[]> => {
   const q = query(collection(db, 'insumos'), where('tenantId', '==', tenantId));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map((item) => ({ ...item.data(), id: item.id } as Insumo));
@@ -115,7 +115,7 @@ const listInsumosSupabase = async (tenantId: string): Promise<Insumo[]> => {
   return (data || []).map(mapSupabaseInsumoToDomain);
 };
 
-const getInsumoByIdFirebase = async (insumoId: string, tenantId: string): Promise<Insumo | null> => {
+const getInsumoByIdLegacy = async (insumoId: string, tenantId: string): Promise<Insumo | null> => {
   const docRef = doc(db, 'insumos', insumoId);
   const docSnap = await getDoc(docRef);
 
@@ -141,7 +141,7 @@ const getInsumoByIdSupabase = async (insumoId: string, tenantId: string): Promis
   return data ? mapSupabaseInsumoToDomain(data) : null;
 };
 
-const deleteInsumoFirebase = async (insumoId: string, tenantId: string) => {
+const deleteInsumoLegacy = async (insumoId: string, tenantId: string) => {
   const insumo = await getInsumoById(insumoId, tenantId);
   if (!insumo) throw new Error('Insumo não encontrado.');
   await deleteDoc(doc(db, 'insumos', insumoId));
@@ -162,7 +162,7 @@ export const createInsumo = async (data: InsumoFormData, userId: string, options
     onQueuedValue: () => buildOfflinePlaceholderId(),
     write: async () => {
       if (isSupabaseBackend()) return createInsumoSupabase(data, tenantId);
-      return createInsumoFirebase(data, tenantId);
+      return createInsumoLegacy(data, tenantId);
     },
   });
 };
@@ -184,7 +184,7 @@ export const updateInsumo = async (
         await updateInsumoSupabase(insumoId, data, tenantId);
         return;
       }
-      await updateInsumoFirebase(insumoId, data, tenantId);
+      await updateInsumoLegacy(insumoId, data, tenantId);
     },
   });
 };
@@ -192,7 +192,7 @@ export const updateInsumo = async (
 export const listInsumos = async (userId: string): Promise<Insumo[]> => {
   const tenantId = assertTenantId(userId);
   if (isSupabaseBackend()) return listInsumosSupabase(tenantId);
-  return listInsumosFirebase(tenantId);
+  return listInsumosLegacy(tenantId);
 };
 
 export const listInsumosEmAlerta = async (userId: string): Promise<Insumo[]> => {
@@ -204,13 +204,13 @@ export const listInsumosEmAlerta = async (userId: string): Promise<Insumo[]> => 
 export const getInsumoById = async (insumoId: string, userId: string): Promise<Insumo | null> => {
   const tenantId = assertTenantId(userId);
   if (isSupabaseBackend()) return getInsumoByIdSupabase(insumoId, tenantId);
-  return getInsumoByIdFirebase(insumoId, tenantId);
+  return getInsumoByIdLegacy(insumoId, tenantId);
 };
 
 export const deleteInsumo = async (insumoId: string, userId: string) => {
   const tenantId = assertTenantId(userId);
   if (isSupabaseBackend()) return deleteInsumoSupabase(insumoId, tenantId);
-  return deleteInsumoFirebase(insumoId, tenantId);
+  return deleteInsumoLegacy(insumoId, tenantId);
 };
 
 export const addEstoqueToInsumo = async (

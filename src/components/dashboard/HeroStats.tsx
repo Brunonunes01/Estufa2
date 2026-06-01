@@ -10,9 +10,9 @@ interface HeroStatsProps {
 
 const HeroStats = ({ estufas, plantios, tarefasHoje }: HeroStatsProps) => {
   const items = [
-    { label: 'Estufas', value: estufas },
-    { label: 'Plantios', value: plantios },
-    { label: 'Tarefas Hoje', value: tarefasHoje },
+    { label: 'Estufas', value: estufas, icon: 'greenhouse' },
+    { label: 'Plantios', value: plantios, icon: 'sprout' },
+    { label: 'Tarefas', value: tarefasHoje, icon: 'calendar-check' },
   ];
 
   return (
@@ -28,10 +28,18 @@ const HeroStats = ({ estufas, plantios, tarefasHoje }: HeroStatsProps) => {
 };
 
 const styles = StyleSheet.create({
-  row: { marginTop: 12, flexDirection: 'row', gap: 8 },
-  chip: { flex: 1, backgroundColor: COLORS.whiteAlpha12, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
-  value: { color: COLORS.textLight, fontSize: 16, fontWeight: '800' },
-  label: { color: COLORS.whiteAlpha80, fontSize: 10, marginTop: 2 },
+  row: { marginTop: 16, flexDirection: 'row', gap: 12 },
+  chip: { 
+    flex: 1, 
+    backgroundColor: 'rgba(255,255,255,0.15)', 
+    borderRadius: 16, 
+    paddingVertical: 14, 
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  value: { color: '#FFFFFF', fontSize: 20, fontWeight: '900', letterSpacing: -0.5 },
+  label: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '700', marginTop: 2, textTransform: 'uppercase' },
 });
 
 export default React.memo(HeroStats);

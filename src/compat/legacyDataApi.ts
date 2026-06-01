@@ -1,7 +1,7 @@
 export type Unsubscribe = () => void;
 
 const removed = (fn: string) => {
-  throw new Error(`Firebase removido do app (Supabase-only). Função legada chamada: ${fn}.`);
+  throw new Error(`Backend legado removido do app. Funcao legada chamada: ${fn}.`);
 };
 
 export class Timestamp {
@@ -18,8 +18,7 @@ export class Timestamp {
   }
 
   static fromDate(date: Date) {
-    const ms = date.getTime();
-    return Timestamp.fromMillis(ms);
+    return Timestamp.fromMillis(date.getTime());
   }
 
   static fromMillis(ms: number) {
@@ -53,4 +52,3 @@ export const writeBatch: any = (..._args: any[]) => removed('writeBatch');
 export const runTransaction: any = (..._args: any[]) => removed('runTransaction');
 export const orderBy: any = (..._args: any[]) => removed('orderBy');
 export const limit: any = (..._args: any[]) => removed('limit');
-export const waitForPendingWrites: any = async (..._args: any[]) => removed('waitForPendingWrites');

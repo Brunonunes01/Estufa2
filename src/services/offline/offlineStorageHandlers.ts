@@ -9,6 +9,10 @@ import { createManejo } from '../manejoService';
 import { createAplicacao } from '../aplicacaoService';
 import { createColheita, deleteColheita, updateColheita } from '../colheitaService';
 import { createVenda, deleteVenda, receberVenda, updateVenda } from '../vendaService';
+import {
+  registrarColheitaHidroponica,
+  registrarVendaHidroponicaPorLote,
+} from '../../modules/hidroponia/services/hidroponiaColheitaService';
 
 type AnyPayload = Record<string, any>;
 
@@ -91,6 +95,13 @@ export const executeOfflineAction = async (action: OfflineActionName, payload: A
       await deleteColheita(payload.id, payload.userId);
       return;
 
+    case 'registrarColheitaHidroponica':
+      await registrarColheitaHidroponica(payload.data, payload.userId);
+      return;
+    case 'registrarVendaHidroponicaPorLote':
+      await registrarVendaHidroponicaPorLote(payload.data, payload.userId);
+      return;
+
     case 'createVenda':
       await createVenda(payload.data, payload.userId);
       return;
@@ -101,7 +112,7 @@ export const executeOfflineAction = async (action: OfflineActionName, payload: A
       await deleteVenda(payload.id, payload.userId);
       return;
     case 'receberVenda':
-      await receberVenda(payload.id, payload.userId, payload.metodoRecebimento);
+      await receberVenda(payload.id, payload.userId, payload.metodoRecebimento, payload.pagamentoPara || null);
       return;
     default:
       throw new Error(`Ação offline não suportada: ${action}`);

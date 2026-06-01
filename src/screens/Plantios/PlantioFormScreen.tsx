@@ -9,7 +9,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { createPlantio, updatePlantio, getPlantioById, deletePlantioSafely } from '../../services/plantioService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
-import { Timestamp } from '../../compat/firestore'; 
+import { Timestamp } from '../../compat/legacyDataApi'; 
 import { queryClient, queryKeys } from '../../lib/queryClient';
 import { verifyCurrentUserPassword } from '../../services/securityService';
 import { useMutation } from '@tanstack/react-query';
@@ -316,7 +316,12 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
           { paddingBottom: (settings.uiV2Enabled ? 138 : SPACING.xl) + insets.bottom },
         ]}
       >
-        
+        <View style={styles.heroBanner}>
+          <MaterialCommunityIcons name="sprout-outline" size={20} color={COLORS.textLight} />
+          <Text style={styles.heroBannerText}>Configure o ciclo com dados tecnicos e custo inicial</Text>
+        </View>
+
+        <View style={styles.formCard}>
         <View style={styles.loteContainer}>
           <Text style={styles.loteLabel}>CÓDIGO DO LOTE (GERADO AUTOMATICAMENTE)</Text>
           <TextInput 
@@ -360,7 +365,9 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
           placeholder="Ex: Viveiro X, Lote Fornecedor Y" 
           placeholderTextColor={COLORS.textPlaceholder} 
         />
+        </View>
 
+        <View style={styles.formCard}>
         <Text style={styles.sectionTitle}>Dados de Plantio e Custos</Text>
 
         <View style={styles.row}>
@@ -465,7 +472,9 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
           </View>
         </View>
         <Text style={styles.hint}>Além deste custo inicial de mudas/bandejas, os demais custos do ciclo vêm de aplicações e despesas vinculadas.</Text>
+        </View>
 
+        <View style={styles.formCard}>
         <Text style={styles.sectionTitle}>Outros</Text>
 
         <Text style={styles.label}>Observações do Lote</Text>
@@ -477,6 +486,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
           placeholderTextColor={COLORS.textPlaceholder} 
           multiline
         />
+        </View>
 
         <TouchableOpacity style={styles.btn} onPress={handleSave} disabled={mutation.isPending}>
           {mutation.isPending ? (
@@ -533,14 +543,43 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   padding: { padding: SPACING.xl },
+
+  heroBanner: {
+    backgroundColor: COLORS.secondary,
+    borderRadius: RADIUS.md,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    ...SHADOWS.card,
+  },
+  heroBannerText: {
+    color: COLORS.textLight,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    flex: 1,
+  },
+
+  formCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    marginBottom: 12,
+    ...SHADOWS.card,
+  },
   
-  loteContainer: { backgroundColor: COLORS.infoSoft, padding: 15, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.info, marginBottom: 20 },
+  loteContainer: { backgroundColor: COLORS.infoSoft, padding: 15, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.info, marginBottom: 12 },
   loteLabel: { fontSize: 11, fontWeight: 'bold', color: COLORS.primary, marginBottom: 5, textAlign: 'center' },
   loteInput: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.textPrimary, textAlign: 'center', letterSpacing: 1 },
 
-  sectionTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', color: COLORS.secondary, marginTop: 10, marginBottom: 15 },
+  sectionTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '900', color: COLORS.secondary, marginTop: 6, marginBottom: 14 },
   label: { fontWeight: 'bold', marginBottom: 5, color: COLORS.textSecondary, fontSize: 13 },
-  input: { backgroundColor: COLORS.surfaceMuted, padding: 15, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, color: COLORS.textDark },
+  input: { backgroundColor: COLORS.surfaceMuted, padding: 15, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, color: COLORS.textDark, fontWeight: '600' },
   pickerWrapper: { backgroundColor: COLORS.surfaceMuted, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, height: 54, justifyContent: 'center' },
   picker: { color: COLORS.textDark },
   bandejaBox: { backgroundColor: COLORS.surfaceMuted, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, padding: 12, marginBottom: 15 },
@@ -553,7 +592,7 @@ const styles = StyleSheet.create({
   hint: { fontSize: 12, color: COLORS.textPrimary, marginTop: -10, marginBottom: 15, fontStyle: 'italic' },
   costText: { fontSize: 13, color: COLORS.success, fontWeight: '700', marginTop: -8, marginBottom: 15 },
   
-  btn: { backgroundColor: COLORS.primary, height: 58, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginTop: 10, marginBottom: 30, ...SHADOWS.card },
+  btn: { backgroundColor: COLORS.primary, height: 58, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginTop: 8, marginBottom: 20, ...SHADOWS.card },
   btnText: { color: COLORS.textLight, fontWeight: '800', fontSize: 17 },
   secondaryDangerBtn: {
     flexDirection: 'row',

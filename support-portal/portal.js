@@ -1,40 +1,11 @@
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js';
-import {
-  getAuth,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signOut,
-} from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js';
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  getFirestore,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-} from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
-const firebaseConfig = {
-  apiKey: 'AIzaSyDNGftBmPuHi2wSbIGyE3qu20i0AsQ3HQk',
-  authDomain: 'sge-app-9ffb8.firebaseapp.com',
-  projectId: 'sge-app-9ffb8',
-  storageBucket: 'sge-app-9ffb8.firebasestorage.app',
-  messagingSenderId: '878004575186',
-  appId: '1:878004575186:web:58cbe34633e63232d3c60b',
-};
-
-const FIXED_SUPPORT_UID = 'fsCWNyTtuOOeYAmVokbhfU0xA2e2';
 const PAGE_SIZE = 20;
+const STORAGE_KEY = 'sge_support_supabase_cfg';
+const WRITE_UNLOCK_KEY = 'sge_support_write_unlock_until';
+const WRITE_UNLOCK_MINUTES = 20;
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+let supabase = null;
 
 const el = {
   sidebar: document.getElementById('sidebar'),
@@ -62,27 +33,29 @@ const state = {
   tenants: [],
   selectedTenantId: '',
   currentView: 'overview',
-  message: '',
-  error: false,
   cachedRows: {},
   tableState: {},
   pendingAuditAction: null,
   pendingEditContext: null,
+  globalSearchTerm: '',
+  globalSearchResults: [],
+  globalSearching: false,
+  auditFilters: { action: '', actor: '', from: '', to: '' },
 };
 
 const appRoot = document.getElementById('portalApp');
 
 const MENU = [
   {
-    section: 'Visão Geral',
-    items: [{ id: 'overview', label: 'Dashboard & Alertas' }],
+    section: 'Visao Geral',
+    items: [{ id: 'overview', label: 'Dashboard' }],
   },
   {
     section: 'Operacional',
     items: [
       { id: 'estufas', label: 'Estufas' },
       { id: 'plantios', label: 'Plantios' },
-      { id: 'tarefas', label: 'Tarefas' },
+      { id: 'tarefas_agricolas', label: 'Tarefas' },
       { id: 'colheitas', label: 'Colheitas' },
       { id: 'manejos', label: 'Manejos' },
     ],
@@ -90,17 +63,10 @@ const MENU = [
   {
     section: 'Hidroponia',
     items: [
-      { id: 'hidroponia_lotes', label: 'Lotes' },
-      { id: 'hidroponia_leituras', label: 'Leituras' },
-      { id: 'hidroponia_movimentacoes', label: 'Movimentações' },
-      { id: 'hidroponia_motores', label: 'Motores' },
-    ],
-  },
-  {
-    section: 'Estoque',
-    items: [
-      { id: 'insumos', label: 'Insumos' },
-      { id: 'aplicacoes', label: 'Aplicações' },
+      { id: 'hidro_lotes', label: 'Lotes' },
+      { id: 'hidro_leituras', label: 'Leituras' },
+      { id: 'hidro_movimentacoes', label: 'Movimentacoes' },
+      { id: 'hidro_motores', label: 'Motores' },
     ],
   },
   {
@@ -108,19 +74,13 @@ const MENU = [
     items: [
       { id: 'vendas', label: 'Vendas' },
       { id: 'despesas', label: 'Despesas' },
-      { id: 'contas_receber', label: 'Contas a Receber' },
-    ],
-  },
-  {
-    section: 'CRM',
-    items: [
       { id: 'clientes', label: 'Clientes' },
       { id: 'fornecedores', label: 'Fornecedores' },
     ],
   },
   {
-    section: 'Administração',
-    items: [{ id: 'support_audit', label: 'Trilha de Auditoria' }],
+    section: 'Seguranca',
+    items: [{ id: 'support_audit', label: 'Auditoria' }],
   },
 ];
 
@@ -131,49 +91,41 @@ const MODULE_CONFIG = {
     columns: [
       { key: 'nome', label: 'Nome', editable: true },
       { key: 'tipo', label: 'Tipo', editable: true },
-      { key: 'area', label: 'Área', editable: true, type: 'number' },
-      { key: 'updatedAt', label: 'Atualizado', format: formatDate },
+      { key: 'status', label: 'Status', editable: true, format: formatStatus },
+      { key: 'updated_at', label: 'Atualizado', format: formatDateTime },
     ],
-    actions: { edit: true, delete: true },
+    actions: { create: true, edit: true, delete: true },
   },
   plantios: {
     title: 'Plantios',
     collection: 'plantios',
     columns: [
       { key: 'cultura', label: 'Cultura', editable: true },
-      { key: 'rastreabilidade', label: 'Rastreabilidade', editable: true },
-      { key: 'dataPlantio', label: 'Data de Plantio', format: formatDate, editable: true, type: 'date' },
-      { key: 'status', label: 'Status', editable: true },
+      { key: 'status', label: 'Status', editable: true, format: formatStatus },
+      { key: 'data_plantio', label: 'Plantio', editable: true, type: 'date', format: formatDate },
+      { key: 'data_previsao_colheita', label: 'Previsao', editable: true, type: 'date', format: formatDate },
     ],
-    actions: { edit: true, delete: true },
+    actions: { create: true, edit: true, delete: true },
   },
-  tarefas: {
-    title: 'Tarefas',
-    collection: 'tarefas',
+  tarefas_agricolas: {
+    title: 'Tarefas Agricolas',
+    collection: 'tarefas_agricolas',
     columns: [
-      { key: 'titulo', label: 'Tarefa', editable: true },
-      { key: 'estufaNome', label: 'Estufa', editable: true },
-      { key: 'status', label: 'Status', format: formatStatus },
-      { key: 'dataPrevista', label: 'Data Prevista', format: formatDate, editable: true, type: 'date' },
+      { key: 'tipo_tarefa', label: 'Tipo', editable: true },
+      { key: 'status', label: 'Status', editable: true, format: formatStatus },
+      { key: 'prioridade', label: 'Prioridade', editable: true },
+      { key: 'data_prevista', label: 'Data', editable: true, type: 'date', format: formatDate },
     ],
-    actions: {
-      edit: true,
-      delete: true,
-      forceStatus: {
-        field: 'status',
-        label: 'Forçar Status',
-        options: ['pendente', 'concluida'],
-      },
-    },
+    actions: { create: true, edit: true, delete: true },
   },
   colheitas: {
     title: 'Colheitas',
     collection: 'colheitas',
     columns: [
-      { key: 'cultura', label: 'Cultura', editable: true },
+      { key: 'data_colheita', label: 'Data', editable: true, type: 'date', format: formatDate },
       { key: 'quantidade', label: 'Quantidade', editable: true, type: 'number' },
-      { key: 'unidade', label: 'Unidade', editable: true },
-      { key: 'dataColheita', label: 'Data', format: formatDate, editable: true, type: 'date' },
+      { key: 'unidade_medida', label: 'Unidade', editable: true },
+      { key: 'destino', label: 'Destino', editable: true },
     ],
     actions: { edit: true, delete: true },
   },
@@ -181,86 +133,54 @@ const MODULE_CONFIG = {
     title: 'Manejos',
     collection: 'manejos',
     columns: [
-      { key: 'tipo', label: 'Tipo', editable: true },
-      { key: 'estufaNome', label: 'Estufa', editable: true },
-      { key: 'plantioId', label: 'Plantio', editable: true },
-      { key: 'data', label: 'Data', format: formatDate, editable: true, type: 'date' },
+      { key: 'tipo_manejo', label: 'Tipo', editable: true },
+      { key: 'data_registro', label: 'Data', editable: true, type: 'date', format: formatDate },
+      { key: 'responsavel', label: 'Responsavel', editable: true },
+      { key: 'severidade', label: 'Severidade', editable: true },
     ],
     actions: { edit: true, delete: true },
   },
-  hidroponia_lotes: {
+  hidro_lotes: {
     title: 'Hidroponia | Lotes',
-    collection: 'hidroponia_lotes',
+    collection: 'hidro_lotes',
     columns: [
-      { key: 'cultura', label: 'Cultura', editable: true },
-      { key: 'fase', label: 'Fase', editable: true },
-      { key: 'quantidadePlantas', label: 'Qtd Plantas', editable: true, type: 'number' },
-      { key: 'dataTransplante', label: 'Transplante', format: formatDate, editable: true, type: 'date' },
-      { key: 'status', label: 'Status', format: formatStatus, editable: true },
+      { key: 'codigo_lote', label: 'Codigo', editable: true },
+      { key: 'cultura_base', label: 'Cultura', editable: true },
+      { key: 'saldo_disponivel', label: 'Saldo', editable: true, type: 'number' },
+      { key: 'status', label: 'Status', editable: true, format: formatStatus },
     ],
-    actions: { edit: true, delete: true },
+    actions: { create: true, edit: true, delete: true },
   },
-  hidroponia_leituras: {
+  hidro_leituras: {
     title: 'Hidroponia | Leituras',
-    collection: 'hidroponia_leituras',
+    collection: 'hidro_leituras',
     columns: [
+      { key: 'measured_at', label: 'Data', editable: true, type: 'date', format: formatDateTime },
       { key: 'ph', label: 'pH', editable: true, type: 'number' },
-      { key: 'ec', label: 'EC', editable: true, type: 'number' },
-      { key: 'temperatura', label: 'Temperatura', editable: true, type: 'number' },
-      { key: 'dataLeitura', label: 'Data', format: formatDate, editable: true, type: 'date' },
+      { key: 'condutividade_eletrica', label: 'EC', editable: true, type: 'number' },
+      { key: 'temperatura_solucao', label: 'Temp Solucao', editable: true, type: 'number' },
     ],
     actions: { edit: true, delete: true },
   },
-  hidroponia_movimentacoes: {
-    title: 'Hidroponia | Movimentações',
-    collection: 'hidroponia_movimentacoes',
+  hidro_movimentacoes: {
+    title: 'Hidroponia | Movimentacoes',
+    collection: 'hidro_movimentacoes',
     columns: [
-      { key: 'loteId', label: 'Lote', editable: true },
-      { key: 'origem', label: 'Origem', editable: true },
-      { key: 'destino', label: 'Destino', editable: true },
+      { key: 'moved_at', label: 'Data', editable: true, type: 'date', format: formatDateTime },
+      { key: 'tipo', label: 'Tipo', editable: true },
       { key: 'quantidade', label: 'Quantidade', editable: true, type: 'number' },
-      { key: 'createdAt', label: 'Data', format: formatDate },
+      { key: 'fase', label: 'Fase', editable: true },
     ],
     actions: { edit: true, delete: true },
   },
-  hidroponia_motores: {
+  hidro_motores: {
     title: 'Hidroponia | Motores',
-    collection: 'hidroponia_motores',
-    columns: [
-      { key: 'nome', label: 'Motor', editable: true },
-      { key: 'status', label: 'Estado', format: formatStatus, editable: true },
-      { key: 'temporizador', label: 'Temporizador', editable: true },
-      { key: 'updatedAt', label: 'Atualizado', format: formatDate },
-    ],
-    actions: {
-      edit: true,
-      delete: true,
-      forceStatus: {
-        field: 'status',
-        label: 'Forçar Estado',
-        options: ['ligado', 'desligado'],
-      },
-    },
-  },
-  insumos: {
-    title: 'Insumos',
-    collection: 'insumos',
+    collection: 'hidro_motores',
     columns: [
       { key: 'nome', label: 'Nome', editable: true },
-      { key: 'categoria', label: 'Categoria', editable: true },
-      { key: 'quantidadeAtual', label: 'Quantidade', editable: true, type: 'number' },
-      { key: 'unidadeMedida', label: 'Unidade', editable: true },
-    ],
-    actions: { edit: true, delete: true },
-  },
-  aplicacoes: {
-    title: 'Aplicações',
-    collection: 'aplicacoes',
-    columns: [
-      { key: 'insumoNome', label: 'Insumo', editable: true },
-      { key: 'dosagem', label: 'Dosagem', editable: true },
-      { key: 'alvo', label: 'Lote/Plantio', editable: true },
-      { key: 'dataAplicacao', label: 'Data', format: formatDate, editable: true, type: 'date' },
+      { key: 'codigo', label: 'Codigo', editable: true },
+      { key: 'status', label: 'Status', editable: true, format: formatStatus },
+      { key: 'updated_at', label: 'Atualizado', format: formatDateTime },
     ],
     actions: { edit: true, delete: true },
   },
@@ -268,42 +188,23 @@ const MODULE_CONFIG = {
     title: 'Vendas',
     collection: 'vendas',
     columns: [
-      { key: 'dataVenda', label: 'Data', format: formatDate, editable: true, type: 'date' },
-      { key: 'clienteId', label: 'Cliente', editable: true },
-      { key: 'valorTotal', label: 'Valor Total', format: formatCurrency, editable: true, type: 'number' },
-      { key: 'statusPagamento', label: 'Pagamento', format: formatStatus, editable: true },
+      { key: 'data_venda', label: 'Data', editable: true, type: 'date', format: formatDate },
+      { key: 'cliente_id', label: 'Cliente ID', editable: true },
+      { key: 'valor_total', label: 'Valor', editable: true, type: 'number', format: formatCurrency },
+      { key: 'status_pagamento', label: 'Pagamento', editable: true, format: formatStatus },
     ],
-    actions: {
-      edit: true,
-      delete: true,
-      forceStatus: {
-        field: 'statusPagamento',
-        label: 'Forçar Pagamento',
-        options: ['pago', 'pendente', 'cancelado'],
-      },
-    },
+    actions: { create: true, edit: true, delete: true },
   },
   despesas: {
     title: 'Despesas',
     collection: 'despesas',
     columns: [
+      { key: 'descricao', label: 'Descricao', editable: true },
       { key: 'categoria', label: 'Categoria', editable: true },
-      { key: 'valor', label: 'Valor', format: formatCurrency, editable: true, type: 'number' },
-      { key: 'vencimento', label: 'Vencimento', format: formatDate, editable: true, type: 'date' },
-      { key: 'status', label: 'Status', format: formatStatus, editable: true },
+      { key: 'valor', label: 'Valor', editable: true, type: 'number', format: formatCurrency },
+      { key: 'status_pagamento', label: 'Status', editable: true, format: formatStatus },
     ],
-    actions: { edit: true, delete: true },
-  },
-  contas_receber: {
-    title: 'Contas a Receber',
-    collection: 'contas_receber',
-    columns: [
-      { key: 'descricao', label: 'Descrição', editable: true },
-      { key: 'valor', label: 'Valor', format: formatCurrency, editable: true, type: 'number' },
-      { key: 'vencimento', label: 'Vencimento', format: formatDate, editable: true, type: 'date' },
-      { key: 'status', label: 'Status', format: formatStatus, editable: true },
-    ],
-    actions: { edit: true, delete: true },
+    actions: { create: true, edit: true, delete: true },
   },
   clientes: {
     title: 'Clientes',
@@ -311,35 +212,187 @@ const MODULE_CONFIG = {
     columns: [
       { key: 'nome', label: 'Nome', editable: true },
       { key: 'telefone', label: 'Telefone', editable: true },
-      { key: 'morada', label: 'Morada', editable: true },
-      { key: 'nifCpf', label: 'NIF/CPF', editable: true },
+      { key: 'email', label: 'Email', editable: true },
+      { key: 'cidade', label: 'Cidade', editable: true },
     ],
-    actions: { edit: true, delete: true },
+    actions: { create: true, edit: true, delete: true },
   },
   fornecedores: {
     title: 'Fornecedores',
     collection: 'fornecedores',
     columns: [
       { key: 'nome', label: 'Nome', editable: true },
+      { key: 'contato', label: 'Contato', editable: true },
       { key: 'telefone', label: 'Telefone', editable: true },
-      { key: 'morada', label: 'Morada', editable: true },
-      { key: 'nifCpf', label: 'NIF/CPF', editable: true },
+      { key: 'categoria', label: 'Categoria', editable: true },
     ],
-    actions: { edit: true, delete: true },
+    actions: { create: true, edit: true, delete: true },
   },
   support_audit: {
-    title: 'Support Audit (Somente Leitura)',
+    title: 'Support Audit',
     collection: 'support_audit',
     columns: [
-      { key: 'createdAt', label: 'Data', format: formatDateTime },
-      { key: 'action', label: 'Ação' },
-      { key: 'createdBy', label: 'Técnico' },
-      { key: 'note', label: 'Justificação' },
+      { key: 'created_at', label: 'Data', format: formatDateTime },
+      { key: 'action', label: 'Acao' },
+      { key: 'created_by', label: 'Tecnico' },
+      { key: 'note', label: 'Justificativa' },
     ],
     actions: { edit: false, delete: false },
     readOnly: true,
   },
 };
+
+const CREATE_FIELD_PRESETS = {
+  estufas: [
+    { key: 'nome', label: 'Nome', type: 'text', required: true, placeholder: 'Nome da estufa' },
+    {
+      key: 'tipo',
+      label: 'Tipo',
+      type: 'select',
+      options: ['hidroponia', 'solo', 'semi-hidroponia'],
+      placeholder: 'Selecione',
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      type: 'select',
+      options: ['ativa', 'manutencao', 'desativada'],
+      defaultValue: 'ativa',
+    },
+  ],
+  plantios: [
+    { key: 'estufa_id', label: 'Estufa ID', type: 'text', required: true, placeholder: 'UUID da estufa' },
+    { key: 'cultura', label: 'Cultura', type: 'text', required: true },
+    { key: 'variedade', label: 'Variedade', type: 'text' },
+    { key: 'data_plantio', label: 'Data de Plantio', type: 'date' },
+    { key: 'data_previsao_colheita', label: 'Previsao de Colheita', type: 'date' },
+    {
+      key: 'status',
+      label: 'Status',
+      type: 'select',
+      options: ['em_desenvolvimento', 'em_crescimento', 'em_colheita', 'colheita_iniciada', 'finalizado', 'cancelado'],
+      defaultValue: 'em_desenvolvimento',
+    },
+  ],
+  tarefas_agricolas: [
+    { key: 'plantio_id', label: 'Plantio ID', type: 'text', required: true, placeholder: 'UUID do plantio' },
+    {
+      key: 'tipo_tarefa',
+      label: 'Tipo da Tarefa',
+      type: 'select',
+      required: true,
+      options: ['irrigacao', 'adubacao', 'manejo', 'colheita', 'inspecao', 'outro'],
+    },
+    { key: 'data_prevista', label: 'Data Prevista', type: 'date', required: true },
+    {
+      key: 'status',
+      label: 'Status',
+      type: 'select',
+      options: ['pendente', 'em_andamento', 'concluida', 'cancelada'],
+      defaultValue: 'pendente',
+    },
+    {
+      key: 'prioridade',
+      label: 'Prioridade',
+      type: 'select',
+      options: ['baixa', 'media', 'alta', 'critica'],
+      defaultValue: 'media',
+    },
+    { key: 'observacoes', label: 'Observacoes', type: 'text' },
+  ],
+  hidro_lotes: [
+    { key: 'estufa_id', label: 'Estufa ID', type: 'text', required: true, placeholder: 'UUID da estufa' },
+    { key: 'setor_id', label: 'Setor ID', type: 'text', required: true, placeholder: 'UUID do setor hidro' },
+    { key: 'nome_operacional', label: 'Nome Operacional', type: 'text', required: true },
+    { key: 'origem_material_nome', label: 'Origem do Material', type: 'text', required: true },
+    { key: 'origem_material_documento', label: 'Documento de Origem', type: 'text' },
+    { key: 'codigo_lote', label: 'Codigo do Lote', type: 'text', placeholder: 'Opcional (auto se vazio)' },
+    { key: 'quantidade_inicial', label: 'Quantidade Inicial', type: 'number', required: true },
+    { key: 'cultura_base', label: 'Cultura Base', type: 'text' },
+    { key: 'variedade_base', label: 'Variedade Base', type: 'text' },
+    {
+      key: 'status',
+      label: 'Status',
+      type: 'select',
+      options: ['ativo', 'concluido', 'cancelado'],
+      defaultValue: 'ativo',
+    },
+  ],
+  vendas: [
+    {
+      key: 'origin_type',
+      label: 'Origem',
+      type: 'select',
+      options: ['plantio', 'hydro_lote'],
+      defaultValue: 'plantio',
+    },
+    { key: 'origin_id', label: 'Origin ID', type: 'text', placeholder: 'UUID opcional' },
+    { key: 'plantio_id', label: 'Plantio ID', type: 'text', placeholder: 'UUID opcional' },
+    { key: 'hydro_lote_id', label: 'Lote Hidro ID', type: 'text', placeholder: 'UUID opcional' },
+    { key: 'estufa_id', label: 'Estufa ID', type: 'text', placeholder: 'UUID opcional' },
+    { key: 'cliente_id', label: 'Cliente ID', type: 'text', placeholder: 'UUID opcional' },
+    { key: 'item_descricao', label: 'Descricao do Item', type: 'text' },
+    { key: 'quantidade', label: 'Quantidade', type: 'number', required: true },
+    { key: 'unidade', label: 'Unidade', type: 'text', required: true, placeholder: 'kg, unidade, moco...' },
+    { key: 'preco_unitario', label: 'Preco Unitario', type: 'number', required: true },
+    {
+      key: 'metodo_pagamento',
+      label: 'Metodo de Pagamento',
+      type: 'select',
+      options: ['pix', 'dinheiro', 'cartao', 'prazo'],
+      defaultValue: 'pix',
+    },
+    { key: 'data_venda', label: 'Data da Venda', type: 'date' },
+    { key: 'observacoes', label: 'Observacoes', type: 'text' },
+  ],
+  despesas: [
+    { key: 'descricao', label: 'Descricao', type: 'text', required: true },
+    {
+      key: 'categoria',
+      label: 'Categoria',
+      type: 'select',
+      options: ['energia', 'agua', 'manutencao', 'mao_de_obra', 'outro'],
+      defaultValue: 'outro',
+    },
+    { key: 'valor', label: 'Valor', type: 'number', required: true },
+    { key: 'data_despesa', label: 'Data da Despesa', type: 'date' },
+    {
+      key: 'status_pagamento',
+      label: 'Status Pagamento',
+      type: 'select',
+      options: ['pendente', 'pago', 'atrasado', 'cancelado'],
+      defaultValue: 'pendente',
+    },
+    { key: 'plantio_id', label: 'Plantio ID', type: 'text', placeholder: 'UUID opcional' },
+    { key: 'estufa_id', label: 'Estufa ID', type: 'text', placeholder: 'UUID opcional' },
+    { key: 'observacoes', label: 'Observacoes', type: 'text' },
+  ],
+  clientes: [
+    { key: 'nome', label: 'Nome', type: 'text', required: true },
+    { key: 'telefone', label: 'Telefone', type: 'text' },
+    { key: 'email', label: 'Email', type: 'text' },
+    { key: 'cidade', label: 'Cidade', type: 'text' },
+    { key: 'documento', label: 'Documento', type: 'text' },
+  ],
+  fornecedores: [
+    { key: 'nome', label: 'Nome', type: 'text', required: true },
+    { key: 'contato', label: 'Contato', type: 'text' },
+    { key: 'telefone', label: 'Telefone', type: 'text' },
+    { key: 'email', label: 'Email', type: 'text' },
+    { key: 'categoria', label: 'Categoria', type: 'text' },
+  ],
+};
+
+const GLOBAL_SEARCH_SOURCES = [
+  { table: 'estufas', cols: ['nome', 'tipo', 'status'] },
+  { table: 'plantios', cols: ['cultura', 'status', 'codigo_lote'] },
+  { table: 'vendas', cols: ['status_pagamento', 'forma_pagamento', 'metodo_pagamento'] },
+  { table: 'despesas', cols: ['descricao', 'categoria', 'tipo_gasto'] },
+  { table: 'clientes', cols: ['nome', 'telefone', 'email', 'cidade'] },
+  { table: 'fornecedores', cols: ['nome', 'contato', 'telefone', 'categoria'] },
+  { table: 'hidro_lotes', cols: ['codigo_lote', 'cultura_base', 'status'] },
+  { table: 'tarefas_agricolas', cols: ['tipo_tarefa', 'status', 'prioridade'] },
+];
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -352,50 +405,77 @@ function escapeHtml(value) {
 
 function toDate(value) {
   if (!value) return null;
-  if (typeof value.toDate === 'function') return value.toDate();
-  if (typeof value.seconds === 'number') return new Date(value.seconds * 1000);
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function formatDate(value) {
   const d = toDate(value);
-  return d ? d.toLocaleDateString('pt-PT') : '-';
+  return d ? d.toLocaleDateString('pt-BR') : '-';
 }
 
 function formatDateTime(value) {
   const d = toDate(value);
-  return d ? d.toLocaleString('pt-PT') : '-';
+  return d ? d.toLocaleString('pt-BR') : '-';
 }
 
 function formatCurrency(value) {
-  return Number(value || 0).toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' });
+  return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 function formatStatus(value) {
   const v = String(value || 'n/a').toLowerCase();
-  const cls = v === 'pago' || v === 'concluida' || v === 'ligado' ? 'success' : v === 'pendente' ? 'warn' : 'muted';
+  const cls =
+    v === 'pago' || v === 'concluida' || v === 'ativo' || v === 'ativa' ? 'success' : v === 'pendente' ? 'warn' : 'muted';
   return `<span class="tag ${cls}">${escapeHtml(v)}</span>`;
 }
 
-function getCellValue(row, column) {
-  const raw = row[column.key];
-  if (column.format) return column.format(raw, row);
-  return escapeHtml(raw ?? '-');
-}
-
 function setStatus(message, isError = false) {
-  state.message = message;
-  state.error = isError;
   el.statusBar.classList.remove('hidden', 'ok', 'error');
   el.statusBar.classList.add(isError ? 'error' : 'ok');
   el.statusBar.textContent = message;
 }
 
 function clearStatus() {
-  state.message = '';
-  el.statusBar.textContent = '';
   el.statusBar.classList.add('hidden');
+  el.statusBar.textContent = '';
+}
+
+function ensureSupabase(url, key) {
+  if (!url || !key) throw new Error('Informe URL e anon key do Supabase.');
+  supabase = createClient(url, key, {
+    auth: { persistSession: true, autoRefreshToken: true },
+  });
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isWriteUnlocked() {
+  const until = Number(sessionStorage.getItem(WRITE_UNLOCK_KEY) || '0');
+  return Number.isFinite(until) && until > Date.now();
+}
+
+function setWriteUnlocked(minutes) {
+  const until = Date.now() + minutes * 60 * 1000;
+  sessionStorage.setItem(WRITE_UNLOCK_KEY, String(until));
+}
+
+function lockWriteMode() {
+  sessionStorage.removeItem(WRITE_UNLOCK_KEY);
+}
+
+function getUnlockRemainingMinutes() {
+  const until = Number(sessionStorage.getItem(WRITE_UNLOCK_KEY) || '0');
+  const diffMs = Math.max(0, until - Date.now());
+  return Math.ceil(diffMs / 60000);
+}
+
+function ensureWriteAllowed() {
+  if (!isWriteUnlocked()) {
+    throw new Error('Modo leitura ativo. Destrave escrita para executar essa acao.');
+  }
 }
 
 function ensureTableState(collectionName) {
@@ -405,34 +485,368 @@ function ensureTableState(collectionName) {
   return state.tableState[collectionName];
 }
 
-function mergeDocs(a, b) {
-  const map = new Map();
-  [...a, ...b].forEach((item) => map.set(item.id, item));
-  return Array.from(map.values());
+function getCellValue(row, column) {
+  const raw = row[column.key];
+  if (column.format) return column.format(raw, row);
+  return escapeHtml(raw ?? '-');
+}
+
+async function loadProfile(userId) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id,name,email,role,is_support_agent')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+function canAccess(profile) {
+  if (!profile) return false;
+  return Boolean(profile.is_support_agent) || profile.role === 'admin';
+}
+
+async function loadTenants() {
+  if (!state.allowed) return;
+  const profile = state.profile || {};
+  if (profile.is_support_agent || profile.role === 'admin') {
+    const { data, error } = await supabase.from('tenants').select('id,name,owner_user_id').order('name');
+    if (error) throw error;
+    state.tenants = (data || []).map((t) => ({
+      id: t.id,
+      label: formatTenantLabel(t.name || 'Sem nome', t.id),
+    }));
+  } else {
+    const { data, error } = await supabase
+      .from('tenant_memberships')
+      .select('tenant_id, tenants(id,name,owner_user_id)')
+      .eq('user_id', state.user.id);
+    if (error) throw error;
+    state.tenants = (data || []).map((m) => ({
+      id: m.tenant_id,
+      label: formatTenantLabel(m.tenants?.name || 'Sem nome', m.tenant_id),
+    }));
+  }
+  if (!state.selectedTenantId && state.tenants[0]) state.selectedTenantId = state.tenants[0].id;
+}
+
+function formatTenantLabel(name, tenantId) {
+  const shortId = String(tenantId || '').slice(0, 8);
+  return `${name} · ${shortId}`;
 }
 
 async function queryTenantCollection(collectionName) {
   if (!state.selectedTenantId) return [];
-  const tenantId = state.selectedTenantId;
-  const [tenantSnap, legacySnap] = await Promise.all([
-    getDocs(query(collection(db, collectionName), where('tenantId', '==', tenantId))),
-    getDocs(query(collection(db, collectionName), where('userId', '==', tenantId))),
-  ]);
-  const tenantRows = tenantSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  const legacyRows = legacySnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  return mergeDocs(tenantRows, legacyRows);
+  let req = supabase.from(collectionName).select('*').eq('tenant_id', state.selectedTenantId);
+  if (collectionName !== 'support_audit') req = req.limit(500);
+
+  if (collectionName === 'support_audit') {
+    const filters = state.auditFilters;
+    if (filters.action) req = req.ilike('action', `%${filters.action}%`);
+    if (filters.actor && isUuid(filters.actor)) req = req.eq('created_by', filters.actor);
+    if (filters.from) req = req.gte('created_at', `${filters.from}T00:00:00.000Z`);
+    if (filters.to) req = req.lte('created_at', `${filters.to}T23:59:59.999Z`);
+  }
+
+  const { data, error } = await req;
+  if (error) throw error;
+  const rows = data || [];
+  rows.sort((a, b) => {
+    const av = new Date(a.updated_at || a.created_at || 0).getTime();
+    const bv = new Date(b.updated_at || b.created_at || 0).getTime();
+    return bv - av;
+  });
+  return rows;
 }
 
 async function logSupportAction({ action, note, metadata }) {
-  await addDoc(collection(db, 'support_audit'), {
-    tenantId: state.selectedTenantId,
-    userId: state.selectedTenantId,
-    createdBy: state.user.uid,
+  const payload = {
+    tenant_id: state.selectedTenantId,
     action,
     note,
     metadata,
-    createdAt: serverTimestamp(),
+    created_by: state.user.id,
+  };
+  const { error } = await supabase.from('support_audit').insert(payload);
+  if (error) throw error;
+}
+
+function buildRowActions(config, row) {
+  if (config.readOnly) return '';
+  const actions = [];
+  const disabled = !isWriteUnlocked();
+  if (config.actions.edit) {
+    actions.push(
+      `<button class="btn btn-soft" data-action="edit" data-id="${row.id}" ${disabled ? 'disabled' : ''}>Editar</button>`
+    );
+  }
+  if (config.actions.delete) {
+    actions.push(
+      `<button class="btn btn-danger" data-action="delete" data-id="${row.id}" ${disabled ? 'disabled' : ''}>Apagar</button>`
+    );
+  }
+  return `<div class="table-actions">${actions.join('')}</div>`;
+}
+
+function buildTableHtml(config, rows, collectionName) {
+  const table = ensureTableState(collectionName);
+  const term = table.search.toLowerCase().trim();
+  const filtered = rows.filter((row) => {
+    if (!term) return true;
+    return config.columns.some((c) => String(row[c.key] ?? '').toLowerCase().includes(term));
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  table.page = Math.min(table.page, totalPages);
+  const start = (table.page - 1) * PAGE_SIZE;
+  const pageRows = filtered.slice(start, start + PAGE_SIZE);
+  const head = config.columns.map((c) => `<th>${escapeHtml(c.label)}</th>`).join('');
+  const body = pageRows
+    .map((row) => {
+      const cols = config.columns.map((c) => `<td>${getCellValue(row, c)}</td>`).join('');
+      return `<tr data-row-id="${row.id}">${cols}<td>${buildRowActions(config, row)}</td></tr>`;
+    })
+    .join('');
+
+  const auditFilters =
+    collectionName === 'support_audit'
+      ? `
+      <div class="row" style="margin-top:10px;">
+        <input class="input" id="audit-filter-action" placeholder="Filtrar acao" value="${escapeHtml(state.auditFilters.action)}" />
+        <input class="input" id="audit-filter-actor" placeholder="Filtrar tecnico" value="${escapeHtml(state.auditFilters.actor)}" />
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <input class="input" id="audit-filter-from" type="date" value="${escapeHtml(state.auditFilters.from)}" />
+        <input class="input" id="audit-filter-to" type="date" value="${escapeHtml(state.auditFilters.to)}" />
+        <button class="btn btn-outline" data-action="audit-apply-filters">Aplicar filtros</button>
+        <button class="btn btn-outline" data-action="audit-reset-filters">Limpar</button>
+        <button class="btn btn-primary" data-action="audit-export-csv">Exportar CSV</button>
+      </div>
+    `
+      : '';
+
+  return `
+    <div class="card">
+      <h2>${escapeHtml(config.title)}</h2>
+      <div class="row">
+        <input class="input" id="search-${collectionName}" placeholder="Pesquisar..." value="${escapeHtml(table.search)}" />
+        ${
+          config.actions?.create
+            ? `<button class="btn btn-primary" data-action="create-record" data-collection="${escapeHtml(collectionName)}" ${!isWriteUnlocked() ? 'disabled' : ''}>Criar registro</button>`
+            : ''
+        }
+      </div>
+      ${auditFilters}
+      <div class="table-wrap" style="margin-top:10px;">
+        <table>
+          <thead><tr>${head}<th>Acoes</th></tr></thead>
+          <tbody>${body || `<tr><td colspan="${config.columns.length + 1}">Sem registros.</td></tr>`}</tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:10px;justify-content:space-between;align-items:center;">
+        <small>${filtered.length} registro(s)</small>
+        <div class="row">
+          <button class="btn btn-outline" data-action="prev-page" data-collection="${collectionName}">Anterior</button>
+          <span>Pagina ${table.page}/${totalPages}</span>
+          <button class="btn btn-outline" data-action="next-page" data-collection="${collectionName}">Proxima</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function buildSidebar() {
+  if (!state.allowed) {
+    el.sidebar.innerHTML = `
+      <div class="sidebar-brand">
+        <h2>SGE Support</h2>
+        <p>Acesso restrito</p>
+      </div>
+    `;
+    return;
+  }
+  const sections = MENU.map(
+    (group) => `
+      <div class="sidebar-group">
+        <h3>${escapeHtml(group.section)}</h3>
+        ${group.items
+          .map(
+            (item) =>
+              `<button class="nav-btn ${state.currentView === item.id ? 'active' : ''}" data-nav="${item.id}">${escapeHtml(item.label)}</button>`
+          )
+          .join('')}
+      </div>
+    `
+  ).join('');
+  el.sidebar.innerHTML = `
+    <div class="sidebar-brand">
+      <h2>SGE Support</h2>
+      <p>Portal Externo</p>
+    </div>
+    ${sections}
+  `;
+}
+
+function renderTenantSelector() {
+  const opts = state.tenants
+    .map(
+      (t) =>
+        `<option value="${escapeHtml(t.id)}" ${state.selectedTenantId === t.id ? 'selected' : ''}>${escapeHtml(
+          t.label
+        )}</option>`
+    )
+    .join('');
+  const writeUnlocked = isWriteUnlocked();
+  const modeText = writeUnlocked
+    ? `Escrita liberada (${getUnlockRemainingMinutes()} min restantes)`
+    : 'Somente leitura';
+  const modeClass = writeUnlocked ? 'ok' : 'error';
+  return `
+    <div class="card">
+      <h2>Tenant Ativo</h2>
+      <label for="tenantSelector">Cliente / Tenant</label>
+      <select id="tenantSelector">${opts}</select>
+      <div class="row" style="margin-top:10px;align-items:center;">
+        <span class="tag ${modeClass}">${escapeHtml(modeText)}</span>
+        <button class="btn btn-outline" data-action="unlock-write">Destravar escrita</button>
+        <button class="btn btn-outline" data-action="lock-write">Voltar para leitura</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderGlobalSearchCard() {
+  const rows = state.globalSearchResults
+    .map(
+      (r) => `
+      <tr>
+        <td>${escapeHtml(r.table)}</td>
+        <td>${escapeHtml(r.id)}</td>
+        <td>${escapeHtml(r.summary)}</td>
+        <td><button class="btn btn-outline" data-action="open-search-result" data-table="${escapeHtml(r.table)}" data-id="${escapeHtml(r.id)}">Abrir</button></td>
+      </tr>
+    `
+    )
+    .join('');
+  return `
+    <div class="card">
+      <h2>Busca Global</h2>
+      <div class="row">
+        <input class="input" id="global-search-term" placeholder="Buscar por ID, nome, codigo, status..." value="${escapeHtml(state.globalSearchTerm)}" />
+        <button class="btn btn-primary" data-action="global-search-run">${state.globalSearching ? 'Buscando...' : 'Buscar'}</button>
+        <button class="btn btn-outline" data-action="global-search-clear">Limpar</button>
+      </div>
+      <div class="table-wrap" style="margin-top:10px;">
+        <table>
+          <thead><tr><th>Tabela</th><th>ID</th><th>Resumo</th><th>Acoes</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="4">Sem resultados.</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+async function runGlobalSearch(term) {
+  const clean = String(term || '').trim();
+  if (!clean) {
+    state.globalSearchResults = [];
+    return;
+  }
+  state.globalSearching = true;
+  await safeRenderMain();
+
+  const isId = isUuid(clean);
+  const encoded = clean.replaceAll(',', ' ').replaceAll('(', '').replaceAll(')', '').replaceAll('"', '').replaceAll("'", '');
+  const tasks = GLOBAL_SEARCH_SOURCES.map(async (source) => {
+    const filters = source.cols.map((c) => `${c}.ilike.%${encoded}%`);
+    if (isId) filters.push(`id.eq.${clean}`);
+    const orFilter = filters.join(',');
+    const selectCols = ['id', ...source.cols].join(',');
+    const { data, error } = await supabase
+      .from(source.table)
+      .select(selectCols)
+      .eq('tenant_id', state.selectedTenantId)
+      .or(orFilter)
+      .limit(6);
+    if (error) return [];
+    return (data || []).map((row) => {
+      const summaryCol = source.cols.find((c) => row[c]);
+      const summary = summaryCol ? `${summaryCol}: ${row[summaryCol]}` : 'Sem resumo';
+      return {
+        table: source.table,
+        id: row.id,
+        summary: String(summary).slice(0, 120),
+      };
+    });
+  });
+  const chunks = await Promise.all(tasks);
+  state.globalSearchResults = chunks.flat().slice(0, 80);
+  state.globalSearching = false;
+}
+
+async function renderOverview() {
+  if (!state.selectedTenantId) return '<div class="card">Selecione um tenant para iniciar.</div>';
+  const [estufas, plantios, vendas, despesas] = await Promise.all([
+    queryTenantCollection('estufas'),
+    queryTenantCollection('plantios'),
+    queryTenantCollection('vendas'),
+    queryTenantCollection('despesas'),
+  ]);
+  const totalReceber = vendas
+    .filter((v) => v.status_pagamento === 'pendente' || v.status_pagamento === 'atrasado')
+    .reduce((acc, x) => acc + Number(x.valor_total || 0), 0);
+  const totalPagar = despesas
+    .filter((d) => d.status_pagamento === 'pendente' || d.status_pagamento === 'atrasado')
+    .reduce((acc, x) => acc + Number(x.valor || 0), 0);
+  return `
+    <div class="card">
+      <h2>KPIs</h2>
+      <div class="grid cols-4">
+        <div class="kpi"><span class="label">Estufas</span><span class="value">${estufas.length}</span></div>
+        <div class="kpi"><span class="label">Plantios ativos</span><span class="value">${plantios.filter((p) => p.status !== 'finalizado').length}</span></div>
+        <div class="kpi"><span class="label">Total a receber</span><span class="value">${formatCurrency(totalReceber)}</span></div>
+        <div class="kpi"><span class="label">Total a pagar</span><span class="value">${formatCurrency(totalPagar)}</span></div>
+      </div>
+    </div>
+    ${renderGlobalSearchCard()}
+  `;
+}
+
+function renderLogin() {
+  const cfg = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+  el.viewTitle.textContent = 'Portal de Suporte - Login';
+  el.mainContent.innerHTML = `
+    <div class="card login-card">
+      <div class="login-hero">
+        <h2>Acesso de suporte externo</h2>
+        <p>Use uma conta com is_support_agent=true no perfil do Supabase.</p>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label for="supabaseUrl">SUPABASE_URL</label>
+          <input id="supabaseUrl" class="input" value="${escapeHtml(cfg.url || '')}" />
+        </div>
+        <div>
+          <label for="supabaseAnonKey">SUPABASE_ANON_KEY</label>
+          <input id="supabaseAnonKey" class="input" value="${escapeHtml(cfg.key || '')}" />
+        </div>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label for="loginEmail">Email</label>
+          <input id="loginEmail" class="input" type="email" />
+        </div>
+        <div>
+          <label for="loginPassword">Senha</label>
+          <input id="loginPassword" class="input" type="password" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px;justify-content:flex-end;">
+        <button id="loginBtn" class="btn btn-primary">Entrar</button>
+      </div>
+      <p class="support-note">Escrita fica bloqueada por padrao e exige destrave por sessao com justificativa.</p>
+    </div>
+  `;
 }
 
 function openAuditModal(title, callback) {
@@ -464,245 +878,309 @@ function getEditableFields(config) {
   return config.columns.filter((c) => c.editable);
 }
 
+const NON_EDITABLE_KEYS = new Set([
+  'id',
+  'tenant_id',
+  'created_at',
+  'created_by',
+  'updated_at',
+  'owner_user_id',
+]);
+
+function inferTypeFromValue(value) {
+  if (typeof value === 'number') return 'number';
+  if (typeof value === 'boolean') return 'boolean';
+  if (value && typeof value === 'object') return 'json';
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) return 'date';
+  return 'text';
+}
+
+function buildSupplementalEditableFields(row, config) {
+  const mappedKeys = new Set(config.columns.map((c) => c.key));
+  return Object.keys(row)
+    .filter((key) => !mappedKeys.has(key) && !NON_EDITABLE_KEYS.has(key))
+    .map((key) => ({
+      key,
+      label: key.replaceAll('_', ' '),
+      type: inferTypeFromValue(row[key]),
+      advanced: true,
+    }));
+}
+
 function parseValueByType(type, raw) {
+  if (type === 'boolean') return String(raw).toLowerCase() === 'true';
+  if (type === 'json') {
+    const txt = String(raw || '').trim();
+    if (!txt) return null;
+    try {
+      return JSON.parse(txt);
+    } catch (_error) {
+      throw new Error('Campo JSON invalido. Revise a estrutura antes de salvar.');
+    }
+  }
   if (type === 'number') {
     const n = Number(raw);
     return Number.isFinite(n) ? n : null;
   }
-  if (type === 'boolean') return raw === 'true';
+  if (type === 'date') return raw ? new Date(`${raw}T00:00:00.000Z`).toISOString() : null;
   return raw;
 }
 
+function defaultHydroLotCode() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  return `SUP-${y}${m}${d}-${hh}${mm}${ss}`;
+}
+
+function getCreateFields(collectionName, config) {
+  return CREATE_FIELD_PRESETS[collectionName] || getEditableFields(config);
+}
+
+function buildCreateInput(field) {
+  const name = escapeHtml(field.key);
+  const label = escapeHtml(field.label || field.key);
+  const required = field.required ? 'required' : '';
+  const placeholder = field.placeholder ? `placeholder="${escapeHtml(field.placeholder)}"` : '';
+  const defaultValue = field.defaultValue ?? '';
+
+  if (field.type === 'select') {
+    const options = (field.options || [])
+      .map((opt) => {
+        const selected = String(defaultValue) === String(opt) ? 'selected' : '';
+        return `<option value="${escapeHtml(opt)}" ${selected}>${escapeHtml(opt)}</option>`;
+      })
+      .join('');
+    return `
+      <div>
+        <label>${label}${field.required ? ' *' : ''}</label>
+        <select class="input" name="${name}" ${required}>
+          ${!field.required ? '<option value="">Selecione</option>' : ''}
+          ${options}
+        </select>
+      </div>
+    `;
+  }
+
+  if (field.type === 'boolean') {
+    const selectedTrue = String(defaultValue) === 'true' ? 'selected' : '';
+    const selectedFalse = String(defaultValue) === 'false' ? 'selected' : '';
+    return `
+      <div>
+        <label>${label}${field.required ? ' *' : ''}</label>
+        <select class="input" name="${name}" ${required}>
+          <option value="">Selecione</option>
+          <option value="true" ${selectedTrue}>true</option>
+          <option value="false" ${selectedFalse}>false</option>
+        </select>
+      </div>
+    `;
+  }
+
+  const inputType = field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text';
+  const valueAttr = defaultValue !== '' ? `value="${escapeHtml(String(defaultValue))}"` : '';
+  return `
+    <div>
+      <label>${label}${field.required ? ' *' : ''}</label>
+      <input class="input" name="${name}" type="${inputType}" ${placeholder} ${valueAttr} ${required} />
+    </div>
+  `;
+}
+
+function buildCreateModalHtml(collectionName, config) {
+  const createFields = getCreateFields(collectionName, config);
+  const fieldsHtml = createFields.map((field) => buildCreateInput(field)).join('');
+  return `
+    <div class="form-grid">${fieldsHtml}</div>
+    <div>
+      <label for="createAuditNote">Justificativa</label>
+      <textarea id="createAuditNote" name="auditNote" required minlength="8" placeholder="Descreva o motivo da criacao remota."></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-outline" type="button" id="cancelRecordEdit">Cancelar</button>
+      <button class="btn btn-primary" type="submit">Criar</button>
+    </div>
+  `;
+}
+
+function buildCreatePayloadFromForm(collectionName, config, formData) {
+  const createFields = getCreateFields(collectionName, config);
+  const payload = {
+    tenant_id: state.selectedTenantId,
+    created_by: state.user?.id || null,
+  };
+
+  createFields.forEach((field) => {
+    if (!formData.has(field.key)) return;
+    const raw = String(formData.get(field.key) ?? '').trim();
+    if (!raw) {
+      if (field.required) {
+        throw new Error(`Campo obrigatorio: ${field.label || field.key}`);
+      }
+      return;
+    }
+    const parsed = parseValueByType(field.type, raw);
+    if (field.type === 'number' && parsed === null) {
+      throw new Error(`Valor numerico invalido: ${field.label || field.key}`);
+    }
+    payload[field.key] = parsed;
+  });
+
+  if (collectionName === 'hidro_lotes') {
+    if (!payload.codigo_lote) payload.codigo_lote = defaultHydroLotCode();
+    if (!payload.quantidade_inicial || Number(payload.quantidade_inicial) <= 0) {
+      throw new Error('Quantidade inicial deve ser maior que zero.');
+    }
+    payload.saldo_disponivel = Number(payload.quantidade_inicial);
+    if (!payload.status) payload.status = 'ativo';
+  }
+
+  if (collectionName === 'vendas') {
+    const quantidade = Number(payload.quantidade || 0);
+    const precoUnitario = Number(payload.preco_unitario || 0);
+    const unidade = String(payload.unidade || '').trim();
+    if (!Number.isFinite(quantidade) || quantidade <= 0) throw new Error('Quantidade deve ser maior que zero.');
+    if (!Number.isFinite(precoUnitario) || precoUnitario < 0) throw new Error('Preco unitario invalido.');
+    if (!unidade) throw new Error('Unidade e obrigatoria.');
+
+    const metodo = String(payload.metodo_pagamento || 'pix');
+    const statusPagamento = metodo === 'prazo' ? 'pendente' : 'pago';
+    const valorTotal = quantidade * precoUnitario;
+    const dataVenda = payload.data_venda || new Date().toISOString();
+    const dataVencimento =
+      metodo === 'prazo' ? new Date(new Date(dataVenda).getTime() + 15 * 24 * 60 * 60 * 1000).toISOString() : null;
+    const originType = payload.origin_type || (payload.hydro_lote_id ? 'hydro_lote' : 'plantio');
+    const originId =
+      payload.origin_id !== undefined && payload.origin_id !== null && String(payload.origin_id).trim() !== ''
+        ? payload.origin_id
+        : originType === 'hydro_lote'
+        ? payload.hydro_lote_id || null
+        : payload.plantio_id || null;
+
+    return {
+      venda: {
+        tenant_id: payload.tenant_id,
+        created_by: payload.created_by,
+        plantio_id: payload.plantio_id || null,
+        hydro_lote_id: payload.hydro_lote_id || null,
+        estufa_id: payload.estufa_id || null,
+        cliente_id: payload.cliente_id || null,
+        colheita_id: payload.colheita_id || null,
+        origin_type: originType,
+        origin_id: originId || null,
+        data_venda: dataVenda,
+        data_vencimento: dataVencimento,
+        valor_total: valorTotal,
+        status_pagamento: statusPagamento,
+        forma_pagamento: metodo,
+        metodo_pagamento: metodo,
+        observacoes: payload.observacoes || '',
+        quantidade,
+      },
+      item: {
+        tenant_id: payload.tenant_id,
+        descricao: payload.item_descricao || (originType === 'hydro_lote' ? 'Producao hidroponica' : 'Producao agricola'),
+        quantidade,
+        unidade,
+        valor_unitario: precoUnitario,
+      },
+      _auditMetadata: {
+        quantidade,
+        unidade,
+        preco_unitario: precoUnitario,
+        metodo_pagamento: metodo,
+      },
+    };
+  }
+
+  if (collectionName === 'estufas' && !payload.status) payload.status = 'ativa';
+  if (collectionName === 'plantios' && !payload.status) payload.status = 'em_desenvolvimento';
+  if (collectionName === 'tarefas_agricolas') {
+    if (!payload.status) payload.status = 'pendente';
+    if (!payload.prioridade) payload.prioridade = 'media';
+    if (!payload.status_history) {
+      payload.status_history = [
+        {
+          status: payload.status,
+          changedAt: new Date().toISOString(),
+          changedBy: state.user?.id || null,
+          reason: null,
+        },
+      ];
+    }
+  }
+  if (collectionName === 'despesas') {
+    if (!payload.categoria) payload.categoria = 'outro';
+    if (!payload.status_pagamento) payload.status_pagamento = 'pendente';
+    if (!payload.data_despesa) payload.data_despesa = new Date().toISOString();
+  }
+
+  return payload;
+}
+
+function buildCsvFromRows(rows) {
+  const headers = ['created_at', 'action', 'created_by', 'note', 'tenant_id', 'metadata'];
+  const lines = [headers.join(',')];
+  rows.forEach((row) => {
+    const values = headers.map((key) => {
+      const value = key === 'metadata' ? JSON.stringify(row[key] || {}) : String(row[key] ?? '');
+      return `"${value.replaceAll('"', '""')}"`;
+    });
+    lines.push(values.join(','));
+  });
+  return lines.join('\n');
+}
+
+function triggerCsvDownload(csv, filename) {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 async function auditedUpdate({ collectionName, docId, before, patch, action, note }) {
+  ensureWriteAllowed();
   await logSupportAction({
     action,
     note,
-    metadata: { collectionName, docId, before, after: patch },
+    metadata: { collection_name: collectionName, doc_id: docId, before, after: patch },
   });
-  await updateDoc(doc(db, collectionName, docId), {
-    ...patch,
-    updatedAt: serverTimestamp(),
-    supportUpdatedBy: state.user.uid,
-  });
+  const { error } = await supabase
+    .from(collectionName)
+    .update(patch)
+    .eq('id', docId)
+    .eq('tenant_id', state.selectedTenantId);
+  if (error) throw error;
 }
 
 async function auditedDelete({ collectionName, docId, before, action, note }) {
+  ensureWriteAllowed();
   await logSupportAction({
     action,
     note,
-    metadata: { collectionName, docId, before, after: null },
+    metadata: { collection_name: collectionName, doc_id: docId, before, after: null },
   });
-  await deleteDoc(doc(db, collectionName, docId));
+  const { error } = await supabase
+    .from(collectionName)
+    .delete()
+    .eq('id', docId)
+    .eq('tenant_id', state.selectedTenantId);
+  if (error) throw error;
 }
 
 async function loadRows(collectionName) {
   const rows = await queryTenantCollection(collectionName);
-  rows.sort((a, b) => (toDate(b.updatedAt || b.createdAt)?.getTime() || 0) - (toDate(a.updatedAt || a.createdAt)?.getTime() || 0));
   state.cachedRows[collectionName] = rows;
   return rows;
-}
-
-function buildRowActions(config, row) {
-  if (config.readOnly) return '';
-  const actions = [];
-
-  if (config.actions.edit) {
-    actions.push(`<button class="btn btn-soft" data-action="edit" data-id="${row.id}">Editar</button>`);
-  }
-  if (config.actions.delete) {
-    actions.push(`<button class="btn btn-danger" data-action="delete" data-id="${row.id}">Apagar</button>`);
-  }
-  if (config.actions.forceStatus) {
-    actions.push(`<button class="btn btn-outline" data-action="force-status" data-id="${row.id}">` + `${escapeHtml(config.actions.forceStatus.label)}</button>`);
-  }
-
-  return `<div class="table-actions">${actions.join('')}</div>`;
-}
-
-function buildTableHtml(config, rows, collectionName) {
-  const table = ensureTableState(collectionName);
-  const term = table.search.toLowerCase().trim();
-
-  const filtered = rows.filter((row) => {
-    if (!term) return true;
-    return config.columns.some((c) => String(row[c.key] ?? '').toLowerCase().includes(term));
-  });
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  table.page = Math.min(table.page, totalPages);
-  const start = (table.page - 1) * PAGE_SIZE;
-  const pageRows = filtered.slice(start, start + PAGE_SIZE);
-
-  const head = config.columns.map((c) => `<th>${escapeHtml(c.label)}</th>`).join('');
-  const body = pageRows
-    .map((row) => {
-      const cols = config.columns.map((c) => `<td>${getCellValue(row, c)}</td>`).join('');
-      const actions = `<td>${buildRowActions(config, row)}</td>`;
-      return `<tr data-row-id="${row.id}">${cols}${actions}</tr>`;
-    })
-    .join('');
-
-  return `
-    <div class="card">
-      <h2>${escapeHtml(config.title)}</h2>
-      <div class="row">
-        <input class="input" id="search-${collectionName}" placeholder="Pesquisar na coleção..." value="${escapeHtml(table.search)}" />
-      </div>
-      <div class="table-wrap" style="margin-top:10px;">
-        <table>
-          <thead><tr>${head}<th>Ações</th></tr></thead>
-          <tbody>${body || `<tr><td colspan="${config.columns.length + 1}">Sem registos.</td></tr>`}</tbody>
-        </table>
-      </div>
-      <div class="row" style="margin-top:10px;justify-content:space-between;align-items:center;">
-        <small>${filtered.length} registo(s)</small>
-        <div class="row">
-          <button class="btn btn-outline" data-action="prev-page" data-collection="${collectionName}">Anterior</button>
-          <span>Página ${table.page}/${totalPages}</span>
-          <button class="btn btn-outline" data-action="next-page" data-collection="${collectionName}">Seguinte</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function buildSidebar() {
-  if (!state.allowed) {
-    el.sidebar.innerHTML = `
-      <div class="sidebar-brand">
-        <h2>SGE Support</h2>
-        <p>Acesso restrito</p>
-      </div>
-    `;
-    return;
-  }
-
-  const sections = MENU.map(
-    (group) => `
-      <div class="sidebar-group">
-        <h3>${escapeHtml(group.section)}</h3>
-        ${group.items
-          .map(
-            (item) =>
-              `<button class="nav-btn ${state.currentView === item.id ? 'active' : ''}" data-nav="${item.id}">${escapeHtml(item.label)}</button>`
-          )
-          .join('')}
-      </div>
-    `
-  ).join('');
-
-  el.sidebar.innerHTML = `
-    <div class="sidebar-brand">
-      <h2>SGE Support</h2>
-      <p>Painel Nível 3</p>
-    </div>
-    ${sections}
-  `;
-}
-
-async function renderOverview() {
-  if (!state.selectedTenantId) {
-    return '<div class="card">Selecione um tenant para iniciar.</div>';
-  }
-
-  const [estufas, contasReceber, despesas, lotes] = await Promise.all([
-    queryTenantCollection('estufas'),
-    queryTenantCollection('contas_receber'),
-    queryTenantCollection('despesas'),
-    queryTenantCollection('hidroponia_lotes'),
-  ]);
-
-  const totalReceber = contasReceber.reduce((acc, x) => acc + Number(x.valor || 0), 0);
-  const totalPagar = despesas.reduce((acc, x) => acc + Number(x.valor || 0), 0);
-  const lotesAtivos = lotes.filter((l) => String(l.status || '').toLowerCase() !== 'encerrado').length;
-
-  const settingsRef = doc(db, 'tenant_settings', state.selectedTenantId);
-  const settingsSnap = await getDoc(settingsRef);
-  const settings = settingsSnap.exists() ? settingsSnap.data() : {};
-
-  return `
-    <div class="card">
-      <h2>KPIs Globais</h2>
-      <div class="grid cols-4">
-        <div class="kpi"><span class="label">Nº de Estufas</span><span class="value">${estufas.length}</span></div>
-        <div class="kpi"><span class="label">Total a Receber</span><span class="value">${formatCurrency(totalReceber)}</span></div>
-        <div class="kpi"><span class="label">Total a Pagar</span><span class="value">${formatCurrency(totalPagar)}</span></div>
-        <div class="kpi"><span class="label">Lotes Hidroponia Ativos</span><span class="value">${lotesAtivos}</span></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Tenant Settings</h2>
-      <div class="form-grid">
-        <div>
-          <label for="maintenanceEnabled">Modo manutenção global</label>
-          <select id="maintenanceEnabled">
-            <option value="false" ${settings.maintenanceMode ? '' : 'selected'}>Desativado</option>
-            <option value="true" ${settings.maintenanceMode ? 'selected' : ''}>Ativado</option>
-          </select>
-        </div>
-        <div>
-          <label for="maintenanceMessage">Mensagem de manutenção</label>
-          <input id="maintenanceMessage" class="input" value="${escapeHtml(settings.maintenanceMessage || '')}" placeholder="Mensagem para utilizadores" />
-        </div>
-      </div>
-      <div class="row" style="margin-top:10px;justify-content:flex-end;">
-        <button id="saveMaintenance" class="btn btn-primary">Guardar Configuração</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Impersonation</h2>
-      <p>Abre a App principal com o tenant selecionado em modo suporte.</p>
-      <div class="row">
-        <button id="impersonateBtn" class="btn btn-outline">Gerar Contexto de Impersonation</button>
-      </div>
-    </div>
-  `;
-}
-
-function renderLogin() {
-  el.viewTitle.textContent = 'Portal de Suporte Nível 3 · Login';
-  el.mainContent.innerHTML = `
-    <div class="card login-card">
-      <div class="login-hero">
-        <h2>Acesso seguro do suporte</h2>
-        <p>Painel dedicado para operação técnica, auditoria e manutenção assistida.</p>
-      </div>
-      <div class="grid">
-        <div>
-          <label for="loginEmail">E-mail</label>
-          <input id="loginEmail" class="input" type="email" placeholder="suporte@empresa.com" />
-        </div>
-        <div>
-          <label for="loginPassword">Palavra-passe</label>
-          <input id="loginPassword" class="input" type="password" placeholder="••••••••" />
-        </div>
-      </div>
-      <div class="row" style="margin-top:10px;justify-content:flex-end;">
-        <button id="loginBtn" class="btn btn-primary">Entrar</button>
-      </div>
-      <p class="support-note">Acesso permitido somente para contas autorizadas com perfil de suporte.</p>
-    </div>
-  `;
-}
-
-function renderTenantSelector() {
-  const opts = state.tenants
-    .map((t) => `<option value="${escapeHtml(t.uid)}" ${state.selectedTenantId === t.uid ? 'selected' : ''}>${escapeHtml(t.label)}</option>`)
-    .join('');
-
-  return `
-    <div class="card">
-      <h2>Tenant Ativo</h2>
-      <div class="form-grid">
-        <div>
-          <label for="tenantSelector">Cliente / Tenant</label>
-          <select id="tenantSelector">${opts}</select>
-        </div>
-      </div>
-    </div>
-  `;
 }
 
 async function renderMain() {
@@ -710,10 +1188,8 @@ async function renderMain() {
     renderLogin();
     return;
   }
-
   const viewConfig = MODULE_CONFIG[state.currentView];
-  el.viewTitle.textContent = viewConfig?.title || 'Dashboard & Alertas';
-
+  el.viewTitle.textContent = viewConfig?.title || 'Portal de Suporte';
   let viewHtml = '';
   if (state.currentView === 'overview') {
     viewHtml = await renderOverview();
@@ -721,36 +1197,55 @@ async function renderMain() {
     const rows = await loadRows(viewConfig.collection);
     viewHtml = buildTableHtml(viewConfig, rows, viewConfig.collection);
   }
-
   el.mainContent.innerHTML = `${renderTenantSelector()}${viewHtml}`;
 }
 
-async function getProfile(uid) {
-  const snap = await getDoc(doc(db, 'users', uid));
-  return snap.exists() ? snap.data() : null;
+async function safeRenderMain() {
+  try {
+    clearStatus();
+    buildSidebar();
+    await renderMain();
+    appRoot.classList.toggle('logged-out', !state.allowed);
+    el.logoutBtn.classList.toggle('hidden', !state.allowed);
+    if (state.user && state.allowed) {
+      el.userBadge.textContent = state.profile?.name || state.user.email || state.user.id;
+      el.userBadge.classList.remove('hidden');
+    } else {
+      el.userBadge.classList.add('hidden');
+    }
+  } catch (error) {
+    setStatus(error.message || 'Erro ao renderizar portal.', true);
+  }
 }
 
-function canAccess(user, profile) {
-  if (!user || !profile) return false;
-  return profile.role === 'admin' || profile.isSupportAgent === true || user.uid === FIXED_SUPPORT_UID;
-}
-
-async function loadTenants() {
-  const snap = await getDocs(collection(db, 'users'));
-  state.tenants = snap.docs
-    .map((d) => ({ uid: d.id, ...(d.data() || {}) }))
-    .map((u) => ({
-      uid: u.uid,
-      label: `${u.name || u.displayName || u.email || u.uid} (${u.email || 'sem-email'})`,
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label, 'pt-PT'));
-
-  if (!state.selectedTenantId && state.tenants[0]) state.selectedTenantId = state.tenants[0].uid;
+async function refreshSessionUser() {
+  if (!supabase) return;
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  state.user = data.user;
+  if (!state.user) {
+    state.profile = null;
+    state.allowed = false;
+    state.tenants = [];
+    state.selectedTenantId = '';
+    state.globalSearchResults = [];
+    await safeRenderMain();
+    return;
+  }
+  state.profile = await loadProfile(state.user.id);
+  state.allowed = canAccess(state.profile);
+  if (!state.allowed) {
+    await supabase.auth.signOut();
+    throw new Error('Acesso negado: perfil sem permissao de suporte.');
+  }
+  await loadTenants();
+  await safeRenderMain();
 }
 
 function attachGlobalListeners() {
   el.logoutBtn.addEventListener('click', async () => {
-    await signOut(auth);
+    if (!supabase) return;
+    await supabase.auth.signOut();
   });
 
   el.sidebar.addEventListener('click', async (event) => {
@@ -762,13 +1257,165 @@ function attachGlobalListeners() {
   });
 
   el.mainContent.addEventListener('click', async (event) => {
+    if (event.target.id === 'loginBtn') {
+      try {
+        const url = document.getElementById('supabaseUrl').value.trim();
+        const key = document.getElementById('supabaseAnonKey').value.trim();
+        const email = document.getElementById('loginEmail').value.trim();
+        const password = document.getElementById('loginPassword').value;
+        ensureSupabase(url, key);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ url, key }));
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        await refreshSessionUser();
+      } catch (error) {
+        setStatus(error.message || 'Falha no login.', true);
+      }
+      return;
+    }
+
     const actionBtn = event.target.closest('[data-action]');
     if (!actionBtn) return;
-
     const action = actionBtn.dataset.action;
+
+    if (action === 'unlock-write') {
+      if (!state.selectedTenantId) {
+        setStatus('Selecione um tenant antes de destravar escrita.', true);
+        return;
+      }
+      openAuditModal('Destravar escrita por sessao', async (note) => {
+        await logSupportAction({
+          action: 'support_portal.unlock_write',
+          note,
+          metadata: { unlock_minutes: WRITE_UNLOCK_MINUTES, by_user: state.user?.id || null },
+        });
+        setWriteUnlocked(WRITE_UNLOCK_MINUTES);
+      });
+      return;
+    }
+
+    if (action === 'lock-write') {
+      lockWriteMode();
+      setStatus('Modo leitura reativado.');
+      await safeRenderMain();
+      return;
+    }
+
+    if (action === 'global-search-run') {
+      const term = document.getElementById('global-search-term').value.trim();
+      state.globalSearchTerm = term;
+      await runGlobalSearch(term);
+      await safeRenderMain();
+      return;
+    }
+
+    if (action === 'global-search-clear') {
+      state.globalSearchTerm = '';
+      state.globalSearchResults = [];
+      await safeRenderMain();
+      return;
+    }
+
+    if (action === 'open-search-result') {
+      const table = actionBtn.dataset.table;
+      const id = actionBtn.dataset.id;
+      if (table && MODULE_CONFIG[table]) {
+        state.currentView = table;
+        ensureTableState(table).search = id || '';
+        await safeRenderMain();
+      }
+      return;
+    }
+
+    if (action === 'audit-apply-filters') {
+      state.auditFilters.action = document.getElementById('audit-filter-action')?.value?.trim() || '';
+      state.auditFilters.actor = document.getElementById('audit-filter-actor')?.value?.trim() || '';
+      state.auditFilters.from = document.getElementById('audit-filter-from')?.value || '';
+      state.auditFilters.to = document.getElementById('audit-filter-to')?.value || '';
+      await safeRenderMain();
+      return;
+    }
+
+    if (action === 'audit-reset-filters') {
+      state.auditFilters = { action: '', actor: '', from: '', to: '' };
+      await safeRenderMain();
+      return;
+    }
+
+    if (action === 'audit-export-csv') {
+      const rows = state.cachedRows.support_audit || [];
+      const csv = buildCsvFromRows(rows);
+      triggerCsvDownload(csv, `support_audit_${new Date().toISOString().slice(0, 10)}.csv`);
+      return;
+    }
+
     const collectionName = actionBtn.dataset.collection || MODULE_CONFIG[state.currentView]?.collection;
     const config = Object.values(MODULE_CONFIG).find((x) => x.collection === collectionName);
     if (!config) return;
+
+    if (action === 'prev-page' || action === 'next-page') {
+      const ts = ensureTableState(collectionName);
+      ts.page = Math.max(1, ts.page + (action === 'next-page' ? 1 : -1));
+      await safeRenderMain();
+      return;
+    }
+
+    if (action === 'create-record') {
+      if (!isWriteUnlocked()) {
+        setStatus('Modo leitura ativo. Destrave a escrita antes de criar.', true);
+        return;
+      }
+
+      const html = buildCreateModalHtml(collectionName, config);
+
+      openRecordModal(`Criar ${config.title}`, html, async (formData) => {
+        const note = String(formData.get('auditNote') || '').trim();
+        if (note.length < 8) throw new Error('Justificativa minima de 8 caracteres.');
+
+        const createData = buildCreatePayloadFromForm(collectionName, config, formData);
+
+        if (collectionName === 'vendas') {
+          await logSupportAction({
+            action: `${collectionName}.create`,
+            note,
+            metadata: {
+              collection_name: collectionName,
+              before: null,
+              after: createData.venda,
+              venda_item: createData.item,
+              ...createData._auditMetadata,
+            },
+          });
+
+          const { data: insertedVenda, error: vendaError } = await supabase
+            .from('vendas')
+            .insert(createData.venda)
+            .select('id')
+            .single();
+          if (vendaError || !insertedVenda?.id) throw vendaError || new Error('Falha ao criar venda.');
+
+          const { error: itemError } = await supabase.from('venda_itens').insert({
+            ...createData.item,
+            venda_id: insertedVenda.id,
+          });
+          if (itemError) throw itemError;
+
+          setStatus(`Venda criada com sucesso (${insertedVenda.id}).`);
+          return;
+        }
+
+        await logSupportAction({
+          action: `${collectionName}.create`,
+          note,
+          metadata: { collection_name: collectionName, before: null, after: createData },
+        });
+
+        const { data: inserted, error } = await supabase.from(collectionName).insert(createData).select('id').single();
+        if (error) throw error;
+        setStatus(`Registro criado com sucesso (${inserted?.id || 'sem id'}).`);
+      });
+      return;
+    }
 
     const rowEl = actionBtn.closest('tr[data-row-id]');
     const rowId = actionBtn.dataset.id || rowEl?.dataset.rowId;
@@ -777,14 +1424,35 @@ function attachGlobalListeners() {
     if (!row) return;
 
     if (action === 'edit') {
-      const fields = getEditableFields(config)
+      if (!isWriteUnlocked()) {
+        setStatus('Modo leitura ativo. Destrave a escrita antes de editar.', true);
+        return;
+      }
+      const baseFields = getEditableFields(config);
+      const extraFields = buildSupplementalEditableFields(row, config);
+      const allFields = [...baseFields, ...extraFields];
+
+      const fields = allFields
         .map((f) => {
-          const value = f.type === 'date' ? (toDate(row[f.key])?.toISOString().slice(0, 10) || '') : row[f.key] ?? '';
+          const current = row[f.key];
+          const rawValue =
+            f.type === 'date'
+              ? toDate(current)?.toISOString().slice(0, 10) || ''
+              : f.type === 'json'
+              ? JSON.stringify(current ?? null)
+              : current ?? '';
           const inputType = f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text';
+          const input =
+            f.type === 'json'
+              ? `<textarea class="input" name="${escapeHtml(f.key)}" rows="3">${escapeHtml(rawValue)}</textarea>`
+              : f.type === 'boolean'
+              ? `<select class="input" name="${escapeHtml(f.key)}"><option value="true" ${String(rawValue) === 'true' ? 'selected' : ''}>true</option><option value="false" ${String(rawValue) === 'false' ? 'selected' : ''}>false</option></select>`
+              : `<input class="input" name="${escapeHtml(f.key)}" type="${inputType}" value="${escapeHtml(rawValue)}" />`;
+          const label = f.advanced ? `${escapeHtml(String(f.label))} (extra)` : escapeHtml(String(f.label));
           return `
             <div>
-              <label>${escapeHtml(f.label)}</label>
-              <input class="input" name="${escapeHtml(f.key)}" type="${inputType}" value="${escapeHtml(value)}" />
+              <label>${label}</label>
+              ${input}
             </div>
           `;
         })
@@ -793,24 +1461,23 @@ function attachGlobalListeners() {
       const html = `
         <div class="form-grid">${fields}</div>
         <div>
-          <label for="editAuditNote">Justificação de auditoria</label>
-          <textarea id="editAuditNote" name="auditNote" required minlength="8" placeholder="Justifique a alteração."></textarea>
+          <label for="editAuditNote">Justificativa</label>
+          <textarea id="editAuditNote" name="auditNote" required minlength="8" placeholder="Descreva o motivo da alteracao."></textarea>
         </div>
         <div class="form-actions">
           <button class="btn btn-outline" type="button" id="cancelRecordEdit">Cancelar</button>
-          <button class="btn btn-primary" type="submit">Guardar Alterações</button>
+          <button class="btn btn-primary" type="submit">Salvar</button>
         </div>
       `;
 
       openRecordModal(`Editar ${config.title}`, html, async (formData) => {
         const patch = {};
-        getEditableFields(config).forEach((f) => {
+        allFields.forEach((f) => {
           if (!formData.has(f.key)) return;
           patch[f.key] = parseValueByType(f.type, formData.get(f.key));
         });
         const note = String(formData.get('auditNote') || '').trim();
-        if (!note || note.length < 8) throw new Error('Justificação mínima de 8 caracteres é obrigatória.');
-
+        if (note.length < 8) throw new Error('Justificativa minima de 8 caracteres.');
         await auditedUpdate({
           collectionName,
           docId: row.id,
@@ -824,7 +1491,11 @@ function attachGlobalListeners() {
     }
 
     if (action === 'delete') {
-      openAuditModal(`Apagar registo ${row.id}`, async (note) => {
+      if (!isWriteUnlocked()) {
+        setStatus('Modo leitura ativo. Destrave a escrita antes de apagar.', true);
+        return;
+      }
+      openAuditModal(`Excluir registro ${row.id}`, async (note) => {
         await auditedDelete({
           collectionName,
           docId: row.id,
@@ -833,101 +1504,26 @@ function attachGlobalListeners() {
           note,
         });
       });
-      return;
-    }
-
-    if (action === 'force-status' && config.actions.forceStatus) {
-      const next = prompt(
-        `Novo status (${config.actions.forceStatus.options.join(' / ')}):`,
-        row[config.actions.forceStatus.field] || config.actions.forceStatus.options[0]
-      );
-      if (!next) return;
-      openAuditModal(`Forçar status em ${row.id}`, async (note) => {
-        await auditedUpdate({
-          collectionName,
-          docId: row.id,
-          before: row,
-          patch: { [config.actions.forceStatus.field]: String(next).trim() },
-          action: `${collectionName}.forceStatus`,
-          note,
-        });
-      });
-      return;
-    }
-
-    if (action === 'prev-page' || action === 'next-page') {
-      const ts = ensureTableState(collectionName);
-      ts.page = Math.max(1, ts.page + (action === 'next-page' ? 1 : -1));
-      await safeRenderMain();
     }
   });
 
   el.mainContent.addEventListener('input', async (event) => {
     const input = event.target;
-    if (input.id.startsWith('search-')) {
-      const collectionName = input.id.replace('search-', '');
-      const ts = ensureTableState(collectionName);
-      ts.search = input.value;
-      ts.page = 1;
-      await safeRenderMain();
-    }
+    if (!input.id.startsWith('search-')) return;
+    const collectionName = input.id.replace('search-', '');
+    const ts = ensureTableState(collectionName);
+    ts.search = input.value;
+    ts.page = 1;
+    await safeRenderMain();
   });
 
   el.mainContent.addEventListener('change', async (event) => {
     const target = event.target;
-    if (target.id === 'tenantSelector') {
-      state.selectedTenantId = target.value;
-      state.cachedRows = {};
-      await safeRenderMain();
-    }
-  });
-
-  el.mainContent.addEventListener('click', async (event) => {
-    if (event.target.id === 'saveMaintenance') {
-      try {
-        const enabled = document.getElementById('maintenanceEnabled').value === 'true';
-        const message = document.getElementById('maintenanceMessage').value.trim();
-
-        openAuditModal('Alterar modo de manutenção global', async (note) => {
-          const beforeSnap = await getDoc(doc(db, 'tenant_settings', state.selectedTenantId));
-          const before = beforeSnap.exists() ? beforeSnap.data() : null;
-          const patch = {
-            tenantId: state.selectedTenantId,
-            userId: state.selectedTenantId,
-            maintenanceMode: enabled,
-            maintenanceMessage: message || null,
-            maintenanceUpdatedByUid: state.user.uid,
-            maintenanceUpdatedAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          };
-
-          await logSupportAction({
-            action: 'tenant_settings.update_maintenance',
-            note,
-            metadata: {
-              collectionName: 'tenant_settings',
-              docId: state.selectedTenantId,
-              before,
-              after: { maintenanceMode: enabled, maintenanceMessage: message || null },
-            },
-          });
-
-          await setDoc(doc(db, 'tenant_settings', state.selectedTenantId), patch, { merge: true });
-        });
-      } catch (error) {
-        setStatus(error.message || 'Erro ao preparar atualização de manutenção.', true);
-      }
-    }
-
-    if (event.target.id === 'impersonateBtn') {
-      const payload = {
-        tenantId: state.selectedTenantId,
-        by: state.user.uid,
-        createdAt: new Date().toISOString(),
-      };
-      localStorage.setItem('sge_support_impersonation', JSON.stringify(payload));
-      setStatus('Contexto de impersonation guardado no localStorage: sge_support_impersonation');
-    }
+    if (target.id !== 'tenantSelector') return;
+    state.selectedTenantId = target.value;
+    state.cachedRows = {};
+    state.globalSearchResults = [];
+    await safeRenderMain();
   });
 
   el.recordModalClose.addEventListener('click', closeRecordModal);
@@ -941,111 +1537,59 @@ function attachGlobalListeners() {
   el.recordModalForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!state.pendingEditContext?.onSubmit) return;
-
     const formData = new FormData(el.recordModalForm);
     try {
       await state.pendingEditContext.onSubmit(formData);
       closeRecordModal();
-      setStatus('Alteração aplicada com auditoria.');
+      setStatus('Alteracao aplicada com auditoria.');
       await safeRenderMain();
     } catch (error) {
-      setStatus(error.message || 'Falha ao guardar alteração.', true);
+      setStatus(error.message || 'Falha ao salvar alteracao.', true);
     }
   });
 
   el.auditModalForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const note = el.auditNote.value.trim();
-    if (!note || note.length < 8) {
-      setStatus('Justificação mínima de 8 caracteres é obrigatória.', true);
+    if (note.length < 8) {
+      setStatus('Justificativa minima de 8 caracteres.', true);
       return;
     }
     if (!state.pendingAuditAction) return;
-
     try {
       await state.pendingAuditAction(note);
       closeAuditModal();
-      setStatus('Operação concluída com auditoria.');
+      setStatus('Operacao concluida com auditoria.');
       await safeRenderMain();
     } catch (error) {
-      setStatus(error.message || 'Falha na operação auditada.', true);
+      setStatus(error.message || 'Falha na operacao auditada.', true);
     }
   });
-}
-
-async function safeRenderMain() {
-  try {
-    clearStatus();
-    buildSidebar();
-    await renderMain();
-    appRoot?.classList.toggle('logged-out', !state.allowed);
-    el.logoutBtn.classList.toggle('hidden', !state.allowed);
-    if (state.user && state.allowed) {
-      const txt = `${state.profile?.name || state.user.email || state.user.uid}`;
-      el.userBadge.textContent = txt;
-      el.userBadge.classList.remove('hidden');
-    } else {
-      el.userBadge.classList.add('hidden');
-    }
-  } catch (error) {
-    setStatus(error.message || 'Erro ao renderizar painel.', true);
-  }
 }
 
 async function bootstrapAuth() {
-  onAuthStateChanged(auth, async (user) => {
-    state.user = user;
-    state.profile = null;
-    state.allowed = false;
-
-    if (!user) {
-      state.tenants = [];
-      state.selectedTenantId = '';
-      await safeRenderMain();
-      return;
-    }
-
+  const cfg = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+  if (cfg.url && cfg.key) {
     try {
-      const profile = await getProfile(user.uid);
-      state.profile = profile;
-      state.allowed = canAccess(user, profile);
-
-      if (!state.allowed) {
-        setStatus('Acesso negado. Permissão insuficiente para o portal de suporte.', true);
-        await signOut(auth);
-        return;
-      }
-
-      await loadTenants();
-      await safeRenderMain();
-    } catch (error) {
-      setStatus(error.message || 'Falha ao validar permissões.', true);
-    }
-  });
-}
-
-function attachLoginHandler() {
-  el.mainContent.addEventListener('click', async (event) => {
-    if (event.target.id !== 'loginBtn') return;
-    const email = document.getElementById('loginEmail')?.value?.trim();
-    const password = document.getElementById('loginPassword')?.value;
-    if (!email || !password) {
-      setStatus('Informe e-mail e palavra-passe.', true);
+      ensureSupabase(cfg.url, cfg.key);
+      await refreshSessionUser();
+      supabase.auth.onAuthStateChange(async () => {
+        try {
+          await refreshSessionUser();
+        } catch (error) {
+          setStatus(error.message || 'Erro de sessao.', true);
+        }
+      });
       return;
+    } catch (_error) {
+      state.allowed = false;
     }
-
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      setStatus('Sessão autenticada.');
-    } catch (error) {
-      setStatus(error.message || 'Falha no login.', true);
-    }
-  });
+  }
+  await safeRenderMain();
 }
 
 function init() {
   attachGlobalListeners();
-  attachLoginHandler();
   buildSidebar();
   renderLogin();
   bootstrapAuth();

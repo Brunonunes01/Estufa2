@@ -1,5 +1,5 @@
-import { collection, doc, getDocs, query, runTransaction, Timestamp, where } from '../../../compat/firestore';
-import { db } from '../../../services/firebaseConfig';
+import { collection, doc, getDocs, query, runTransaction, Timestamp, where } from '../../../compat/legacyDataApi';
+import { db } from '../../../services/removedBackend';
 import { assertTenantId } from '../../../services/tenantGuard';
 import { createTraceabilityEventSafely } from '../../../services/traceabilityService';
 import { getEstufaById } from '../../../services/estufaService';

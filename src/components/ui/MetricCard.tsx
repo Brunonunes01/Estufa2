@@ -9,28 +9,31 @@ interface MetricCardProps {
   value: string;
   hint?: string;
   style?: ViewStyle;
-  tone?: 'default' | 'success' | 'warning' | 'danger';
+  tone?: 'default' | 'success' | 'warning' | 'danger' | 'info';
   icon?: string;
   iconColor?: string;
   onPress?: () => void;
 }
 
-const toneStyles = {
-  default: { bg: COLORS.surface, value: COLORS.textPrimary, border: COLORS.border, hint: COLORS.textSecondary },
-  success: { bg: COLORS.successSoft, value: COLORS.success, border: COLORS.c86EFAC, hint: COLORS.success },
-  warning: { bg: COLORS.warningSoft, value: COLORS.warning, border: COLORS.cFED7AA, hint: COLORS.warning },
-  danger: { bg: COLORS.dangerBg, value: COLORS.danger, border: COLORS.cFECACA, hint: COLORS.danger },
-};
-
 const MetricCard = ({ label, value, hint, style, tone = 'default', icon, iconColor, onPress }: MetricCardProps) => {
   const mode = useThemeMode();
-  const palette = toneStyles[tone];
-  const effectiveIconColor = iconColor || (tone === 'default' ? mode.textPrimary : palette.value);
+  
+  const tonePalette = {
+    default: { bg: mode.surfaceBackground, value: mode.textPrimary, border: mode.border, icon: mode.textSecondary },
+    success: { bg: COLORS.successSoft, value: COLORS.success, border: COLORS.success, icon: COLORS.success },
+    warning: { bg: COLORS.warningSoft, value: COLORS.warning, border: COLORS.warning, icon: COLORS.warning },
+    danger: { bg: COLORS.dangerSoft, value: COLORS.danger, border: COLORS.danger, icon: COLORS.danger },
+    info: { bg: COLORS.infoSoft, value: COLORS.info, border: COLORS.info, icon: COLORS.info },
+  };
+
+  const palette = tonePalette[tone];
+  const effectiveIconColor = iconColor || palette.icon;
+
   const cardStyle = [
     styles.card,
     {
-      backgroundColor: tone === 'default' ? mode.surfaceBackground : palette.bg,
-      borderColor: tone === 'default' ? mode.border : palette.border,
+      backgroundColor: palette.bg,
+      borderColor: tone === 'default' ? mode.border : palette.bg, // Cleaner look with same-color border
     },
     style,
   ];
@@ -38,19 +41,19 @@ const MetricCard = ({ label, value, hint, style, tone = 'default', icon, iconCol
   const content = (
     <>
       <View style={styles.topRow}>
-        <Text style={[styles.label, { color: mode.textSecondary }]}>{label}</Text>
-        {icon ? <MaterialCommunityIcons name={icon as any} size={18} color={effectiveIconColor} /> : null}
+        <Text style={[styles.label, { color: tone === 'default' ? mode.textSecondary : palette.value, opacity: 0.8 }]}>{label}</Text>
+        {icon ? <MaterialCommunityIcons name={icon as any} size={20} color={effectiveIconColor} /> : null}
       </View>
-      <Text style={[styles.value, { color: tone === 'default' ? mode.textPrimary : palette.value }]} numberOfLines={1}>
+      <Text style={[styles.value, { color: palette.value }]} numberOfLines={1}>
         {value}
       </Text>
-      {hint ? <Text style={[styles.hint, { color: tone === 'default' ? mode.textSecondary : palette.hint || COLORS.textSecondary }]}>{hint}</Text> : null}
+      {hint ? <Text style={[styles.hint, { color: palette.value, opacity: 0.7 }]}>{hint}</Text> : null}
     </>
   );
 
   if (onPress) {
     return (
-      <TouchableOpacity activeOpacity={0.88} onPress={onPress} style={cardStyle}>
+      <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={cardStyle}>
         {content}
       </TouchableOpacity>
     );
@@ -62,10 +65,10 @@ const MetricCard = ({ label, value, hint, style, tone = 'default', icon, iconCol
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    minHeight: 92,
-    borderWidth: 1,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
+    minHeight: 100,
+    borderWidth: 1.5,
+    borderRadius: 20,
+    padding: 16,
     justifyContent: 'center',
     ...SHADOWS.card,
   },
@@ -73,21 +76,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 8,
   },
   label: {
-    fontSize: TYPOGRAPHY.caption,
-    color: COLORS.textSecondary,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   value: {
-    marginTop: 6,
-    fontSize: TYPOGRAPHY.h3,
-    fontWeight: '800',
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: -0.5,
   },
   hint: {
     marginTop: 4,
-    fontSize: 11,
-    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 

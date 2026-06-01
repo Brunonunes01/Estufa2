@@ -11,8 +11,8 @@ import {
   getDoc,
   getAggregateFromServer,
   sum,
-} from '../compat/firestore';
-import { db } from './firebaseConfig';
+} from '../compat/legacyDataApi';
+import { db } from './removedBackend';
 import { Despesa } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { OfflineWriteOptions } from './offline/offlineStorage';
@@ -63,7 +63,7 @@ const buildSupabaseDespesaPayload = (data: DespesaFormData, tenantId: string) =>
   observacoes: data.observacoes || null,
 });
 
-const createDespesaFirebase = async (data: DespesaFormData, tenantId: string) => {
+const createDespesaLegacy = async (data: DespesaFormData, tenantId: string) => {
   const now = Timestamp.now();
   const novaDespesa = {
     ...data,
@@ -99,7 +99,7 @@ const sortDespesasByDateDesc = (despesas: Despesa[]) =>
     return dateB - dateA;
   });
 
-const listDespesasFirebase = async (tenantId: string): Promise<Despesa[]> => {
+const listDespesasLegacy = async (tenantId: string): Promise<Despesa[]> => {
   const q = query(collection(db, 'despesas'), where('tenantId', '==', tenantId));
   const querySnapshot = await getDocs(q);
   return sortDespesasByDateDesc(querySnapshot.docs.map((item) => ({ ...item.data(), id: item.id } as Despesa)));
@@ -117,7 +117,7 @@ const listDespesasSupabase = async (tenantId: string): Promise<Despesa[]> => {
   return (data || []).map(mapSupabaseDespesaToDomain);
 };
 
-const getDespesaByIdFirebase = async (id: string, tenantId: string): Promise<Despesa | null> => {
+const getDespesaByIdLegacy = async (id: string, tenantId: string): Promise<Despesa | null> => {
   const docRef = doc(db, 'despesas', id);
   const docSnap = await getDoc(docRef);
 
@@ -143,8 +143,8 @@ const getDespesaByIdSupabase = async (id: string, tenantId: string): Promise<Des
   return data ? mapSupabaseDespesaToDomain(data) : null;
 };
 
-const updateDespesaStatusFirebase = async (id: string, novoStatus: 'pago' | 'pendente', tenantId: string) => {
-  const despesa = await getDespesaByIdFirebase(id, tenantId);
+const updateDespesaStatusLegacy = async (id: string, novoStatus: 'pago' | 'pendente', tenantId: string) => {
+  const despesa = await getDespesaByIdLegacy(id, tenantId);
   if (!despesa) throw new Error('Despesa não encontrada.');
   await updateDoc(doc(db, 'despesas', id), {
     statusPagamento: novoStatus,
@@ -166,8 +166,8 @@ const updateDespesaStatusSupabase = async (id: string, novoStatus: 'pago' | 'pen
   if (error) throw new Error(`Erro ao atualizar despesa. ${error.message}`);
 };
 
-const deleteDespesaFirebase = async (despesaId: string, tenantId: string) => {
-  const despesa = await getDespesaByIdFirebase(despesaId, tenantId);
+const deleteDespesaLegacy = async (despesaId: string, tenantId: string) => {
+  const despesa = await getDespesaByIdLegacy(despesaId, tenantId);
   if (!despesa) throw new Error('Despesa não encontrada.');
   await deleteDoc(doc(db, 'despesas', despesaId));
 };
@@ -191,7 +191,7 @@ export const createDespesa = async (data: DespesaFormData, userId: string, optio
     onQueuedValue: () => buildOfflinePlaceholderId(),
     write: async () => {
       if (isSupabaseBackend()) return createDespesaSupabase(data, tenantId);
-      return createDespesaFirebase(data, tenantId);
+      return createDespesaLegacy(data, tenantId);
     },
   });
 };
@@ -199,7 +199,7 @@ export const createDespesa = async (data: DespesaFormData, userId: string, optio
 export const listDespesas = async (userId: string): Promise<Despesa[]> => {
   const tenantId = assertTenantId(userId);
   if (isSupabaseBackend()) return listDespesasSupabase(tenantId);
-  return listDespesasFirebase(tenantId);
+  return listDespesasLegacy(tenantId);
 };
 
 export const listDespesasByMonth = async (userId: string, year: number, month: number): Promise<Despesa[]> => {
@@ -238,7 +238,7 @@ export const listDespesasByMonth = async (userId: string, year: number, month: n
 export const getDespesaById = async (id: string, userId: string): Promise<Despesa | null> => {
   const tenantId = assertTenantId(userId);
   if (isSupabaseBackend()) return getDespesaByIdSupabase(id, tenantId);
-  return getDespesaByIdFirebase(id, tenantId);
+  return getDespesaByIdLegacy(id, tenantId);
 };
 
 export const updateDespesaStatus = async (
@@ -258,7 +258,7 @@ export const updateDespesaStatus = async (
         await updateDespesaStatusSupabase(id, novoStatus, tenantId);
         return;
       }
-      await updateDespesaStatusFirebase(id, novoStatus, tenantId);
+      await updateDespesaStatusLegacy(id, novoStatus, tenantId);
     },
   });
 };
@@ -275,7 +275,7 @@ export const deleteDespesa = async (despesaId: string, userId: string, options?:
         await deleteDespesaSupabase(despesaId, tenantId);
         return;
       }
-      await deleteDespesaFirebase(despesaId, tenantId);
+      await deleteDespesaLegacy(despesaId, tenantId);
     },
   });
 };

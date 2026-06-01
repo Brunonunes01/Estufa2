@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="pt-PT">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SGE | Suporte Nível 3</title>
+    <title>SGE | Suporte</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -20,16 +20,15 @@
         <header class="topbar">
           <div>
             <p class="topbar-kicker">SGE Support</p>
-            <h1 id="viewTitle">Portal de Suporte Nível 3</h1>
+            <h1 id="viewTitle">Portal de Suporte</h1>
           </div>
           <div class="topbar-actions">
             <span id="userBadge" class="badge hidden"></span>
-            <button id="logoutBtn" class="btn btn-outline hidden" type="button">Terminar Sessão</button>
+            <button id="logoutBtn" class="btn btn-outline hidden" type="button">Sair</button>
           </div>
         </header>
 
         <section id="statusBar" class="status hidden"></section>
-
         <main id="mainContent" class="main-content"></main>
       </div>
     </div>
@@ -37,8 +36,8 @@
     <div id="recordModal" class="modal hidden" aria-hidden="true">
       <div class="modal-panel">
         <div class="modal-head">
-          <h2 id="recordModalTitle">Editar Registo</h2>
-          <button id="recordModalClose" class="icon-btn" type="button" aria-label="Fechar">✕</button>
+          <h2 id="recordModalTitle">Editar registro</h2>
+          <button id="recordModalClose" class="icon-btn" type="button" aria-label="Fechar">x</button>
         </div>
         <form id="recordModalForm" class="modal-form"></form>
       </div>
@@ -47,12 +46,12 @@
     <div id="auditModal" class="modal hidden" aria-hidden="true">
       <div class="modal-panel modal-panel-sm">
         <div class="modal-head">
-          <h2 id="auditModalTitle">Justificação Obrigatória</h2>
-          <button id="auditModalClose" class="icon-btn" type="button" aria-label="Fechar">✕</button>
+          <h2 id="auditModalTitle">Justificativa obrigatoria</h2>
+          <button id="auditModalClose" class="icon-btn" type="button" aria-label="Fechar">x</button>
         </div>
         <form id="auditModalForm" class="modal-form">
-          <label for="auditNote">Motivo técnico da ação</label>
-          <textarea id="auditNote" required minlength="8" placeholder="Descreva o que será feito e porquê."></textarea>
+          <label for="auditNote">Motivo tecnico da acao</label>
+          <textarea id="auditNote" required minlength="8" placeholder="Descreva o motivo da alteracao."></textarea>
           <div class="form-actions">
             <button id="auditCancelBtn" class="btn btn-outline" type="button">Cancelar</button>
             <button class="btn btn-danger" type="submit">Confirmar</button>

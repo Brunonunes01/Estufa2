@@ -10,8 +10,9 @@ export const useAuth = () => {
   }
 
   // Lógica de segurança para saber se sou dono
-  const isOwner = !context.selectedTenantId || context.selectedTenantId === context.user?.uid;
-  const isAdmin = context.user?.role === 'admin';
+  const selectedTenant = context.availableTenants.find((tenant) => tenant.uid === context.selectedTenantId);
+  const isOwner = selectedTenant?.type === 'owner';
+  const isAdmin = selectedTenant?.role === 'admin';
   const canDeleteEstufa = isOwner && isAdmin;
   const canManageSecurity = isOwner && isAdmin;
 

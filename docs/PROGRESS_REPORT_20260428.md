@@ -7,14 +7,14 @@ Este documento serve como bússola para a continuidade do desenvolvimento, detal
 
 ## 1. Profissionalização da Arquitetura (Backend & DX)
 
-### Cloud Functions & Integridade
-- **Estratégia de Resumo (Dashboard):** Implementamos gatilhos (`onDocumentWritten`) em `vendas`, `despesas`, `tarefas`, `plantios` e `colheitas`. Agora, o Firebase recalcula automaticamente os totais financeiros e operacionais no documento `dashboard_summary/{tenantId}`.
-- **Validação com Zod:** Criamos schemas em `functions/src/schemas.ts` para garantir que dados corrompidos ou negativos não entrem nos cálculos do dashboard.
-- **Logs Profissionais:** Adicionamos `firebase-functions/logger` para auditoria de erros e validações.
+### rotinas server-side antigas & Integridade
+- **Estratégia de Resumo (Dashboard):** Implementamos gatilhos (`onDocumentWritten`) em `vendas`, `despesas`, `tarefas`, `plantios` e `colheitas`. Agora, o Supabase recalcula automaticamente os totais financeiros e operacionais no documento `dashboard_summary/{tenantId}`.
+- **Validação com Zod:** Criamos schemas em `rotinas antigas/src/schemas.ts` para garantir que dados corrompidos ou negativos não entrem nos cálculos do dashboard.
+- **Logs Profissionais:** Adicionamos `supabase-rotinas antigas/logger` para auditoria de erros e validações.
 
 ### Testes e Padrões
-- **Testes Automatizados:** Configuramos Jest e criamos testes unitários para a lógica financeira e schemas de validação em `functions/src/__tests__`.
-- **Ambiente de Funções:** Regularizamos a pasta `functions` com `package.json`, `tsconfig.json` e `jest.config.js`.
+- **Testes Automatizados:** Configuramos Jest e criamos testes unitários para a lógica financeira e schemas de validação em `rotinas antigas/src/__tests__`.
+- **Ambiente de Funções:** Regularizamos a pasta `rotinas antigas` com `package.json`, `tsconfig.json` e `jest.config.js`.
 - **Diretrizes de Frontend:** Criamos o arquivo `docs/FRONTEND_GUIDELINES.md` que define as responsabilidades de qualquer IA ou desenvolvedor que atue no projeto (Isolamento de lógica, Multi-tenancy e fidelidade visual).
 
 ---
@@ -56,7 +56,7 @@ Toda a dinâmica da hidroponia foi movida para a **Ocupação (`HydroOcupacao`)*
 ---
 
 ## 4. Correções Técnicas Importantes
-- **Indices do Firestore:** Implementamos uma estratégia de "Filtro em Memória" no `hidroponiaOcupacaoService.ts` para evitar erros de query por falta de índices compostos no Firebase.
+- **Indices do Supabase:** Implementamos uma estratégia de "Filtro em Memória" no `hidroponiaOcupacaoService.ts` para evitar erros de query por falta de índices compostos no Supabase.
 - **Segurança:** Garantimos que todos os registros de hidroponia incluam `userId` além do `tenantId` para bater com as regras de segurança existentes.
 - **Build:** Corrigimos erros de sintaxe (identificadores duplicados) nas telas de detalhe.
 

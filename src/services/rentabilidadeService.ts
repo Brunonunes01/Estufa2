@@ -1,7 +1,7 @@
 import { getPlantioById } from './plantioService';
 import { listVendasByPlantio } from './vendaService';
-import { collection, getDocs, query, where } from '../compat/firestore';
-import { db } from './firebaseConfig';
+import { collection, getDocs, query, where } from '../compat/legacyDataApi';
+import { db } from './removedBackend';
 import { Despesa } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { isSupabaseBackend } from './backendConfig';
@@ -16,6 +16,11 @@ export interface RentabilidadeResult {
   areaM2: number;
   rendimentoM2: number;
 }
+
+const isInitialInvestmentExpense = (row: any) => {
+  const tipo = String(row?.tipo_gasto ?? row?.tipoGasto ?? '').toLowerCase().trim();
+  return tipo === 'investimento_inicial';
+};
 
 export const calculateRentabilidadeByPlantio = async (
   userId: string,
@@ -32,11 +37,15 @@ export const calculateRentabilidadeByPlantio = async (
         const supabase = getSupabaseClient();
         const { data, error } = await supabase
           .from('despesas')
-          .select('valor')
+          .select('valor,tipo_gasto,status_pagamento')
           .eq('tenant_id', tenantId)
           .eq('plantio_id', plantioId);
         if (error) throw new Error(`Erro ao buscar despesas do plantio. ${error.message}`);
-        return (data || []).map((row: any) => ({ valor: Number(row.valor || 0) }));
+        return (data || []).map((row: any) => ({
+          valor: Number(row.valor || 0),
+          tipo_gasto: row.tipo_gasto || null,
+          status_pagamento: row.status_pagamento || null,
+        }));
       }
 
       const despesasSnap = await getDocs(
@@ -54,10 +63,18 @@ export const calculateRentabilidadeByPlantio = async (
     throw new Error('Plantio não encontrado.');
   }
 
-  const receitaTotal = vendas.reduce((total, venda) => total + Number(venda.valorTotal || 0), 0);
+  const receitaTotal = vendas.reduce((total, venda) => {
+    if (String(venda.statusPagamento || '').toLowerCase() === 'cancelado') return total;
+    const item = venda.itens?.[0];
+    const fallbackTotal = Number(item?.quantidade || 0) * Number(item?.valorUnitario || 0);
+    return total + Number(venda.valorTotal || fallbackTotal || 0);
+  }, 0);
   
   const custoInsumos = Number(plantio.custoAcumulado || 0);
-  const custoDespesas = despesas.reduce((total, d: any) => total + Number(d.valor || 0), 0);
+  // "investimento_inicial" já entra em custoAcumulado do plantio; evitar dupla contagem.
+  const custoDespesas = despesas
+    .filter((d: any) => !isInitialInvestmentExpense(d))
+    .reduce((total, d: any) => total + Number(d.valor || 0), 0);
   
   const custoTotal = custoInsumos + custoDespesas;
   const lucroBruto = receitaTotal - custoTotal;

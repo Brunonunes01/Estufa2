@@ -1,6 +1,6 @@
 // src/services/manejoService.ts
-import { collection, addDoc, query, where, getDocs, Timestamp, doc, deleteDoc, getDoc } from '../compat/firestore';
-import { db } from './firebaseConfig';
+import { collection, addDoc, query, where, getDocs, Timestamp, doc, deleteDoc, getDoc } from '../compat/legacyDataApi';
+import { db } from './removedBackend';
 import { RegistroManejo } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { createTraceabilityEventSafely } from './traceabilityService';

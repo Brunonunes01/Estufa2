@@ -1,4 +1,4 @@
-import { Timestamp } from '../compat/firestore';
+import { Timestamp } from '../compat/legacyDataApi';
 
 export type UserRole = 'admin' | 'operator';
 
@@ -284,6 +284,7 @@ export interface Colheita extends BaseDoc {
   precoUnitario?: number;
   clienteId?: string | null;
   metodoPagamento?: string | null;
+  pagamentoPara?: string | null;
   statusPagamento?: 'pendente' | 'pago' | 'atrasado' | 'cancelado';
   dataPagamento?: Timestamp | null;
   cicloDesbloqueadoPorAdmin?: boolean;
@@ -322,6 +323,7 @@ export interface Venda extends BaseDoc {
 
   // Campos legados de relatório
   metodoPagamento?: string | null;
+  pagamentoPara?: string | null;
   cicloDesbloqueadoPorAdmin?: boolean;
   desbloqueioAdminByUid?: string | null;
   desbloqueioAdminByName?: string | null;
@@ -427,3 +429,4 @@ export interface DashboardSummary extends BaseDoc {
   irrigacoesPendentes?: number;
   manejosPendentes?: number;
 }
+

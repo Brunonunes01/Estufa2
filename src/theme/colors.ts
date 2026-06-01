@@ -1,45 +1,49 @@
 export const colors = {
-  primary: '#0F766E',
-  secondary: '#0F172A',
-  background: '#F3F6F5',
+  // Brand Colors - More saturated and vibrant
+  primary: '#10B981',      // Emerald 500 (Vibrant Green)
+  primaryDark: '#059669',  // Emerald 600
+  primaryLight: '#D1FAE5', // Emerald 100
+  secondary: '#0F172A',    // Slate 900
+  accent: '#F59E0B',       // Amber 500 (Energetic Orange/Yellow)
+  
+  // Backgrounds
+  background: '#F8FAFC',   // Slate 50 (Cleaner white/blue)
+  backgroundAlt: '#F1F5F9', // Slate 100
   surface: '#FFFFFF',
-  textPrimary: '#12202F',
-  textSecondary: '#5A6B7E',
-  border: '#D8E1E8',
-  success: '#059669',
-  warning: '#D97706',
-  danger: '#DC2626',
-  headerBackground: '#0F172A',
-  cardBackground: '#FFFFFF',
-
-  primaryDark: '#0B5E58',
-  primaryLight: '#CCFBF1',
-  accent: '#3B82F6',
-  backgroundAlt: '#EAF1EF',
-  surfaceMuted: '#F8FAFC',
-  overlay: 'rgba(15, 23, 42, 0.58)',
-  overlaySoft: 'rgba(15, 23, 42, 0.45)',
-  textDark: '#0B1220',
-  textMuted: '#8392A2',
-  textGray: '#64748B',
-  textPlaceholder: '#94A3B8',
+  surfaceMuted: '#F1F5F9',
+  
+  // Text
+  textPrimary: '#0F172A',  // Slate 900
+  textSecondary: '#475569', // Slate 600
+  textMuted: '#94A3B8',    // Slate 400
   textLight: '#FFFFFF',
-  onPrimary: '#E6FFFA',
-  borderDark: '#B7C4D0',
-  divider: '#E8EEF2',
+  textDark: '#020617',
+  textPlaceholder: '#94A3B8',
+  
+  // Semantic
+  success: '#10B981',      // Emerald 500
   successSoft: '#DCFCE7',
-  dangerSoft: '#FEF2F2', // alias for dangerBg
-  primarySoft: '#CCFBF1', // alias for primaryLight
-  dangerBg: '#FEF2F2',
-  warningSoft: '#FFF7ED',
-  info: '#2563EB',
+  warning: '#F59E0B',      // Amber 500
+  warningSoft: '#FEF3C7',
+  danger: '#EF4444',       // Red 500
+  dangerSoft: '#FEE2E2',
+  info: '#3B82F6',         // Blue 500
   infoSoft: '#DBEAFE',
-  orange: '#EA580C',
-  finance: '#9A5507',
-  clients: '#0C6A9A',
-  expenses: '#A0193D',
-
-  // alpha helpers
+  
+  // Specialized
+  finance: '#F59E0B',      // Amber
+  clients: '#06B6D4',      // Cyan
+  expenses: '#F43F5E',     // Rose
+  whatsapp: '#22C55E',     // Green 500
+  
+  // UI Elements
+  border: '#E2E8F0',       // Slate 200
+  borderDark: '#CBD5E1',   // Slate 300
+  divider: '#F1F5F9',
+  overlay: 'rgba(15, 23, 42, 0.65)',
+  overlaySoft: 'rgba(15, 23, 42, 0.45)',
+  
+  // Alpha Helpers
   whiteAlpha10: 'rgba(255,255,255,0.1)',
   whiteAlpha12: 'rgba(255,255,255,0.12)',
   whiteAlpha15: 'rgba(255,255,255,0.15)',
@@ -47,68 +51,68 @@ export const colors = {
   whiteAlpha20: 'rgba(255,255,255,0.2)',
   whiteAlpha60: 'rgba(255,255,255,0.6)',
   whiteAlpha80: 'rgba(255,255,255,0.8)',
-
-  // semantic extras used across modules
-  alertSoft: '#FEF3C7',
-  alertText: '#B45309',
-  disabledBg: '#E2E8F0',
-  whatsapp: '#25D366',
-
-  // literal palette compatibility tokens
-  c006400: '#006400',
-  c007BFF: '#007bff',
-  c10B981: '#10B981',
-  c15803D: '#15803D',
-  c16A34A: '#16A34A',
-  c1E293B: '#1E293B',
-  c333333: '#333333',
-  c334155: '#334155',
-  c374151: '#374151',
-  c3B82F6: '#3B82F6',
-  c475569: '#475569',
-  c4B5563: '#4B5563',
-  c4CAF50: '#4CAF50',
-  c555555: '#555555',
-  c666666: '#666666',
-  c6B7280: '#6B7280',
-  c6EE7B7: '#6EE7B7',
-  c856404: '#856404',
-  c86EFAC: '#86EFAC',
-  c991B1B: '#991B1B',
-  c9A3412: '#9A3412',
-  c9CA3AF: '#9CA3AF',
-  cA7F3D0: '#A7F3D0',
-  cBBF7D0: '#BBF7D0',
-  cBFDBFE: '#BFDBFE',
-  cCBD5E1: '#CBD5E1',
-  cD1D5DB: '#D1D5DB',
-  cD1FAE5: '#D1FAE5',
-  cE11D48: '#E11D48',
-  cE3F2FD: '#E3F2FD',
-  cE5E7EB: '#E5E7EB',
-  cECFDF5: '#ECFDF5',
-  cEFF6FF: '#EFF6FF',
-  cF0FDF4: '#F0FDF4',
-  cF59E0B: '#F59E0B',
-  cFAFAFA: '#FAFAFA',
-  cFB923C: '#FB923C',
-  cFCA5A5: '#FCA5A5',
-  cFDE047: '#FDE047',
-  cFECACA: '#FECACA',
-  cFED7AA: '#FED7AA',
-  cFEF3C7: '#FEF3C7',
-  cFF9800: '#FF9800',
-  cFFFFFF: '#FFFFFF',
-  cCCCCCC: '#CCCCCC',
-  cDDDDDD: '#DDDDDD',
-  cEEEEEE: '#EEEEEE',
-  cF9F9F9: '#F9F9F9',
+  
   rgba00005: 'rgba(0,0,0,0.5)',
   rgba00006: 'rgba(0,0,0,0.6)',
   rgba25525525501: 'rgba(255,255,255,0.1)',
   rgba255255255018: 'rgba(255,255,255,0.18)',
   rgba25525525502: 'rgba(255,255,255,0.2)',
   rgba25525525508: 'rgba(255,255,255,0.8)',
+
+  // Legacy Compatibility (mapping to new vibrant palette)
+  headerBackground: '#0F172A',
+  cardBackground: '#FFFFFF',
+  onPrimary: '#F0FDF4',
+  dangerBg: '#FEE2E2',
+  primarySoft: '#D1FAE5',
+  orange: '#F59E0B',
+  blue: '#3B82F6',
+  textGray: '#64748B',
+  alertText: '#B45309',
+  alertSoft: '#FEF3C7',
+  disabledBg: '#E2E8F0',
+
+  // Literal tokens (mapping old specific colors to new ones or keeping them as stubs)
+  c10B981: '#10B981',
+  c1E293B: '#1E293B',
+  c3B82F6: '#3B82F6',
+  cEF4444: '#EF4444',
+  cFFFFFF: '#FFFFFF',
+  cBFDBFE: '#DBEAFE',
+  cFECACA: '#FEE2E2',
+  c86EFAC: '#10B981',
+  cFAFAFA: '#F8FAFC',
+  c333333: '#1E293B',
+  c4CAF50: '#10B981',
+  cFF9800: '#F59E0B',
+  cEEEEEE: '#E2E8F0',
+  c555555: '#475569',
+  c6B7280: '#64748B',
+  cFCA5A5: '#FCA5A5',
+  c6EE7B7: '#10B981',
+  c9CA3AF: '#94A3B8',
+  cCBD5E1: '#CBD5E1',
+  cFED7AA: '#F59E0B',
+  cD1FAE5: '#D1FAE5',
+  cE5E7EB: '#E2E8F0',
+  c374151: '#334155',
+  cD1D5DB: '#D1D5DB',
+  cFDE047: '#FDE047',
+  cFB923C: '#F59E0B',
+  cFEF3C7: '#FEF3C7',
+  c475569: '#475569',
+  cA7F3D0: '#10B981',
+  c334155: '#334155',
+  cBBF7D0: '#10B981',
+  c856404: '#9A3412',
+  cF9F9F9: '#F8FAFC',
+  c006400: '#065F46',
+  cE3F2FD: '#DBEAFE',
+  c007BFF: '#3B82F6',
+  cDDDDDD: '#E2E8F0',
+  c666666: '#475569',
+  c15803D: '#065F46',
+  cF0FDF4: '#F0FDF4',
 };
 
 export type AppColors = typeof colors;

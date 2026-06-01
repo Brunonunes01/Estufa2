@@ -58,5 +58,5 @@ const server = createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Support Portal disponível em http://localhost:${PORT}`);
+  console.log(`Support Portal disponivel em http://localhost:${PORT}`);
 });

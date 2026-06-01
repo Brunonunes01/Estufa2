@@ -2063,6 +2063,7 @@ export type Database = {
           hydro_lote_id: string | null
           id: string
           metodo_pagamento: string | null
+          pagamento_para: string | null
           observacoes: string | null
           origin_id: string | null
           origin_type: string | null
@@ -2092,6 +2093,7 @@ export type Database = {
           hydro_lote_id?: string | null
           id?: string
           metodo_pagamento?: string | null
+          pagamento_para?: string | null
           observacoes?: string | null
           origin_id?: string | null
           origin_type?: string | null
@@ -2121,6 +2123,7 @@ export type Database = {
           hydro_lote_id?: string | null
           id?: string
           metodo_pagamento?: string | null
+          pagamento_para?: string | null
           observacoes?: string | null
           origin_id?: string | null
           origin_type?: string | null

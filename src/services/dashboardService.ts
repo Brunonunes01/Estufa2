@@ -1,23 +1,12 @@
-import { doc, getDoc, Timestamp } from '../compat/firestore';
+import { Timestamp } from '../compat/legacyDataApi';
 import { listEstufas } from './estufaService';
 import { getVendasFinancialSummary } from './vendaService';
 import { getTotalDespesasPendentes } from './despesaService';
 import { listActivePlantiosByUser } from './plantioService';
 import { Estufa, Plantio, TarefaAgricola } from '../types/domain';
-import { db } from './firebaseConfig';
 import { assertTenantId } from './tenantGuard';
 import { listTarefasPendentes } from './tarefaAgricolaService';
-import { isSupabaseBackend } from './backendConfig';
 import { getSupabaseClient } from './supabaseClient';
-
-interface DashboardFinancialSummaryDoc {
-  tenantId: string;
-  totalReceber: number;
-  totalRecebido?: number;
-  totalPagar: number;
-  tarefasHojePendentes?: number;
-  updatedAt?: Timestamp;
-}
 
 export interface DashboardSummary {
   estufas: Estufa[];
@@ -32,52 +21,28 @@ export interface DashboardSummary {
 }
 
 const getFinancialSummaryFromDoc = async (tenantId: string) => {
-  if (isSupabaseBackend()) {
-    const supabase = getSupabaseClient();
-    const { data, error } = await supabase
-      .from('dashboard_summary')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .maybeSingle();
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('dashboard_summary')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
 
-    if (error || !data) return null;
+  if (error || !data) return null;
 
-    if (typeof data.total_receber !== 'number' || typeof data.total_pagar !== 'number') {
-      return null;
-    }
-
-    return {
-      totalReceber: data.total_receber,
-      totalRecebido: typeof data.total_recebido === 'number' ? data.total_recebido : undefined,
-      totalPagar: data.total_pagar,
-      tarefasHojePendentes:
-        typeof data.tarefas_hoje_pendentes === 'number' ? data.tarefas_hoje_pendentes : undefined,
-      updatedAt: data.updated_at ? Timestamp.fromDate(new Date(data.updated_at)) : null,
-      source: 'summary_doc' as const,
-    };
-  }
-
-  try {
-    const snap = await getDoc(doc(db, 'dashboard_summary', tenantId));
-    if (!snap.exists()) return null;
-
-    const data = snap.data() as Partial<DashboardFinancialSummaryDoc>;
-    if (typeof data.totalReceber !== 'number' || typeof data.totalPagar !== 'number') {
-      return null;
-    }
-
-    return {
-      totalReceber: data.totalReceber,
-      totalRecebido: typeof data.totalRecebido === 'number' ? data.totalRecebido : undefined,
-      totalPagar: data.totalPagar,
-      tarefasHojePendentes:
-        typeof data.tarefasHojePendentes === 'number' ? data.tarefasHojePendentes : undefined,
-      updatedAt: data.updatedAt || null,
-      source: 'summary_doc' as const,
-    };
-  } catch (error) {
+  if (typeof data.total_receber !== 'number' || typeof data.total_pagar !== 'number') {
     return null;
   }
+
+  return {
+    totalReceber: data.total_receber,
+    totalRecebido: typeof data.total_recebido === 'number' ? data.total_recebido : undefined,
+    totalPagar: data.total_pagar,
+    tarefasHojePendentes:
+      typeof data.tarefas_hoje_pendentes === 'number' ? data.tarefas_hoje_pendentes : undefined,
+    updatedAt: data.updated_at ? Timestamp.fromDate(new Date(data.updated_at)) : null,
+    source: 'summary_doc' as const,
+  };
 };
 
 export const getDashboardSummary = async (userId: string): Promise<DashboardSummary> => {

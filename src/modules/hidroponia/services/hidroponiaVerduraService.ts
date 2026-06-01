@@ -8,8 +8,8 @@ import {
   Timestamp,
   updateDoc,
   where,
-} from '../../../compat/firestore';
-import { db } from '../../../services/firebaseConfig';
+} from '../../../compat/legacyDataApi';
+import { db } from '../../../services/removedBackend';
 import { assertTenantId } from '../../../services/tenantGuard';
 import { isSupabaseBackend } from '../../../services/backendConfig';
 import { getSupabaseClient } from '../../../services/supabaseClient';

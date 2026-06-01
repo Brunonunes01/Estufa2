@@ -1,5 +1,5 @@
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, Timestamp, updateDoc, where } from '../compat/firestore';
-import { db } from './firebaseConfig';
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, Timestamp, updateDoc, where } from '../compat/legacyDataApi';
+import { db } from './removedBackend';
 import { TarefaAgricola } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { createTraceabilityEventSafely } from './traceabilityService';

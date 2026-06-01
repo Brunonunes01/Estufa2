@@ -4,13 +4,13 @@ Data: 2026-05-01
 
 ## Contexto
 
-O projeto nao vai utilizar Cloud Functions para a operacao principal. A regra assumida e: o app cliente fala direto com Firestore, entao regras Firestore, validacoes no cliente e transacoes precisam sustentar a consistencia do dominio.
+O projeto nao vai utilizar rotinas server-side antigas para a operacao principal. A regra assumida e: o app cliente fala direto com banco anterior, entao regras banco anterior, validacoes no cliente e transacoes precisam sustentar a consistencia do dominio.
 
 ## O que foi implementado nesta rodada
 
 ### Seguranca e tenant
 
-- `firestore.rules` passou a respeitar `permissions.canRead`, `permissions.canWrite` e `permissions.canDelete` para tenants compartilhados.
+- `banco_anterior.rules` passou a respeitar `permissions.canRead`, `permissions.canWrite` e `permissions.canDelete` para tenants compartilhados.
 - `src/services/aplicacaoService.ts` agora valida tenant do plantio e dos insumos antes de aplicar baixa de estoque/custo.
 
 ### Vendas
@@ -41,7 +41,7 @@ O projeto nao vai utilizar Cloud Functions para a operacao principal. A regra as
 
 ## Arquivos principais alterados
 
-- `firestore.rules`
+- `banco_anterior.rules`
 - `src/services/aplicacaoService.ts`
 - `src/services/plantioService.ts`
 - `src/services/vendaService.ts`
@@ -121,7 +121,7 @@ Criar testes para os fluxos criticos:
 - tentativa de editar quantidade de venda hidropônica com baixa falha
 - movimentacao nao permite exceder capacidade
 - movimentacao nao permite outra producao ocupar bancada travada
-- regras Firestore respeitam `permissions.canWrite` e `canDelete`
+- regras banco anterior respeitam `permissions.canWrite` e `canDelete`
 
 ## Observacoes tecnicas
 
@@ -152,11 +152,11 @@ Campos usados:
 }
 ```
 
-Como `firestore.rules` sao tenant-scoped por `tenantId`, a colecao fica coberta pela regra global.
+Como `banco_anterior.rules` sao tenant-scoped por `tenantId`, a colecao fica coberta pela regra global.
 
 ### Risco residual
 
-A trava por bancada reduz corrida, mas ainda depende do cliente criar/manter locks corretamente. Como nao havera Cloud Functions, manter tudo via transacao e regras Firestore e essencial.
+A trava por bancada reduz corrida, mas ainda depende do cliente criar/manter locks corretamente. Como nao havera rotinas server-side antigas, manter tudo via transacao e regras banco anterior e essencial.
 
 ## Proximo passo recomendado
 

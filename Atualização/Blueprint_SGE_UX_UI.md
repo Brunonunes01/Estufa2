@@ -63,5 +63,5 @@ A "Bottom Tab Bar" (Barra de Navegação Inferior) focada em ações e acesso r�
 ## 4. Regras de Design System (Para a Equipa Frontend)
 
 1. **Empty States:** Se não existirem dados (ex: sem estufas), mostrar uma ilustração encorajadora ("A sua estufa está vazia. Vamos plantar a primeira semente?") com um *Call to Action* claro.
-2. **Skeleton Loading:** Utilizar *SkeletonBlocks* (caixas cinzentas a piscar) durante o carregamento do Firebase, em vez de ícones de carregamento circulares infinitos (spinners).
+2. **Skeleton Loading:** Utilizar *SkeletonBlocks* (caixas cinzentas a piscar) durante o carregamento do Supabase, em vez de ícones de carregamento circulares infinitos (spinners).
 3. **Sem Modais de Ecrã Inteiro:** Usar sempre gavetas deslizantes (`Bottom Sheets`) para pequenas inserções de dados.

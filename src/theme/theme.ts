@@ -10,36 +10,36 @@ export const spacing = {
 };
 
 export const radius = {
-  sm: 10,
-  md: 14,
-  lg: 18,
-  xl: 24,
+  sm: 12,
+  md: 16,
+  lg: 20,
+  xl: 28,
   pill: 999,
 };
 
 export const typography = {
-  h1: 30,
-  h2: 24,
-  h3: 20,
-  title: 17,
-  body: 15,
-  caption: 12,
+  h1: 32,
+  h2: 26,
+  h3: 22,
+  title: 18,
+  body: 16,
+  caption: 13,
 };
 
 export const shadows = {
   card: {
-    shadowColor: colors.textDark,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    elevation: 3,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 4,
   },
   floating: {
-    shadowColor: colors.textDark,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    elevation: 8,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.25,
+    shadowRadius: 25,
+    elevation: 10,
   },
 };
 

@@ -10,8 +10,8 @@ import {
   getDoc, 
   updateDoc,
   deleteDoc
-} from '../compat/firestore';
-import { db } from './firebaseConfig';
+} from '../compat/legacyDataApi';
+import { db } from './removedBackend';
 import { Fornecedor } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { OfflineWriteOptions } from './offline/offlineStorage';
@@ -53,7 +53,7 @@ const buildSupabaseFornecedorPayload = (data: FornecedorFormData, tenantId: stri
   observacoes: data.observacoes ?? null,
 });
 
-const createFornecedorFirebase = async (data: FornecedorFormData, tenantId: string) => {
+const createFornecedorLegacy = async (data: FornecedorFormData, tenantId: string) => {
   const novoFornecedor = {
     ...data,
     tenantId,
@@ -80,7 +80,7 @@ const createFornecedorSupabase = async (data: FornecedorFormData, tenantId: stri
   return inserted.id as string;
 };
 
-const listFornecedoresFirebase = async (tenantId: string): Promise<Fornecedor[]> => {
+const listFornecedoresLegacy = async (tenantId: string): Promise<Fornecedor[]> => {
   const [tenantSnap, legacySnap] = await Promise.all([
     getDocs(query(collection(db, 'fornecedores'), where('tenantId', '==', tenantId))),
     getDocs(query(collection(db, 'fornecedores'), where('userId', '==', tenantId))),
@@ -113,7 +113,7 @@ const listFornecedoresSupabase = async (tenantId: string): Promise<Fornecedor[]>
   return (data || []).map(mapSupabaseFornecedorToDomain);
 };
 
-const getFornecedorByIdFirebase = async (fornecedorId: string, tenantId: string): Promise<Fornecedor | null> => {
+const getFornecedorByIdLegacy = async (fornecedorId: string, tenantId: string): Promise<Fornecedor | null> => {
   const docRef = doc(db, 'fornecedores', fornecedorId);
   const docSnap = await getDoc(docRef);
   if (!docSnap.exists()) return null;
@@ -140,8 +140,8 @@ const getFornecedorByIdSupabase = async (fornecedorId: string, tenantId: string)
   return data ? mapSupabaseFornecedorToDomain(data) : null;
 };
 
-const updateFornecedorFirebase = async (fornecedorId: string, data: FornecedorFormData, tenantId: string) => {
-  const fornecedor = await getFornecedorByIdFirebase(fornecedorId, tenantId);
+const updateFornecedorLegacy = async (fornecedorId: string, data: FornecedorFormData, tenantId: string) => {
+  const fornecedor = await getFornecedorByIdLegacy(fornecedorId, tenantId);
   if (!fornecedor) throw new Error('Fornecedor não encontrado.');
 
   const fornecedorRef = doc(db, 'fornecedores', fornecedorId);
@@ -165,8 +165,8 @@ const updateFornecedorSupabase = async (fornecedorId: string, data: FornecedorFo
   if (error) throw new Error(`Erro ao atualizar fornecedor: ${error.message}`);
 };
 
-const deleteFornecedorFirebase = async (fornecedorId: string, tenantId: string) => {
-  const fornecedor = await getFornecedorByIdFirebase(fornecedorId, tenantId);
+const deleteFornecedorLegacy = async (fornecedorId: string, tenantId: string) => {
+  const fornecedor = await getFornecedorByIdLegacy(fornecedorId, tenantId);
   if (!fornecedor) throw new Error('Fornecedor não encontrado para exclusão.');
   await deleteDoc(doc(db, 'fornecedores', fornecedorId));
 };
@@ -192,7 +192,7 @@ export const createFornecedor = async (data: FornecedorFormData, userId: string,
     write: async () => {
       try {
         if (isSupabaseBackend()) return await createFornecedorSupabase(data, tenantId);
-        return await createFornecedorFirebase(data, tenantId);
+        return await createFornecedorLegacy(data, tenantId);
       } catch (error) {
         console.error("Erro ao criar fornecedor: ", error);
         throw new Error('Não foi possível criar o fornecedor.');
@@ -206,7 +206,7 @@ export const listFornecedores = async (userId: string): Promise<Fornecedor[]> =>
   const tenantId = assertTenantId(userId);
   try {
     if (isSupabaseBackend()) return await listFornecedoresSupabase(tenantId);
-    return await listFornecedoresFirebase(tenantId);
+    return await listFornecedoresLegacy(tenantId);
 
   } catch (error) { 
     console.error("Erro ao listar fornecedores: ", error);
@@ -219,7 +219,7 @@ export const getFornecedorById = async (fornecedorId: string, userId: string): P
   const tenantId = assertTenantId(userId);
   try {
     if (isSupabaseBackend()) return await getFornecedorByIdSupabase(fornecedorId, tenantId);
-    return await getFornecedorByIdFirebase(fornecedorId, tenantId);
+    return await getFornecedorByIdLegacy(fornecedorId, tenantId);
   } catch (error) {
     console.error("Erro ao buscar fornecedor por ID: ", error);
     throw error;
@@ -245,7 +245,7 @@ export const updateFornecedor = async (
           await updateFornecedorSupabase(fornecedorId, data, tenantId);
           return;
         }
-        await updateFornecedorFirebase(fornecedorId, data, tenantId);
+        await updateFornecedorLegacy(fornecedorId, data, tenantId);
       } catch (error) {
         console.error("Erro ao atualizar fornecedor: ", error);
         throw error;
@@ -271,7 +271,7 @@ export const deleteFornecedor = async (
           await deleteFornecedorSupabase(fornecedorId, tenantId);
           return;
         }
-        await deleteFornecedorFirebase(fornecedorId, tenantId);
+        await deleteFornecedorLegacy(fornecedorId, tenantId);
       } catch (error) {
         console.error("Erro ao excluir fornecedor: ", error);
         throw error;

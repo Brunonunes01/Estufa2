@@ -10,8 +10,8 @@ import {
   getDoc,
   updateDoc,
   deleteDoc,
-} from '../compat/firestore';
-import { db } from './firebaseConfig';
+} from '../compat/legacyDataApi';
+import { db } from './removedBackend';
 import { Cliente } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { OfflineWriteOptions } from './offline/offlineStorage';
@@ -77,7 +77,7 @@ const buildSupabaseClientePayload = (data: ClienteFormData, tenantId: string) =>
   complemento: data.complemento ?? null,
 });
 
-const listClientesFirebase = async (tenantId: string): Promise<Cliente[]> => {
+const listClientesLegacy = async (tenantId: string): Promise<Cliente[]> => {
   const clientes: Cliente[] = [];
   const q = query(collection(db, 'clientes'), where('tenantId', '==', tenantId));
   const querySnapshot = await getDocs(q);
@@ -102,7 +102,7 @@ const listClientesSupabase = async (tenantId: string): Promise<Cliente[]> => {
   return (data || []).map(mapSupabaseClienteToDomain);
 };
 
-const getClienteByIdFirebase = async (clienteId: string, tenantId: string): Promise<Cliente | null> => {
+const getClienteByIdLegacy = async (clienteId: string, tenantId: string): Promise<Cliente | null> => {
   const docRef = doc(db, 'clientes', clienteId);
   const docSnap = await getDoc(docRef);
   if (!docSnap.exists()) return null;
@@ -129,7 +129,7 @@ const getClienteByIdSupabase = async (clienteId: string, tenantId: string): Prom
   return mapSupabaseClienteToDomain(data);
 };
 
-const createClienteFirebase = async (data: ClienteFormData, tenantId: string) => {
+const createClienteLegacy = async (data: ClienteFormData, tenantId: string) => {
   const now = Timestamp.now();
   const novoCliente = {
     ...data,
@@ -154,8 +154,8 @@ const createClienteSupabase = async (data: ClienteFormData, tenantId: string) =>
   return inserted.id as string;
 };
 
-const updateClienteFirebase = async (clienteId: string, data: ClienteFormData, tenantId: string) => {
-  const cliente = await getClienteByIdFirebase(clienteId, tenantId);
+const updateClienteLegacy = async (clienteId: string, data: ClienteFormData, tenantId: string) => {
+  const cliente = await getClienteByIdLegacy(clienteId, tenantId);
   if (!cliente) throw new Error('Cliente não encontrado.');
   const ref = doc(db, 'clientes', clienteId);
   await updateDoc(ref, { ...data, updatedAt: Timestamp.now() });
@@ -168,8 +168,8 @@ const updateClienteSupabase = async (clienteId: string, data: ClienteFormData, t
   if (error) throw new Error(`Erro ao atualizar cliente: ${error.message}`);
 };
 
-const deleteClienteFirebase = async (clienteId: string, tenantId: string) => {
-  const cliente = await getClienteByIdFirebase(clienteId, tenantId);
+const deleteClienteLegacy = async (clienteId: string, tenantId: string) => {
+  const cliente = await getClienteByIdLegacy(clienteId, tenantId);
   if (!cliente) throw new Error('Cliente não encontrado para exclusão.');
   await deleteDoc(doc(db, 'clientes', clienteId));
 };
@@ -190,7 +190,7 @@ export const createCliente = async (data: ClienteFormData, userId: string, optio
     onQueuedValue: () => buildOfflinePlaceholderId(),
     write: async () => {
       if (isSupabaseBackend()) return createClienteSupabase(data, tenantId);
-      return createClienteFirebase(data, tenantId);
+      return createClienteLegacy(data, tenantId);
     },
   });
 };
@@ -200,7 +200,7 @@ export const listClientes = async (userId: string): Promise<Cliente[]> => {
   const tenantId = assertTenantId(userId);
   try {
     if (isSupabaseBackend()) return await listClientesSupabase(tenantId);
-    return await listClientesFirebase(tenantId);
+    return await listClientesLegacy(tenantId);
   } catch (error) {
     console.error('Erro ao listar clientes: ', error);
     throw new Error('Não foi possível buscar os clientes.');
@@ -212,7 +212,7 @@ export const getClienteById = async (clienteId: string, userId: string): Promise
   const tenantId = assertTenantId(userId);
   try {
     if (isSupabaseBackend()) return await getClienteByIdSupabase(clienteId, tenantId);
-    return await getClienteByIdFirebase(clienteId, tenantId);
+    return await getClienteByIdLegacy(clienteId, tenantId);
   } catch (error) {
     console.error('Erro ao buscar cliente: ', error);
     throw error;
@@ -238,7 +238,7 @@ export const updateCliente = async (
           await updateClienteSupabase(clienteId, data, tenantId);
           return;
         }
-        await updateClienteFirebase(clienteId, data, tenantId);
+        await updateClienteLegacy(clienteId, data, tenantId);
       } catch (error) {
         console.error('Erro ao atualizar cliente: ', error);
         throw error;
@@ -260,7 +260,7 @@ export const deleteCliente = async (clienteId: string, userId: string, options?:
           await deleteClienteSupabase(clienteId, tenantId);
           return;
         }
-        await deleteClienteFirebase(clienteId, tenantId);
+        await deleteClienteLegacy(clienteId, tenantId);
       } catch (error) {
         console.error('Erro ao excluir cliente: ', error);
         throw error;

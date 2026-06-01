@@ -17,7 +17,7 @@ A modernização será executada em camadas:
 3. Migração progressiva de módulos críticos.
 4. Rollout controlado com mecanismo de rollback.
 
-Premissa central: **não quebrar as funções existentes** (regras de negócio, serviços Firebase, permissões e fluxos de dados já em produção).
+Premissa central: **não quebrar as funções existentes** (regras de negócio, serviços Supabase, permissões e fluxos de dados já em produção).
 
 ---
 
@@ -189,7 +189,7 @@ Premissa central: **não quebrar as funções existentes** (regras de negócio, 
 
 ## 8.3 Regras de proteção
 
-1. Nenhuma alteração em regras Firestore no mesmo PR de UI.
+1. Nenhuma alteração em regras Supabase no mesmo PR de UI.
 2. Nenhuma alteração de contrato de serviço no mesmo PR de layout.
 3. Cobertura mínima de smoke tests por fluxo crítico.
 

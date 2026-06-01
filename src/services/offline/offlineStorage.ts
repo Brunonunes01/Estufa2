@@ -30,6 +30,8 @@ export type OfflineActionName =
   | 'createColheita'
   | 'updateColheita'
   | 'deleteColheita'
+  | 'registrarColheitaHidroponica'
+  | 'registrarVendaHidroponicaPorLote'
   | 'createVenda'
   | 'updateVenda'
   | 'deleteVenda'

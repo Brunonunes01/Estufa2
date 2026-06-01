@@ -6,8 +6,8 @@ import {
   runTransaction,
   Timestamp,
   where,
-} from '../compat/firestore';
-import { db } from './firebaseConfig';
+} from '../compat/legacyDataApi';
+import { db } from './removedBackend';
 import { Aplicacao, AplicacaoItem, Insumo, Plantio } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { createTraceabilityEventSafely } from './traceabilityService';

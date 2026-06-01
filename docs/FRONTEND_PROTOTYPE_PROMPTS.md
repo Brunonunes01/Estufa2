@@ -6,7 +6,7 @@ O app e um SGE mobile-first para produtores em estufas. Ele organiza operacao ag
 
 O prototipo deve parecer um aplicativo de trabalho diario no campo: rapido, objetivo, confiavel e facil de usar em celular. Priorize telas densas, escaneaveis e acionaveis. Evite landing page, hero decorativo ou composicao de marketing.
 
-Stack atual usada como referencia: React Native/Expo, React Native Paper, MaterialCommunityIcons, Firebase, React Navigation. O prototipo pode ser web/mobile, mas deve manter experiencia de app.
+Stack atual usada como referencia: React Native/Expo, React Native Paper, MaterialCommunityIcons, Supabase, React Navigation. O prototipo pode ser web/mobile, mas deve manter experiencia de app.
 
 ## Direcao Visual Global
 

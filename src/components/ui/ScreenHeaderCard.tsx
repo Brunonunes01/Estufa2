@@ -29,17 +29,17 @@ const ScreenHeaderCard = ({
       <View style={styles.topRow}>
         <View style={styles.titleArea}>
           {badgeLabel ? (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{badgeLabel}</Text>
+            <View style={[styles.badge, { backgroundColor: 'rgba(16, 185, 129, 0.25)' }]}>
+              <Text style={[styles.badgeText, { color: '#10B981' }]}>{badgeLabel}</Text>
             </View>
           ) : null}
           <Text style={styles.title}>{title}</Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
+          <Text style={[styles.subtitle, { color: 'rgba(255,255,255,0.7)' }]}>{subtitle}</Text>
         </View>
 
         {actionLabel && onPressAction ? (
-          <TouchableOpacity style={styles.actionButton} onPress={onPressAction} activeOpacity={0.85}>
-            <MaterialCommunityIcons name={actionIcon as any} size={16} color="#FFFFFF" />
+          <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#10B981' }]} onPress={onPressAction} activeOpacity={0.85}>
+            <MaterialCommunityIcons name={actionIcon as any} size={18} color="#FFFFFF" />
             <Text style={styles.actionLabel}>{actionLabel}</Text>
           </TouchableOpacity>
         ) : null}
@@ -52,65 +52,67 @@ const ScreenHeaderCard = ({
 
 const styles = StyleSheet.create({
   wrapper: {
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 16,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 15,
+    elevation: 10,
   },
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 10,
+    alignItems: 'center',
+    gap: 12,
   },
   titleArea: {
     flex: 1,
   },
   badge: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginBottom: 8,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginBottom: 10,
   },
   badgeText: {
-    color: '#E5E7EB',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.6,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1,
     textTransform: 'uppercase',
   },
   title: {
     color: '#FFFFFF',
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '900',
-    lineHeight: 30,
+    lineHeight: 34,
+    letterSpacing: -0.5,
   },
   subtitle: {
     marginTop: 4,
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 15,
+    fontWeight: '500',
   },
   actionButton: {
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
-    paddingHorizontal: 12,
+    height: 44,
+    borderRadius: 14,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+    borderWidth: 0,
   },
   actionLabel: {
     color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '800',
   },
   bottomArea: {
-    marginTop: 12,
+    marginTop: 16,
   },
 });
 
