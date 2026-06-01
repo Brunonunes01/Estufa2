@@ -355,6 +355,15 @@ const EstufasListScreen = ({ navigation, route }: any) => {
         </View>
       ) : null}
 
+      {!mode ? (
+        <View style={styles.pulseRowWrap}>
+          <View style={[styles.pulseRow, { backgroundColor: theme.panelBackground, borderColor: theme.border }]}> 
+            <MaterialCommunityIcons name="radar" size={16} color={COLORS.textLight} />
+            <Text style={styles.pulseRowText}>Painel tatico: saude, ciclo e acao por estufa</Text>
+          </View>
+        </View>
+      ) : null}
+
       <FlatList
         data={estufas}
         keyExtractor={(item) => item.id}
@@ -410,6 +419,24 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primarySoft,
   },
   moduleLinkText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  pulseRowWrap: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: 4,
+  },
+  pulseRow: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pulseRowText: {
+    color: COLORS.textLight,
     fontSize: 12,
     fontWeight: '800',
   },

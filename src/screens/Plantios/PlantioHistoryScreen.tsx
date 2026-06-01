@@ -143,6 +143,11 @@ const PlantioHistoryScreen = ({ route }: any) => {
       refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} colors={[COLORS.primary]} />}
       contentContainerStyle={styles.content}
     >
+      <View style={styles.pulseStrip}>
+        <MaterialCommunityIcons name="timeline-clock-outline" size={16} color={COLORS.textLight} />
+        <Text style={styles.pulseStripText}>Linha do tempo operacional e financeira do ciclo</Text>
+      </View>
+
       <View style={styles.headerCard}>
         <Text style={styles.headerTitle}>Histórico do Ciclo</Text>
         <Text style={styles.headerSub}>
@@ -265,6 +270,17 @@ const PlantioHistoryScreen = ({ route }: any) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
+  pulseStrip: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  pulseStripText: { color: COLORS.textLight, fontSize: 12, fontWeight: '800' },
   headerCard: { backgroundColor: COLORS.secondary, borderRadius: RADIUS.lg, padding: SPACING.lg, marginBottom: SPACING.md },
   headerTitle: { color: COLORS.textLight, fontSize: TYPOGRAPHY.h3, fontWeight: '800' },
   headerSub: { color: COLORS.cCBD5E1, marginTop: 4, fontWeight: '600' },

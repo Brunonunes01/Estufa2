@@ -4,15 +4,17 @@ import { CommonActions, useIsFocused } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SHADOWS, SPACING } from '../../constants/theme';
 import { useThemeMode } from '../../hooks/useThemeMode';
 import { useFeedback } from '../../hooks/useFeedback';
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import DashboardLoadingSkeleton from '../../components/dashboard/DashboardLoadingSkeleton';
-import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
+import ModuleGridItem from '../../components/dashboard/ModuleGridItem';
 import HeroStats from '../../components/dashboard/HeroStats';
+import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
+import SectionHeading from '../../components/ui/SectionHeading';
 import MoneyGrid from '../../components/dashboard/MoneyGrid';
 import AlertsList from '../../components/dashboard/AlertsList';
 import TodayTasks from '../../components/dashboard/TodayTasks';
@@ -252,6 +254,18 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
           onPress: () => navigateTo('MainTabs', { screen: 'FinanceiroTab' }),
         },
         {
+          label: 'Clientes',
+          icon: 'account-group-outline',
+          color: COLORS.info,
+          onPress: () => navigateTo('ClientesList'),
+        },
+        {
+          label: 'Compartilhar',
+          icon: 'account-multiple-plus',
+          color: COLORS.success,
+          onPress: () => navigateTo('ShareAccount'),
+        },
+        {
           label: 'Perfil',
           icon: 'account-circle-outline',
           color: COLORS.info,
@@ -290,6 +304,21 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
     return base;
   }, [isHydroMode, navigateTo, settings.uiV2Enabled]);
 
+  const uniqueTenants = useMemo(() => {
+    const byUid = new Map<string, (typeof availableTenants)[number]>();
+    availableTenants.forEach((tenant) => {
+      const existing = byUid.get(tenant.uid);
+      if (!existing) {
+        byUid.set(tenant.uid, tenant);
+        return;
+      }
+      if (tenant.type === 'owner' && existing.type !== 'owner') {
+        byUid.set(tenant.uid, tenant);
+      }
+    });
+    return Array.from(byUid.values());
+  }, [availableTenants]);
+
   const handleCompleteTask = useCallback(
     async (taskId: string) => {
       const targetId = selectedTenantId || user?.uid;
@@ -306,12 +335,21 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
 
   const renderHeader = () => (
     <View style={{ paddingBottom: SPACING.md }}>
-      {availableTenants.length > 1 && (
-        <View style={[styles.tenantBox, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
-          <Text style={[styles.tenantTitle, { color: theme.textSecondary }]}>Conta Ativa</Text>
+      <View style={styles.pulseStrip}>
+        <MaterialCommunityIcons name="flash-outline" size={18} color={COLORS.textLight} />
+        <Text style={styles.pulseStripText}>Painel operacional em tempo real</Text>
+      </View>
+
+      {uniqueTenants.length > 1 && (
+        <View style={[styles.tenantBox, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}> 
+          <View style={styles.tenantHeaderRow}>
+            <Text style={[styles.tenantTitle, { color: theme.textSecondary }]}>Conta ativa</Text>
+            <Text style={[styles.tenantHint, { color: theme.textSecondary }]}>Toque para alternar</Text>
+          </View>
           <View style={styles.tenantList}>
-            {availableTenants.map((tenant) => {
+            {uniqueTenants.map((tenant) => {
               const isActive = tenant.uid === selectedTenantId;
+              const scopeLabel = tenant.type === 'shared' ? 'Compartilhada' : 'Minha';
               return (
                 <TouchableOpacity
                   key={tenant.uid}
@@ -324,6 +362,19 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
                   ]}
                   onPress={() => changeTenant(tenant.uid)}
                 >
+                  <View
+                    style={[
+                      styles.tenantScopeBadge,
+                      {
+                        backgroundColor: isActive ? COLORS.info : theme.surfaceBackground,
+                        borderColor: isActive ? COLORS.info : theme.border,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.tenantScopeBadgeText, { color: isActive ? COLORS.textLight : theme.textSecondary }]}> 
+                      {scopeLabel}
+                    </Text>
+                  </View>
                   <Text
                     style={[
                       styles.tenantChipText,
@@ -332,6 +383,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
                   >
                     {tenant.name}
                   </Text>
+                  {isActive ? <MaterialCommunityIcons name="check-circle" size={14} color={COLORS.info} /> : null}
                 </TouchableOpacity>
               );
             })}
@@ -371,19 +423,25 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         </View>
       ) : null}
 
-      <TodayTasks
-        tasks={todayTasks}
-        onOpenPlantio={(plantioId) => navigateTo('PlantioDetail', { plantioId })}
-        onOpenTasks={() => navigateTo('Tarefas')}
-        onCompleteTask={handleCompleteTask}
-      />
+      <View style={[styles.blockCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}> 
+        <TodayTasks
+          tasks={todayTasks}
+          onOpenPlantio={(plantioId) => navigateTo('PlantioDetail', { plantioId })}
+          onOpenTasks={() => navigateTo('Tarefas')}
+          onCompleteTask={handleCompleteTask}
+        />
+      </View>
 
-      <AlertsList
-        alerts={criticalAlerts as any}
-        onOpenEstufa={(estufaId) => navigateTo('EstufaDetail', { estufaId })}
-      />
+      <View style={[styles.blockCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}> 
+        <AlertsList
+          alerts={criticalAlerts as any}
+          onOpenEstufa={(estufaId) => navigateTo('EstufaDetail', { estufaId })}
+        />
+      </View>
 
-      <QuickActions actions={quickActions} />
+      <View style={[styles.blockCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}> 
+        <QuickActions actions={quickActions} />
+      </View>
 
       {isAdmin && (
         loadingResumo ? (
@@ -401,18 +459,18 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
   );
 
   const renderFooter = () => (
-    <View style={{ marginTop: SPACING.xl, paddingBottom: insets.bottom + 40 }}>
-      <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Módulos</Text>
+    <View style={{ marginTop: SPACING.md, paddingBottom: insets.bottom + 40 }}>
+      <SectionHeading title="Módulos de Gestão" />
       <View style={styles.modulesGrid}>
         {modules.map((module) => (
-          <TouchableOpacity
+          <ModuleGridItem
             key={module.label}
-            style={[styles.moduleChip, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}
+            title={module.label}
+            subtitle="Acessar ferramentas"
+            icon={module.icon}
+            color={module.color}
             onPress={module.onPress}
-          >
-            <MaterialCommunityIcons name={module.icon as any} size={22} color={module.color} />
-            <Text style={[styles.moduleChipText, { color: theme.textPrimary }]}>{module.label}</Text>
-          </TouchableOpacity>
+          />
         ))}
       </View>
     </View>
@@ -456,6 +514,24 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   listContent: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.md },
 
+  pulseStrip: {
+    backgroundColor: COLORS.secondary,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    ...SHADOWS.card,
+  },
+  pulseStripText: {
+    color: COLORS.textLight,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+
   wizardButton: {
     backgroundColor: COLORS.primary,
     flexDirection: 'row',
@@ -498,15 +574,41 @@ const styles = StyleSheet.create({
   },
   motorSectionBtnText: { color: COLORS.textLight, fontSize: 12, fontWeight: '800' },
   tenantBox: {
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    padding: 10,
-    marginBottom: SPACING.sm,
+    padding: 12,
+    marginBottom: SPACING.md,
+    ...SHADOWS.card,
   },
   tenantTitle: { fontSize: 11, fontWeight: '700', marginBottom: 8 },
+  tenantHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  tenantHint: { fontSize: 11, fontWeight: '600' },
   tenantList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  tenantChip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
+  tenantChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tenantScopeBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  tenantScopeBadgeText: { fontSize: 10, fontWeight: '800' },
   tenantChipText: { fontSize: 12, fontWeight: '700' },
+
+  blockCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 10,
+    marginBottom: SPACING.md,
+    ...SHADOWS.card,
+  },
 
   sectionTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 },
   modulesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

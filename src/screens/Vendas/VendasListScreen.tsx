@@ -23,7 +23,7 @@ import { useThemeMode } from '../../hooks/useThemeMode';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { getVendaById, listAllVendas } from '../../services/vendaService';
 import { getColheitaById } from '../../services/colheitaService';
-import { getPlantioById } from '../../services/plantioService';
+import { getPlantioById, listAllPlantios } from '../../services/plantioService';
 import { listClientes } from '../../services/clienteService';
 import { listEstufas } from '../../services/estufaService';
 import { getTotalDespesasPendentes } from '../../services/despesaService';
@@ -50,6 +50,7 @@ const VendasListScreen = ({ navigation }: any) => {
   const [clientesMap, setClientesMap] = useState<Record<string, string>>({});
   const [caixaPessoasMap, setCaixaPessoasMap] = useState<Record<string, string>>({});
   const [estufasMap, setEstufasMap] = useState<Record<string, string>>({});
+  const [plantiosCulturaMap, setPlantiosCulturaMap] = useState<Record<string, string>>({});
   const [totalPagar, setTotalPagar] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -123,6 +124,7 @@ const VendasListScreen = ({ navigation }: any) => {
 
   const getVendaProdutoNome = (venda: any) => {
     const cultura = String(venda?.cultura || '').trim();
+    const culturaPlantio = String(plantiosCulturaMap[venda?.plantioId || ''] || '').trim();
     const descricaoItem = String(venda?.itens?.[0]?.descricao || '').trim();
     const descricaoNormalizada = descricaoItem.toLowerCase();
     const isDescricaoGenerica =
@@ -133,6 +135,7 @@ const VendasListScreen = ({ navigation }: any) => {
       descricaoNormalizada === 'produção hidropônica';
 
     if (cultura) return cultura;
+    if (culturaPlantio) return culturaPlantio;
     if (!isDescricaoGenerica) return descricaoItem;
     return 'Produto nao informado';
   };
@@ -153,11 +156,12 @@ const VendasListScreen = ({ navigation }: any) => {
     else if (allVendas.length === 0) setLoading(true);
 
     try {
-      const [vendasData, clientesData, pessoasCaixaData, estufasData, despesasPendentes] = await Promise.all([
+      const [vendasData, clientesData, pessoasCaixaData, estufasData, plantiosData, despesasPendentes] = await Promise.all([
         listAllVendas(targetId),
         listClientes(targetId),
         listCaixaPessoas(targetId),
         listEstufas(targetId),
+        listAllPlantios(targetId),
         getTotalDespesasPendentes(targetId),
       ]);
 
@@ -179,6 +183,12 @@ const VendasListScreen = ({ navigation }: any) => {
         if (e.id) eMap[e.id] = e.nome;
       });
       setEstufasMap(eMap);
+
+      const pMap: Record<string, string> = {};
+      plantiosData.forEach((p) => {
+        if (p.id && p.cultura) pMap[p.id] = p.cultura;
+      });
+      setPlantiosCulturaMap(pMap);
 
       setAllVendas(vendasData);
       setTotalPagar(despesasPendentes);

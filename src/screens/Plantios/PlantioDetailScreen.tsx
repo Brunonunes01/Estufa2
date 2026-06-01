@@ -97,6 +97,10 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
 
   return (
     <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} />}>
+      <View style={styles.pulseStrip}>
+        <MaterialCommunityIcons name="leaf-circle-outline" size={18} color={COLORS.textLight} />
+        <Text style={styles.pulseStripText}>Centro do ciclo: operacao, venda e rastreabilidade</Text>
+      </View>
       
       {/* HEADER E SELO DE RASTREABILIDADE */}
       <View style={styles.header}>
@@ -138,6 +142,7 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
       )}
 
       {/* BOTÕES DE AÇÃO */}
+      <View style={styles.blockCard}>
       <View style={styles.gridBtns}>
           <TouchableOpacity 
             style={[styles.btnAction, {borderColor: COLORS.primary}]}
@@ -188,6 +193,7 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
               <Text style={styles.secondaryBtnText}>Histórico do Ciclo</Text>
           </TouchableOpacity>
       </View>
+      </View>
 
       {isOwner && !isPlantioInactive && (
           <TouchableOpacity style={styles.dangerBtn} onPress={handleFinalizar}>
@@ -202,6 +208,18 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background, padding: SPACING.xl },
+  pulseStrip: {
+    backgroundColor: COLORS.secondary,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: SPACING.md,
+    ...SHADOWS.card,
+  },
+  pulseStripText: { color: COLORS.textLight, fontSize: 12, fontWeight: '800' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING.lg },
   title: { fontSize: TYPOGRAPHY.h2, fontWeight: '800', color: COLORS.textDark },
   subTitle: { fontSize: TYPOGRAPHY.body, color: COLORS.textGray },
@@ -217,6 +235,15 @@ const styles = StyleSheet.create({
   financeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
   financeLabel: { color: COLORS.cD1D5DB, fontSize: 14 },
   financeNum: { fontWeight: '700', fontSize: 14 },
+  blockCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 12,
+    marginBottom: 8,
+    ...SHADOWS.card,
+  },
   gridBtns: { flexDirection: 'row', gap: 10, marginBottom: 25 },
   btnAction: { flex: 1, height: 80, borderRadius: RADIUS.md, borderWidth: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.surface },
   btnText: { fontWeight: '700', fontSize: 13, marginTop: 6 },
