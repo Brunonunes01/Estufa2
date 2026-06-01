@@ -1,0 +1,63 @@
+begin;
+
+do $$
+declare
+  v_admin_email text := lower('suporte.admin.estufa@gmail.com');
+  v_admin_id uuid;
+begin
+  -- 1) Localiza admin no auth.users
+  select u.id
+    into v_admin_id
+    from auth.users u
+   where lower(u.email) = v_admin_email
+   limit 1;
+
+  if v_admin_id is null then
+    raise exception 'Admin % nao encontrado em auth.users. Abortado.', v_admin_email;
+  end if;
+
+  -- 2) Remove todos os tenants (cascata apaga estufas, plantios, vendas, etc.)
+  delete from public.tenants;
+
+  -- 3) Limpa memberships/codigos restantes (normalmente ja cai por cascata)
+  delete from public.tenant_memberships;
+  delete from public.share_codes;
+  delete from public.support_audit;
+
+  -- 4) Mantem/forca perfil admin
+  insert into public.profiles (
+    id, email, name, role, is_support_agent, support_level, created_at, updated_at
+  )
+  values (
+    v_admin_id,
+    'suporte.admin.estufa@gmail.com',
+    'Suporte Admin',
+    'admin',
+    true,
+    'owner',
+    now(),
+    now()
+  )
+  on conflict (id) do update
+    set email = excluded.email,
+        name = excluded.name,
+        role = 'admin',
+        is_support_agent = true,
+        support_level = 'owner',
+        updated_at = now();
+
+  -- 5) Apaga todos os usuarios do auth, exceto o admin
+  delete from auth.users
+   where id <> v_admin_id;
+
+  -- 6) Garante que so ficou perfil do admin
+  delete from public.profiles
+   where id <> v_admin_id;
+end $$;
+
+commit;
+
+-- Verificacao rapida depois:
+-- select count(*) as users_total from auth.users;
+-- select id, email, role, is_support_agent, support_level from public.profiles;
+-- select count(*) as tenants_total from public.tenants;
