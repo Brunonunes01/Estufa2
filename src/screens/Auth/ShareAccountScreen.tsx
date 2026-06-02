@@ -190,6 +190,27 @@ export default function ShareAccountScreen({ navigation }: any) {
         return date.toLocaleString('pt-BR');
     };
 
+    const getRoleLabel = (role?: string) => {
+        if (role === 'admin') return 'Administrador';
+        if (role === 'operator') return 'Operador';
+        return 'Convidado';
+    };
+
+    const formatPermissionsList = (permissions?: {
+        canRead?: boolean;
+        canWrite?: boolean;
+        canDelete?: boolean;
+        canManageSharing?: boolean;
+    }) => {
+        if (!permissions) return 'Não informado';
+        const granted: string[] = [];
+        if (permissions.canRead) granted.push('Leitura');
+        if (permissions.canWrite) granted.push('Escrita');
+        if (permissions.canDelete) granted.push('Exclusão');
+        if (permissions.canManageSharing) granted.push('Compartilhar');
+        return granted.length ? granted.join(' • ') : 'Sem permissões';
+    };
+
     const filteredMembers = tenantMembers.filter((member) => {
         const query = memberSearch.trim().toLowerCase();
         if (!query) return true;
@@ -229,18 +250,31 @@ export default function ShareAccountScreen({ navigation }: any) {
                 <View style={styles.cardContent}>
                     <Text style={[styles.cardTitle, { color: appTheme.textPrimary }]}>{item.name}</Text>
                     
-                    <View style={styles.metaRow}>
-                        <MaterialCommunityIcons name="account-arrow-left" size={16} color={appTheme.textSecondary} />
-                        <Text style={[styles.metaText, { color: appTheme.textSecondary }]}>
-                            Proprietário: <Text style={[styles.bold, { color: appTheme.textPrimary }]}>{item.sharedBy || 'Parceiro'}</Text>
-                        </Text>
+                    <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: appTheme.textSecondary }]}>Proprietário</Text>
+                        <Text style={[styles.detailValue, { color: appTheme.textPrimary }]}>{item.sharedBy || 'Parceiro'}</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: appTheme.textSecondary }]}>E-mail</Text>
+                        <Text style={[styles.detailValue, { color: appTheme.textPrimary }]}>{item.sharedByEmail || 'Não informado'}</Text>
                     </View>
                     
                     <View style={styles.metaRow}>
                         <MaterialCommunityIcons name="calendar-check" size={16} color={appTheme.textSecondary} />
-                        <Text style={[styles.metaText, { color: appTheme.textSecondary }]}>
+                        <Text style={[styles.metaText, { color: appTheme.textSecondary }]}> 
                             Vinculado em: <Text style={[styles.bold, { color: appTheme.textPrimary }]}>{formatDate(item.sharedAt)}</Text>
                         </Text>
+                    </View>
+                    <View style={styles.metaRow}>
+                        <MaterialCommunityIcons name="shield-account" size={16} color={appTheme.textSecondary} />
+                        <Text style={[styles.metaText, { color: appTheme.textSecondary }]}>Meu perfil: </Text>
+                        <View style={[styles.rolePill, { backgroundColor: appTheme.infoSoft, borderColor: appTheme.info }]}>
+                            <Text style={[styles.rolePillText, { color: appTheme.info }]}>{getRoleLabel((item as any).role)}</Text>
+                        </View>
+                    </View>
+                    <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: appTheme.textSecondary }]}>Permissões</Text>
+                        <Text style={[styles.detailValue, { color: appTheme.textPrimary }]}>{formatPermissionsList(item.permissions)}</Text>
                     </View>
                 </View>
             </Card.Content>
@@ -470,9 +504,14 @@ export default function ShareAccountScreen({ navigation }: any) {
                                                         </View>
                                                         <View style={styles.metaRow}>
                                                             <MaterialCommunityIcons name="shield-account" size={16} color={appTheme.textSecondary} />
-                                                            <Text style={[styles.metaText, { color: appTheme.textSecondary }]}> 
-                                                                Perfil: <Text style={[styles.bold, { color: appTheme.textPrimary }]}>{member.role}</Text>
-                                                            </Text>
+                                                            <Text style={[styles.metaText, { color: appTheme.textSecondary }]}>Perfil: </Text>
+                                                            <View style={[styles.rolePill, { backgroundColor: appTheme.successSoft, borderColor: appTheme.success }]}>
+                                                                <Text style={[styles.rolePillText, { color: appTheme.success }]}>{getRoleLabel(member.role)}</Text>
+                                                            </View>
+                                                        </View>
+                                                        <View style={styles.detailRow}>
+                                                            <Text style={[styles.detailLabel, { color: appTheme.textSecondary }]}>Permissões</Text>
+                                                            <Text style={[styles.detailValue, { color: appTheme.textPrimary }]}>{formatPermissionsList(member)}</Text>
                                                         </View>
                                                     </View>
                                                     <View style={{ alignItems: 'flex-end', gap: 6 }}>
@@ -536,7 +575,23 @@ const styles = StyleSheet.create({
     cardTitle: { fontSize: 17, fontWeight: '800', marginBottom: 4 },
     metaRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
     metaText: { fontSize: 13, marginLeft: 6 },
+    detailRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 2,
+      gap: 10,
+    },
+    detailLabel: { fontSize: 12, fontWeight: '700' },
+    detailValue: { fontSize: 12, fontWeight: '600', flex: 1, textAlign: 'right' },
     bold: { fontWeight: '700' },
+    rolePill: {
+      borderRadius: 999,
+      borderWidth: 1,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+    },
+    rolePillText: { fontSize: 11, fontWeight: '800' },
 
     emptyState: { 
       alignItems: 'center', 

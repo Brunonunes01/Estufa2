@@ -5,6 +5,17 @@ import { Platform } from 'react-native';
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
+const resolveStorageKey = () => {
+  if (!supabaseUrl) return 'sge.supabase.auth';
+  try {
+    const host = new URL(supabaseUrl).hostname;
+    const projectRef = host.split('.')[0] || 'default';
+    return `sge.supabase.auth.${projectRef}`;
+  } catch (_error) {
+    return 'sge.supabase.auth';
+  }
+};
+
 let cachedClient: SupabaseClient | null = null;
 
 export const isSupabaseConfigured = () => !!supabaseUrl && !!supabaseAnonKey;
@@ -20,6 +31,7 @@ export const getSupabaseClient = () => {
     cachedClient = createClient(supabaseUrl as string, supabaseAnonKey as string, {
       auth: {
         storage: AsyncStorage,
+        storageKey: resolveStorageKey(),
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: Platform.OS === 'web',

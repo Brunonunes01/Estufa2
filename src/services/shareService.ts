@@ -325,13 +325,15 @@ export const getSharedTenants = async (userId: string): Promise<Tenant[]> => {
             ) as string[];
 
             const ownerNamesMap = new Map<string, string>();
+            const ownerEmailsMap = new Map<string, string>();
             if (ownerIds.length > 0) {
                 const { data: profiles } = await supabase
                     .from('profiles')
-                    .select('id, name')
+                    .select('id, name, email')
                     .in('id', ownerIds);
                 (profiles || []).forEach((profile: any) => {
                     ownerNamesMap.set(profile.id, profile.name || 'Parceiro');
+                    if (profile?.email) ownerEmailsMap.set(profile.id, profile.email);
                 });
             }
 
@@ -342,6 +344,8 @@ export const getSharedTenants = async (userId: string): Promise<Tenant[]> => {
                     name: item.tenants?.name || 'Estufa Compartilhada',
                     ownerId: ownerId || '',
                     sharedBy: ownerNamesMap.get(ownerId) || 'Parceiro',
+                    sharedByEmail: ownerEmailsMap.get(ownerId) || null,
+                    ownerEmail: ownerEmailsMap.get(ownerId) || null,
                     role: item.role || 'guest',
                     permissions: {
                         canRead: !!item.can_read,
