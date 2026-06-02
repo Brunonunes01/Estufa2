@@ -1,0 +1,121 @@
+COMO GERAR APK LOCAL (DO ZERO) - ESTUFA2
+
+Este guia mostra como gerar o APK localmente no Windows, sem usar build na nuvem do Expo.
+
+====================================================================
+1) PRE-REQUISITOS
+====================================================================
+
+1. Node.js instalado
+2. Java JDK 17 instalado
+   - Exemplo de caminho: C:\Program Files\Java\jdk-17
+3. Android Studio instalado
+4. Android SDK instalado pelo Android Studio
+5. Dependencias do projeto instaladas (node_modules)
+
+====================================================================
+2) CONFIGURAR ANDROID SDK NO ANDROID STUDIO
+====================================================================
+
+No Android Studio:
+1. Abra: More Actions -> SDK Manager
+2. Aba "SDK Platforms":
+   - Instale um Android recente (API 35 ou API 36)
+3. Aba "SDK Tools":
+   - Android SDK Platform-Tools
+   - Android SDK Build-Tools (incluindo 35.0.0)
+   - Android SDK Command-line Tools (latest)
+4. Clique em Apply e aguarde concluir.
+
+====================================================================
+3) ABRIR POWERSHELL NA PASTA DO PROJETO
+====================================================================
+
+cd C:\Users\bruno\Desktop\ESTUFA\Estufa2
+
+====================================================================
+4) CONFIGURAR VARIAVEIS (SESSAO ATUAL DO TERMINAL)
+====================================================================
+
+$env:JAVA_HOME="C:\Program Files\Java\jdk-17"
+$env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
+$env:ANDROID_SDK_ROOT="$env:LOCALAPPDATA\Android\Sdk"
+$env:Path="$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:Path"
+
+Validar:
+java -version
+Test-Path $env:ANDROID_HOME
+
+Esperado:
+- java -version mostrando Java 17
+- Test-Path retornando True
+
+====================================================================
+5) INSTALAR DEPENDENCIAS JS (SE NECESSARIO)
+====================================================================
+
+npm install
+
+====================================================================
+6) GERAR/ATUALIZAR PASTA ANDROID (PREBUILD)
+====================================================================
+
+npx expo prebuild --platform android
+
+====================================================================
+7) CONFIGURAR local.properties COM O CAMINHO DO SDK
+====================================================================
+
+$sdkEscaped = $env:ANDROID_HOME -replace "\\","\\"
+Set-Content -LiteralPath ".\android\local.properties" -Value "sdk.dir=$sdkEscaped"
+
+====================================================================
+8) GERAR APK RELEASE
+====================================================================
+
+cd .\android
+.\gradlew clean
+.\gradlew assembleRelease
+
+Se der erro de componente faltando (ex: build-tools;35.0.0), instale no SDK Manager e rode novamente.
+
+====================================================================
+9) ONDE FICA O APK
+====================================================================
+
+C:\Users\bruno\Desktop\ESTUFA\Estufa2\android\app\build\outputs\apk\release\app-release.apk
+
+Comando para listar:
+Get-ChildItem .\app\build\outputs\apk\release\
+
+====================================================================
+10) ERROS COMUNS E COMO RESOLVER
+====================================================================
+
+Erro: Unsupported class file major version 69
+- Causa: Java muito novo (ex: JDK 25)
+- Solucao: usar JDK 17 nas variaveis da sessao (passo 4)
+
+Erro: SDK location not found
+- Causa: ANDROID_HOME/local.properties ausente ou invalido
+- Solucao: revisar passos 4 e 7
+
+Erro: Failed to install build-tools;35.0.0
+- Causa: componente ausente no SDK
+- Solucao: instalar Build-Tools 35.0.0 no SDK Manager
+
+====================================================================
+11) COMANDO RAPIDO (RESUMO)
+====================================================================
+
+cd C:\Users\bruno\Desktop\ESTUFA\Estufa2
+$env:JAVA_HOME="C:\Program Files\Java\jdk-17"
+$env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
+$env:ANDROID_SDK_ROOT="$env:LOCALAPPDATA\Android\Sdk"
+$env:Path="$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:Path"
+npx expo prebuild --platform android
+$sdkEscaped = $env:ANDROID_HOME -replace "\\","\\"
+Set-Content -LiteralPath ".\android\local.properties" -Value "sdk.dir=$sdkEscaped"
+cd .\android
+.\gradlew assembleRelease
+
