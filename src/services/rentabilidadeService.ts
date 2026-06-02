@@ -11,6 +11,7 @@ export interface RentabilidadeResult {
   receitaTotal: number;
   custoInsumos: number;
   custoDespesas: number;
+  custoMuda: number; // Novo campo para informar o valor das mudas
   custoTotal: number;
   lucroBruto: number;
   areaM2: number;
@@ -70,12 +71,16 @@ export const calculateRentabilidadeByPlantio = async (
     return total + Number(venda.valorTotal || fallbackTotal || 0);
   }, 0);
   
-  const custoInsumos = Number(plantio.custoAcumulado || 0);
-  // "investimento_inicial" já entra em custoAcumulado do plantio; evitar dupla contagem.
+  const custoMuda = Number(plantio.custoEstimadoInicial || 0);
+  // O custoAcumulado ja inclui o custo inicial. Subtraimos para ter apenas insumos/aplicacoes
+  const custoInsumos = Math.max(0, Number(plantio.custoAcumulado || 0) - custoMuda);
+  
+  // Despesas operacionais do ciclo (excluindo investimento inicial que sao as mudas)
   const custoDespesas = despesas
     .filter((d: any) => !isInitialInvestmentExpense(d))
     .reduce((total, d: any) => total + Number(d.valor || 0), 0);
   
+  // Custo Total agora EXCLUI as mudas conforme solicitado para o financeiro
   const custoTotal = custoInsumos + custoDespesas;
   const lucroBruto = receitaTotal - custoTotal;
 
@@ -87,6 +92,7 @@ export const calculateRentabilidadeByPlantio = async (
     receitaTotal,
     custoInsumos,
     custoDespesas,
+    custoMuda,
     custoTotal,
     lucroBruto,
     areaM2: areaProporcional,

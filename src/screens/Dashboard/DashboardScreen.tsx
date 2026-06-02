@@ -32,6 +32,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
   const { isAdmin } = useAuth();
   const { settings } = useAppSettings();
   const isHydroMode = settings.activeProductionMode === 'hidroponia';
+  const isCampoMode = settings.activeProductionMode === 'campo';
 
   const {
     user,
@@ -107,20 +108,28 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
   );
 
   const openQuickSaleFlow = useCallback(() => {
+    if (isCampoMode) {
+      navigateTo('WizardSelectPlantio');
+      return;
+    }
     if (estufas.length === 1) {
       handleQuickSale(estufas[0].id);
       return;
     }
     navigateTo('EstufasList', { mode: 'colheita' });
-  }, [estufas, handleQuickSale, navigateTo]);
+  }, [estufas, handleQuickSale, isCampoMode, navigateTo]);
 
   const openQuickManejoFlow = useCallback(() => {
+    if (isCampoMode) {
+      navigateTo('WizardSelectPlantio');
+      return;
+    }
     if (estufas.length === 1) {
       handleManejoFlow(estufas[0].id);
       return;
     }
     navigateTo('EstufasList', { mode: 'manejo' });
-  }, [estufas, handleManejoFlow, navigateTo]);
+  }, [estufas, handleManejoFlow, isCampoMode, navigateTo]);
 
   const openHydroLayoutFlow = useCallback(() => {
     if (estufas.length === 1) {
@@ -218,13 +227,13 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         onPress: () => navigateTo('Tarefas'),
       },
       {
-        label: 'Estufas',
-        icon: 'greenhouse',
+        label: isCampoMode ? 'Talhoes' : 'Estufas',
+        icon: isCampoMode ? 'map-marker-radius-outline' : 'greenhouse',
         color: COLORS.secondary,
-        onPress: () => navigateTo('EstufasList'),
+        onPress: () => (isCampoMode ? navigateTo('TalhoesList') : navigateTo('EstufasList')),
       },
     ];
-  }, [isHydroMode, navigateTo, openHydroLayoutFlow, openQuickManejoFlow, openQuickSaleFlow]);
+  }, [isCampoMode, isHydroMode, navigateTo, openHydroLayoutFlow, openQuickManejoFlow, openQuickSaleFlow]);
 
   const modules = useMemo<Array<{ label: string; icon: string; color: string; onPress: () => void }>>(() => {
     if (settings.uiV2Enabled) {
@@ -237,7 +246,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         },
         {
           label: isHydroMode ? 'Hidroponia' : 'Campo',
-          icon: isHydroMode ? 'water-outline' : 'greenhouse',
+          icon: isHydroMode ? 'water-outline' : isCampoMode ? 'tractor-variant' : 'greenhouse',
           color: COLORS.success,
           onPress: () => navigateTo('MainTabs', { screen: 'OperacaoTab' }),
         },
@@ -302,7 +311,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
     }
 
     return base;
-  }, [isHydroMode, navigateTo, settings.uiV2Enabled]);
+  }, [isCampoMode, isHydroMode, navigateTo, settings.uiV2Enabled]);
 
   const uniqueTenants = useMemo(() => {
     const byUid = new Map<string, (typeof availableTenants)[number]>();
@@ -394,7 +403,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
       {!isHydroMode ? (
         <TouchableOpacity style={styles.wizardButton} onPress={() => navigateTo('WizardSelectPlantio')}>
           <MaterialCommunityIcons name="magic-staff" size={24} color={COLORS.textLight} />
-          <Text style={styles.wizardButtonText}>Registrar Atividade do Dia</Text>
+          <Text style={styles.wizardButtonText}>{isCampoMode ? 'Registrar atividade do talhao' : 'Registrar Atividade do Dia'}</Text>
         </TouchableOpacity>
       ) : null}
 
@@ -484,11 +493,13 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
           title="Centro de Comando"
           subtitle={`Olá, ${user?.displayName?.split(' ')[0] || 'Gestor'}`}
           badgeLabel={isAdmin ? 'Administrador' : 'Operador'}
-          actionLabel={settings.uiV2Enabled ? (isHydroMode ? 'Hidroponia' : 'Campo') : 'Estufas'}
-          actionIcon={settings.uiV2Enabled ? (isHydroMode ? 'water-outline' : 'greenhouse') : 'greenhouse'}
+          actionLabel={settings.uiV2Enabled ? (isHydroMode ? 'Hidroponia' : isCampoMode ? 'Campo' : 'Estufas') : isCampoMode ? 'Talhoes' : 'Estufas'}
+          actionIcon={settings.uiV2Enabled ? (isHydroMode ? 'water-outline' : isCampoMode ? 'tractor-variant' : 'greenhouse') : isCampoMode ? 'map-marker-radius-outline' : 'greenhouse'}
           onPressAction={() =>
             settings.uiV2Enabled
               ? navigateTo('MainTabs', { screen: 'OperacaoTab' })
+              : isCampoMode
+              ? navigateTo('TalhoesList')
               : navigateTo('EstufasList')
           }
         >

@@ -9,6 +9,11 @@ export type Region = {
   longitudeDelta: number;
 };
 
+export type LatLng = {
+  latitude: number;
+  longitude: number;
+};
+
 type MapViewProps = {
   style?: any;
   children?: React.ReactNode;
@@ -22,6 +27,7 @@ const MapViewCompat = ({ style }: MapViewProps) => (
 );
 
 export const Marker = () => null;
+export const Polygon = () => null;
 
 const styles = StyleSheet.create({
   placeholder: {

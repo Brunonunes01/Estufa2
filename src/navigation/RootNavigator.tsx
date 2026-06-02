@@ -33,6 +33,7 @@ import RegisterScreen from '../screens/Auth/RegisterScreen';
 import ShareAccountScreen from '../screens/Auth/ShareAccountScreen';
 import DashboardScreen from '../screens/Dashboard/DashboardScreen';
 import CampoHubScreen from '../screens/Campo/CampoHubScreen';
+import TalhoesListScreen from '../screens/Campo/TalhoesListScreen';
 import PerfilScreen from '../screens/Perfil/PerfilScreen';
 import SettingsScreen from '../screens/Configuracoes/SettingsScreen';
 import EstufasListScreen from '../screens/Estufas/EstufasListScreen';
@@ -56,6 +57,8 @@ import ClientesListScreen from '../screens/Clientes/ClientesListScreen';
 import ClienteFormScreen from '../screens/Clientes/ClienteFormScreen';
 import DespesasListScreen from '../screens/Despesas/DespesasListScreen';
 import DespesaFormScreen from '../screens/Despesas/DespesaFormScreen';
+import CaixaResumoScreen from '../screens/Caixa/CaixaResumoScreen';
+import CaixaExtratoScreen from '../screens/Caixa/CaixaExtratoScreen';
 import ManejoFormScreen from '../screens/Manejos/ManejoFormScreen';
 import ManejosHistoryScreen from '../screens/Manejos/ManejosHistoryScreen';
 import RelatoriosScreen from '../screens/Financeiro/RelatoriosScreen';
@@ -154,17 +157,26 @@ const AuthStack = () => (
   </Stack.Navigator>
 );
 
-const MainTabs = ({ activeMode, uiV2Enabled }: { activeMode: 'ciclo_longo' | 'hidroponia'; uiV2Enabled: boolean }) => {
+const MainTabs = ({ activeMode, uiV2Enabled }: { activeMode: 'ciclo_longo' | 'campo' | 'hidroponia'; uiV2Enabled: boolean }) => {
   const mode = useThemeMode();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [quickActionsVisible, setQuickActionsVisible] = useState(false);
-  const OperacaoEntryScreen = activeMode === 'hidroponia' ? HidroponiaLotesScreen : CampoHubScreen;
+  const OperacaoEntryScreen =
+    activeMode === 'hidroponia' ? HidroponiaLotesScreen : activeMode === 'campo' ? CampoHubScreen : EstufasListScreen;
 
   const quickActions = activeMode === 'hidroponia'
     ? [
         { key: 'qa-hydro-read', label: 'Nova leitura pH/EC', icon: 'test-tube', onPress: () => navigation.navigate('HidroponiaLeituraForm') },
         { key: 'qa-hydro-lote', label: 'Novo lote', icon: 'sprout-outline', onPress: () => navigation.navigate('HidroponiaLoteForm') },
+        { key: 'qa-stock-entry', label: 'Entrada de insumo', icon: 'warehouse', onPress: () => navigation.navigate('InsumoEntry') },
+        { key: 'qa-sale', label: 'Registrar venda', icon: 'cash-plus', onPress: () => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' }) },
+        { key: 'qa-task', label: 'Nova tarefa', icon: 'clipboard-text-plus-outline', onPress: () => navigation.navigate('Tarefas') },
+      ]
+    : activeMode === 'campo'
+    ? [
+        { key: 'qa-talhao', label: 'Novo talhao', icon: 'map-marker-plus-outline', onPress: () => navigation.navigate('TalhoesList') },
+        { key: 'qa-plantio', label: 'Novo plantio', icon: 'sprout', onPress: () => navigation.navigate('PlantioForm') },
         { key: 'qa-stock-entry', label: 'Entrada de insumo', icon: 'warehouse', onPress: () => navigation.navigate('InsumoEntry') },
         { key: 'qa-sale', label: 'Registrar venda', icon: 'cash-plus', onPress: () => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' }) },
         { key: 'qa-task', label: 'Nova tarefa', icon: 'clipboard-text-plus-outline', onPress: () => navigation.navigate('Tarefas') },
@@ -189,7 +201,7 @@ const MainTabs = ({ activeMode, uiV2Enabled }: { activeMode: 'ciclo_longo' | 'hi
         screenOptions={({ route }) => {
           const iconMap: Record<keyof MainTabParamList, string> = {
             InicioTab: 'view-dashboard-outline',
-            OperacaoTab: activeMode === 'hidroponia' ? 'water-outline' : 'greenhouse',
+            OperacaoTab: activeMode === 'hidroponia' ? 'water-outline' : activeMode === 'campo' ? 'tractor-variant' : 'greenhouse',
             EstoqueTab: 'warehouse',
             FinanceiroTab: 'cash-multiple',
             PerfilTab: 'account-circle-outline',
@@ -219,7 +231,7 @@ const MainTabs = ({ activeMode, uiV2Enabled }: { activeMode: 'ciclo_longo' | 'hi
         <Tab.Screen
           name="OperacaoTab"
           component={OperacaoEntryScreen}
-          options={{ title: activeMode === 'hidroponia' ? 'Hidroponia' : 'Campo' }}
+          options={{ title: activeMode === 'hidroponia' ? 'Hidroponia' : activeMode === 'campo' ? 'Campo' : 'Estufas' }}
         />
         <Tab.Screen name="EstoqueTab" component={InsumosListScreen} options={{ title: 'Estoque' }} />
         <Tab.Screen name="FinanceiroTab" component={VendasListScreen} options={{ title: 'Financeiro' }} />
@@ -261,7 +273,7 @@ const MainTabs = ({ activeMode, uiV2Enabled }: { activeMode: 'ciclo_longo' | 'hi
   );
 };
 
-const AppStack = ({ activeMode, uiV2Enabled }: { activeMode: 'ciclo_longo' | 'hidroponia'; uiV2Enabled: boolean }) => (
+const AppStack = ({ activeMode, uiV2Enabled }: { activeMode: 'ciclo_longo' | 'campo' | 'hidroponia'; uiV2Enabled: boolean }) => (
   <Stack.Navigator id="app-stack" screenOptions={defaultScreenOptions}>
     <Stack.Screen name="MainTabs" options={{ headerShown: false, animation: 'fade' }}>
       {() => <MainTabs activeMode={activeMode} uiV2Enabled={uiV2Enabled} />}
@@ -291,6 +303,8 @@ const AppStack = ({ activeMode, uiV2Enabled }: { activeMode: 'ciclo_longo' | 'hi
 
     <Stack.Screen name="DespesasList" component={DespesasListScreen} options={{ title: 'Despesas' }} />
     <Stack.Screen name="DespesaForm" component={DespesaFormScreen} options={{ title: 'Lançar Despesa' }} />
+    <Stack.Screen name="CaixaResumo" component={CaixaResumoScreen} options={{ title: 'Caixa - Resumo' }} />
+    <Stack.Screen name="CaixaExtrato" component={CaixaExtratoScreen} options={{ title: 'Caixa - Extrato' }} />
 
     <Stack.Screen name="Relatorios" component={RelatoriosScreen} options={{ title: 'BI & Relatórios' }} />
     <Stack.Screen
@@ -300,8 +314,9 @@ const AppStack = ({ activeMode, uiV2Enabled }: { activeMode: 'ciclo_longo' | 'hi
     />
 
     <Stack.Screen name="Tarefas" component={TarefasScreen} options={{ title: 'Tarefas Agrícolas' }} />
+    <Stack.Screen name="TalhoesList" component={TalhoesListScreen} options={{ title: 'Talhoes de Campo' }} />
 
-    {activeMode === 'ciclo_longo' ? (
+    {activeMode !== 'hidroponia' ? (
       <>
         <Stack.Screen name="PlantioForm" component={PlantioFormScreen} options={{ title: 'Novo Plantio' }} />
         <Stack.Screen name="PlantioDetail" component={PlantioDetailScreen} options={{ title: 'Painel do Ciclo' }} />

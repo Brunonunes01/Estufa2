@@ -26,4 +26,9 @@ export const queryKeys = {
   insumosList: (tenantId: string) => ['insumos-list', tenantId] as const,
   clientesList: (tenantId: string) => ['clientes-list', tenantId] as const,
   fornecedoresList: (tenantId: string) => ['fornecedores-list', tenantId] as const,
+  talhoesList: (tenantId: string) => ['talhoes-list', tenantId] as const,
+  vendasList: (tenantId: string) => ['vendas-list', tenantId] as const,
+  plantiosList: (tenantId: string) => ['plantios-list', tenantId] as const,
+  aplicacoesList: (tenantId: string) => ['aplicacoes-list', tenantId] as const,
+  caixaPessoas: (tenantId: string) => ['caixa-pessoas', tenantId] as const,
 };

@@ -36,7 +36,8 @@ const mapPlantioRowToDomain = (row: any): Plantio => ({
   userId: row.created_by || row.tenant_id,
   createdBy: row.created_by || row.tenant_id,
   safraId: row.safra_id || undefined,
-  estufaId: row.estufa_id,
+  estufaId: row.estufa_id || undefined,
+  talhaoId: row.talhao_id || undefined,
   cultura: row.cultura,
   variedade: row.variedade || undefined,
   dataInicio: toTs(row.data_inicio),
@@ -70,7 +71,8 @@ const mapPlantioRowToDomain = (row: any): Plantio => ({
 const buildPlantioPayload = (data: Partial<Plantio>, tenantId: string) => ({
   tenant_id: tenantId,
   safra_id: data.safraId || null,
-  estufa_id: data.estufaId,
+  estufa_id: data.estufaId || null,
+  talhao_id: data.talhaoId || null,
   cultura: data.cultura,
   variedade: data.variedade || null,
   data_inicio: toIso(data.dataInicio),
@@ -103,6 +105,7 @@ const buildPlantioPatch = (data: Partial<Plantio>) => {
   const patch: Record<string, unknown> = {};
   if (data.safraId !== undefined) patch.safra_id = data.safraId;
   if (data.estufaId !== undefined) patch.estufa_id = data.estufaId;
+  if (data.talhaoId !== undefined) patch.talhao_id = data.talhaoId;
   if (data.cultura !== undefined) patch.cultura = data.cultura;
   if (data.variedade !== undefined) patch.variedade = data.variedade;
   if (data.dataInicio !== undefined) patch.data_inicio = toIso(data.dataInicio);
@@ -153,9 +156,9 @@ export const createPlantio = async (data: Partial<Plantio>, userId: string, opti
 
         const custoInicial = Number(data.custoEstimadoInicial || 0);
         if (custoInicial > 0) {
-          await supabase.from('despesas').insert({
+          const { error: despesaError } = await supabase.from('despesas').insert({
             tenant_id: tenantId,
-            descricao: `Custo inicial: ${data.cultura} (${data.quantidadePlantada} ${data.unidadeQuantidade})`,
+            descricao: `Custo inicial: ${data.cultura || 'Plantio'} (${data.quantidadePlantada || 0} ${data.unidadeQuantidade || ''})`,
             categoria: 'outro',
             valor: custoInicial,
             data_despesa: new Date().toISOString(),
@@ -164,6 +167,9 @@ export const createPlantio = async (data: Partial<Plantio>, userId: string, opti
             estufa_id: data.estufaId || null,
             tipo_gasto: 'investimento_inicial',
           });
+          if (despesaError) {
+            throw new Error(`Plantio criado, mas nao foi possivel registrar o gasto inicial. ${despesaError.message}`);
+          }
         }
 
         return inserted.id as string;

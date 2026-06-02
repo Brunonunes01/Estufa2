@@ -32,6 +32,7 @@ const EstufasListScreen = ({ navigation, route }: any) => {
   const { settings } = useAppSettings();
   const { showError, showWarning } = useFeedback();
   const mode = route?.params?.mode as 'colheita' | 'plantio' | 'manejo' | 'hidro_layout' | undefined;
+  const talhaoId = route?.params?.talhaoId as string | undefined;
   const targetId = selectedTenantId || user?.uid;
   const { data, isLoading, isFetching, isError, refetch } = useEstufasListData(targetId);
   const estufasRaw: Estufa[] = data?.estufas || [];
@@ -151,7 +152,7 @@ const EstufasListScreen = ({ navigation, route }: any) => {
         return;
       }
       if (mode === 'plantio') {
-        navigation.navigate('PlantioForm', { estufaId });
+        navigation.navigate('PlantioForm', { estufaId, talhaoId });
         return;
       }
       if (mode === 'manejo') {

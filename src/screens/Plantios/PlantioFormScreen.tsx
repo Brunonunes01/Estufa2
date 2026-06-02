@@ -14,6 +14,7 @@ import { queryClient, queryKeys } from '../../lib/queryClient';
 import { verifyCurrentUserPassword } from '../../services/securityService';
 import { useMutation } from '@tanstack/react-query';
 import { useAppSettings } from '../../hooks/useAppSettings';
+import { useTalhoesListData } from '../../hooks/queries/useTalhoesListData';
 
 type UnidadeQuantidadePlantio = 'Mudas' | 'Sementes' | 'Bandejas' | 'Gramas' | 'Kg';
 
@@ -36,10 +37,13 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
   const targetId = selectedTenantId || user?.uid;
   
   const estufaId = route.params?.estufaId; 
+  const talhaoId = route.params?.talhaoId;
   const editingId = route.params?.plantioId;
   const isEditMode = !!editingId;
   const [loadedEstufaId, setLoadedEstufaId] = useState<string | undefined>(estufaId);
   const resolvedEstufaId = estufaId || loadedEstufaId;
+  const [selectedTalhaoId, setSelectedTalhaoId] = useState<string>(talhaoId || '');
+  const { data: talhoesData = [] } = useTalhoesListData(targetId);
 
   const [codigoLote, setCodigoLote] = useState('');
   const [cultura, setCultura] = useState('');
@@ -130,6 +134,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
       const data = await getPlantioById(id, targetId);
       if (data) {
         setLoadedEstufaId(data.estufaId);
+        setSelectedTalhaoId(data.talhaoId || '');
         setCodigoLote(data.codigoLote || '');
         setCultura(data.cultura || '');
         setVariedade(data.variedade || '');
@@ -252,8 +257,8 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
   const handleSave = () => {
     if (!targetId) return Alert.alert("Atenção", "Sua sessão expirou. Entre novamente.");
     
-    if (!resolvedEstufaId && !isEditMode) {
-      return Alert.alert("Atenção", "Escolha uma estufa para continuar.");
+    if (!resolvedEstufaId && !selectedTalhaoId && !isEditMode) {
+      return Alert.alert("Atenção", "Escolha um talhao ou uma estufa para continuar.");
     }
     if (!cultura || !quantidadePlantada) {
       return Alert.alert("Atenção", "Informe a cultura e a quantidade.");
@@ -283,6 +288,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
 
     const plantioData = {
       estufaId: resolvedEstufaId,
+      talhaoId: selectedTalhaoId || undefined,
       codigoLote,
       cultura,
       variedade,
@@ -323,7 +329,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
 
         <View style={styles.formCard}>
         <View style={styles.loteContainer}>
-          <Text style={styles.loteLabel}>CÓDIGO DO LOTE (GERADO AUTOMATICAMENTE)</Text>
+          <Text style={styles.loteLabel}>CODIGO DO LOTE (GERADO AUTOMATICAMENTE)</Text>
           <TextInput 
             style={styles.loteInput} 
             value={codigoLote} 
@@ -333,6 +339,23 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
         </View>
 
         <Text style={styles.sectionTitle}>Identificação da Cultura</Text>
+
+        <Text style={styles.label}>Talhão (opcional)</Text>
+        <View style={styles.pickerWrapper}>
+          <Picker selectedValue={selectedTalhaoId} onValueChange={(value) => setSelectedTalhaoId(String(value || ''))} style={styles.picker}>
+            <Picker.Item label="Sem talhão vinculado" value="" />
+            {talhoesData.map((talhao) => (
+              <Picker.Item key={talhao.id} label={talhao.nome} value={talhao.id} />
+            ))}
+          </Picker>
+        </View>
+
+        <Text style={styles.label}>Estufa (opcional)</Text>
+        <TextInput
+          style={[styles.input, styles.inputDisabled]}
+          value={resolvedEstufaId || 'Sem estufa vinculada (modo campo)'}
+          editable={false}
+        />
 
         <View style={styles.row}>
           <View style={{flex: 1, marginRight: 5}}>
@@ -580,6 +603,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '900', color: COLORS.secondary, marginTop: 6, marginBottom: 14 },
   label: { fontWeight: 'bold', marginBottom: 5, color: COLORS.textSecondary, fontSize: 13 },
   input: { backgroundColor: COLORS.surfaceMuted, padding: 15, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, color: COLORS.textDark, fontWeight: '600' },
+  inputDisabled: { opacity: 0.7 },
   pickerWrapper: { backgroundColor: COLORS.surfaceMuted, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, height: 54, justifyContent: 'center' },
   picker: { color: COLORS.textDark },
   bandejaBox: { backgroundColor: COLORS.surfaceMuted, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, padding: 12, marginBottom: 15 },

@@ -28,7 +28,7 @@ import {
 } from '../../services/offline/syncService';
 import { getSupabaseClient } from '../../services/supabaseClient';
 
-const SettingsScreen = () => {
+const SettingsScreen = ({ navigation }: any) => {
   const { user, isAdmin, refreshUserProfile } = useAuth();
   const { signOut } = useDashboardActions();
   const { settings, updateSettings } = useAppSettings();
@@ -174,6 +174,10 @@ const SettingsScreen = () => {
     }
   };
 
+  const handleCampoModePress = () => {
+    showWarning('Modo Campo em desenvolvimento. Esta opção ainda não pode ser ativada.');
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <SectionHeading title="Configurações" subtitle="Conta, segurança e preferências do sistema" />
@@ -262,6 +266,19 @@ const SettingsScreen = () => {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
+            style={[styles.modeBtn, settings.activeProductionMode === 'campo' && styles.modeBtnActive]}
+            onPress={handleCampoModePress}
+          >
+            <MaterialCommunityIcons
+              name="tractor-variant"
+              size={16}
+              color={settings.activeProductionMode === 'campo' ? COLORS.textLight : COLORS.textSecondary}
+            />
+            <Text style={[styles.modeBtnText, settings.activeProductionMode === 'campo' && styles.modeBtnTextActive]}>
+              Campo
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             style={[styles.modeBtn, settings.activeProductionMode === 'hidroponia' && styles.modeBtnActive]}
             onPress={() => updateSettings({ activeProductionMode: 'hidroponia' })}
           >
@@ -278,6 +295,12 @@ const SettingsScreen = () => {
         <Text style={styles.helpText}>
           Ao trocar o modo, o app reinicia a navegação para exibir somente os módulos da operação escolhida.
         </Text>
+        {settings.activeProductionMode === 'campo' ? (
+          <TouchableOpacity style={styles.secondaryBtn} onPress={() => navigation.navigate('TalhoesList')}>
+            <MaterialCommunityIcons name="map-marker-radius-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.secondaryBtnText}>Gerenciar Talhoes de Campo</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <View style={styles.card}>
@@ -421,6 +444,19 @@ const styles = StyleSheet.create({
   modeBtnActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary },
   modeBtnText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   modeBtnTextActive: { color: COLORS.textLight },
+  secondaryBtn: {
+    marginTop: 12,
+    minHeight: 44,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  secondaryBtnText: { color: COLORS.textPrimary, fontSize: 13, fontWeight: '800' },
   logoutBtn: {
     height: 48,
     borderRadius: RADIUS.sm,

@@ -23,7 +23,7 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
 
   const isOwner = plantio?.userId === user?.uid;
 
-  const loadData = async () => {
+  const loadData = async (isRefresh = false) => {
     if (!plantioId) {
         setLoading(false);
         return;
@@ -35,7 +35,7 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
         return;
     }
 
-    setLoading(true);
+    if (!isRefresh) setLoading(true);
     try {
       const p = await getPlantioById(plantioId, targetId);
       if (p) {
@@ -55,7 +55,9 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
   };
 
   useEffect(() => {
-    if (isFocused) loadData();
+    if (isFocused) {
+      void loadData(true);
+    }
   }, [plantioId, isFocused, selectedTenantId]);
 
   const handleFinalizar = () => {
@@ -138,6 +140,12 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
                   <Text style={styles.financeLabel}>Custos Totais</Text>
                   <Text style={[styles.financeNum, {color: COLORS.cFCA5A5}]}>- R$ {financeiro.custoTotal.toFixed(2)}</Text>
               </View>
+              {financeiro.custoMuda > 0 && (
+                <View style={styles.financeRow}>
+                    <Text style={[styles.financeLabel, { fontSize: 12, opacity: 0.8 }]}>Custo Mudas (Informativo)</Text>
+                    <Text style={[styles.financeNum, { fontSize: 12, opacity: 0.8 }]}>R$ {financeiro.custoMuda.toFixed(2)}</Text>
+                </View>
+              )}
           </View>
       )}
 

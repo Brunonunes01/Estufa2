@@ -17,11 +17,11 @@ export type RootStackParamList = {
   ShareAccount: undefined;
   Perfil: undefined;
   Settings: undefined;
-  EstufasList: { mode?: 'colheita' | 'plantio' | 'manejo' | 'hidro_layout' } | undefined;
+  EstufasList: { mode?: 'colheita' | 'plantio' | 'manejo' | 'hidro_layout'; talhaoId?: string } | undefined;
   EstufaForm: { estufaId?: string } | undefined;
   EstufaDetail: { estufaId: string };
   EstufaHistory: { estufaId: string } | undefined;
-  PlantioForm: { plantioId?: string; estufaId?: string } | undefined;
+  PlantioForm: { plantioId?: string; estufaId?: string; talhaoId?: string } | undefined;
   PlantioDetail: { plantioId: string };
   PlantioHistory: { plantioId: string; estufaId?: string } | undefined;
   ManejoForm: { plantioId?: string; estufaId?: string } | undefined;
@@ -29,6 +29,8 @@ export type RootStackParamList = {
   ColheitaForm: { plantioId?: string; estufaId?: string; vendaId?: string; isEdit?: boolean } | undefined;
   VendasList: undefined;
   ContasReceber: undefined;
+  CaixaResumo: undefined;
+  CaixaExtrato: { caixaPessoaId?: string } | undefined;
   AplicacaoForm: { plantioId?: string; estufaId?: string } | undefined;
   AplicacoesHistory: { plantioId: string; estufaId?: string } | undefined;
   InsumosList: undefined;
@@ -43,6 +45,7 @@ export type RootStackParamList = {
   Relatorios: undefined;
   RelatorioOperacional: undefined;
   Tarefas: undefined;
+  TalhoesList: undefined;
   HidroponiaEstufaLayout: { estufaId: string };
   HidroponiaMotores: { estufaId?: string } | undefined;
   HidroponiaLotes: { estufaId?: string } | undefined;

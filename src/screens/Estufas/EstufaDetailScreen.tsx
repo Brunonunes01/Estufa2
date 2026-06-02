@@ -48,6 +48,12 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
   const plantios: Plantio[] = data?.plantios || [];
   const loading = isLoading || isFetching;
 
+  useFocusEffect(
+    React.useCallback(() => {
+      void refetch();
+    }, [refetch])
+  );
+
   const deleteEstufaMutation = useMutation({
     mutationFn: (id: string) => deleteEstufa(id, targetId as string),
     onSuccess: async () => {
@@ -79,12 +85,6 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
       showError('Não foi possível carregar a estufa.');
     }
   }, [isError, showError]);
-
-  useFocusEffect(
-    React.useCallback(() => {
-      refetch();
-    }, [refetch])
-  );
 
   const handleShareLocation = async () => {
     if (!estufa) return;
@@ -671,3 +671,4 @@ const styles = StyleSheet.create({
 });
 
 export default EstufaDetailScreen;
+

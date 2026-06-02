@@ -5,7 +5,7 @@ export interface AppSettings {
   darkMode: boolean;
   notifyCritical: boolean;
   notifyDailySummary: boolean;
-  activeProductionMode: 'ciclo_longo' | 'hidroponia';
+  activeProductionMode: 'ciclo_longo' | 'campo' | 'hidroponia';
   uiV2Enabled: boolean;
 }
 

@@ -31,8 +31,10 @@ export interface UserProfile extends User {
 export interface Tenant {
   uid: string;
   ownerName?: string;
+  ownerEmail?: string;
   name?: string;
   sharedBy?: string;
+  sharedByEmail?: string;
   role?: 'guest' | 'operator' | 'admin';
   permissions?: {
     canRead?: boolean;
@@ -176,9 +178,23 @@ export interface Estufa extends BaseDoc {
   status: 'ativa' | 'manutencao' | 'desativada';
 }
 
+export interface Talhao extends BaseDoc {
+  nome: string;
+  codigo?: string;
+  culturaPrincipal?: string;
+  areaHectares?: number;
+  areaCalculadaHectares?: number;
+  boundaryPoints?: Array<{ latitude: number; longitude: number }>;
+  tipoSolo?: string;
+  cidade?: string;
+  observacoes?: string;
+  status: 'ativo' | 'preparo' | 'pousio' | 'inativo';
+}
+
 export interface Plantio extends BaseDoc {
   safraId?: string;
-  estufaId: string;
+  estufaId?: string;
+  talhaoId?: string;
   subdivisaoId?: string;
   cultura: string;
   variedade?: string;
@@ -304,6 +320,7 @@ export interface VendaItem {
 
 export interface Venda extends BaseDoc {
   plantioId?: string;
+  talhaoId?: string;
   originType?: 'plantio' | 'hydro_lote' | 'seedling_lote' | 'resale_lote';
   originId?: string | null;
   hydroLoteId?: string | null;
@@ -334,6 +351,7 @@ export interface Venda extends BaseDoc {
 export interface Despesa extends BaseDoc {
   descricao: string;
   categoria: 'energia' | 'agua' | 'manutencao' | 'mao_de_obra' | 'outro';
+  tipoGasto?: string | null;
   valor: number;
   dataVencimento?: Timestamp;
   dataDespesa?: Timestamp;
@@ -341,6 +359,12 @@ export interface Despesa extends BaseDoc {
   status?: 'pendente' | 'pago';
   plantioId?: string;
   estufaId?: string;
+  pagamentoPara?: string | null;
+  comprovanteUrl?: string | null;
+  comprovantePublicId?: string | null;
+  comprovanteNome?: string | null;
+  comprovanteMime?: string | null;
+  comprovanteBytes?: number | null;
 }
 
 export interface RegistroManejo extends BaseDoc {

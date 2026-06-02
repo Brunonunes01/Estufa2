@@ -51,6 +51,8 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const [pagamentoPara, setPagamentoPara] = useState<string | null>(null);
   const [dataVenda, setDataVenda] = useState(new Date());
   const [isFinalHarvest, setIsFinalHarvest] = useState(false);
+  const [observacoes, setObservacoes] = useState('');
+  const [showObservacoes, setShowObservacoes] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -82,6 +84,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
     metodoPagamento: MetodoPagamento;
     pagamentoPara: string | null;
     dataVenda: Date;
+    observacoes: string;
   }) =>
     JSON.stringify({
       selectedPlantioId: values.selectedPlantioId || '',
@@ -94,6 +97,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
       metodoPagamento: values.metodoPagamento,
       pagamentoPara: values.pagamentoPara || null,
       dataVenda: new Date(values.dataVenda).toISOString().slice(0, 10),
+      observacoes: values.observacoes || '',
     });
 
   useLayoutEffect(() => {
@@ -167,6 +171,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                     setSelectedPlantioId(venda.plantioId);
                     setPesoBruto(venda.pesoBruto ? String(venda.pesoBruto) : '');
                     setPesoLiquido(venda.pesoLiquido ? String(venda.pesoLiquido) : '');
+                    setObservacoes(venda.observacoes || '');
                     if (venda.dataColheita) {
                         const dc = venda.dataColheita;
                         setDataVenda(dc.toDate ? dc.toDate() : new Date(dc.seconds * 1000));
@@ -189,6 +194,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                           ? venda.dataColheita.toDate()
                           : new Date(venda.dataColheita.seconds * 1000)
                         : new Date(),
+                      observacoes: venda.observacoes || '',
                     });
                 } else {
                     throw new Error('Colheita vinculada à venda não encontrada.');
@@ -233,6 +239,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
       metodoPagamento,
       pagamentoPara,
       dataVenda,
+      observacoes,
     });
     return current !== initialEditSnapshotRef.current;
   }, [
@@ -247,6 +254,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
     metodoPagamento,
     pagamentoPara,
     dataVenda,
+    observacoes,
   ]);
 
   const minSaleDate = useMemo(() => {
@@ -367,7 +375,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
               metodoPagamento,
               pagamentoPara,
               registradoPor: user?.name || 'App',
-              observacoes: `Lote: ${plantioObj?.codigoLote || 'N/A'}`,
+              observacoes: observacoes.trim(),
               dataVenda,
               pesoBruto: parseFloat(pesoBruto.replace(',', '.')) || 0,
               pesoLiquido: parseFloat(pesoLiquido.replace(',', '.')) || 0,
@@ -446,11 +454,16 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
             : plantio
         )
       );
+      
+      // Ao desbloquear com admin, ja autorizamos a edicao tambem para evitar segundo prompt
+      setIsEditAuthorized(true);
       setSaleUnlockedByAdmin(true);
       setUnlockModalVisible(false);
       setAdminPassword('');
       setUnlockReason(reason);
-      Alert.alert('Desbloqueado', 'Ciclo liberado permanentemente para venda antecipada.');
+      
+      // Salva direto apos autorizacao de admin
+      await persistColheita(true, reason);
     } catch {
       Alert.alert('Erro', 'Não foi possível desbloquear o ciclo.');
     } finally {
@@ -459,15 +472,8 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   };
 
   const handleSave = async () => {
-    if (isEditMode && !isEditAuthorized) {
-      if (!hasEditChanges) {
-        Alert.alert('Sem alteracoes', 'Altere algum campo para salvar a venda.');
-        return;
-      }
-      setEditPassword('');
-      setEditAuthModalVisible(true);
-      return;
-    }
+    // 1. Prioridade: Se o ciclo esta bloqueado, usamos o modal de desbloqueio (pede senha + motivo)
+    // Esse modal agora tambem autoriza a edicao se for o caso.
     if (isCycleLockedForSale) {
       if (!canDeleteEstufa) {
         Alert.alert(
@@ -477,10 +483,23 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
         return;
       }
       setAdminPassword('');
+      setUnlockReason('');
       setUnlockModalVisible(true);
       return;
     }
 
+    // 2. Se nao esta bloqueado pelo ciclo, mas eh edicao e ainda nao autorizou
+    if (isEditMode && !isEditAuthorized) {
+      if (!hasEditChanges) {
+        Alert.alert('Sem alteracoes', 'Altere algum campo para salvar a venda.');
+        return;
+      }
+      setEditPassword('');
+      setEditAuthModalVisible(true);
+      return;
+    }
+
+    // 3. Se ja passou pelas autorizacoes necessarias
     await persistColheita(isBeforeMinimumSaleDate && saleUnlockedByAdmin, unlockReason);
   };
 
@@ -632,6 +651,46 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                 <Text style={styles.totalLabel}>TOTAL DA VENDA</Text>
                 <Text style={styles.totalValue}>R$ {valorTotal.toFixed(2)}</Text>
             </View>
+
+            <TouchableOpacity
+              style={styles.observacoesToggle}
+              onPress={() => setShowObservacoes((current) => !current)}
+              activeOpacity={0.85}
+            >
+              <View style={styles.observacoesToggleLeft}>
+                <MaterialCommunityIcons
+                  name={observacoes.trim() ? 'text-box-check-outline' : 'text-box-plus-outline'}
+                  size={18}
+                  color={COLORS.primary}
+                />
+                <Text style={styles.observacoesToggleText}>
+                  {showObservacoes
+                    ? 'Ocultar observação'
+                    : observacoes.trim()
+                      ? 'Ver observação'
+                      : 'Adicionar observação'}
+                </Text>
+              </View>
+              <MaterialCommunityIcons
+                name={showObservacoes ? 'chevron-up' : 'chevron-down'}
+                size={20}
+                color={COLORS.textSecondary}
+              />
+            </TouchableOpacity>
+
+            {showObservacoes ? (
+              <>
+                <Text style={[styles.label, {marginTop: 12}]}>Observações (Ex: Pepino Torto, Qualidade B, etc)</Text>
+                <TextInput
+                  style={[styles.input, { minHeight: 60, textAlignVertical: 'top' }]}
+                  value={observacoes}
+                  onChangeText={setObservacoes}
+                  placeholder="Descreva o motivo da variação de preço ou observação do lote..."
+                  editable={!isCycleLockedForSale}
+                  multiline
+                />
+              </>
+            ) : null}
         </View>
 
         <View style={[styles.card, isCycleLockedForSale && styles.lockedCard]}>
@@ -798,7 +857,8 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                     }
                     setIsEditAuthorized(true);
                     setEditAuthModalVisible(false);
-                    await handleSave();
+                    // Salva direto para evitar o delay do estado assincrono que faria o handleSave abrir o modal de novo
+                    await persistColheita(isCycleUnlockedForSale, cycleUnlockReason);
                   } finally {
                     setEditAuthorizing(false);
                   }
@@ -835,6 +895,21 @@ const styles = StyleSheet.create({
   rastreioText: { fontSize: 11, color: COLORS.c15803D },
   infoRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.cF0FDF4, padding: 12, borderRadius: 8, marginBottom: 15 },
   infoText: { marginLeft: 8, color: COLORS.primary, fontWeight: 'bold' },
+  observacoesToggle: {
+    marginTop: 18,
+    marginBottom: 4,
+    minHeight: 46,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  observacoesToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  observacoesToggleText: { color: COLORS.primary, fontWeight: '800', fontSize: 13 },
   lockBox: { backgroundColor: COLORS.alertSoft, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: COLORS.warning, marginBottom: 12 },
   lockTitle: { color: COLORS.alertText, fontWeight: '800', marginBottom: 4 },
   lockText: { color: COLORS.alertText, fontSize: 12, marginBottom: 6 },

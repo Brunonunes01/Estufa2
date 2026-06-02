@@ -28,6 +28,7 @@ import { getSupabaseClient } from './supabaseClient';
 
 export interface VendaFormData {
   plantioId?: string;
+  talhaoId?: string | null;
   hydroLoteId?: string;
   originType?: Venda['originType'];
   originId?: string | null;
@@ -71,6 +72,7 @@ const mapSupabaseVendaToDomain = (row: any): Venda => {
     userId: row.created_by || row.tenant_id,
     createdBy: row.created_by || row.tenant_id,
     plantioId: row.plantio_id || undefined,
+    talhaoId: row.talhao_id || undefined,
     originType: row.origin_type || undefined,
     originId: row.origin_id || null,
     hydroLoteId: row.hydro_lote_id || null,
@@ -104,6 +106,7 @@ const mapSupabaseVendaToDomain = (row: any): Venda => {
 const buildSupabaseVendaPayload = (
   data: VendaFormData,
   tenantId: string,
+  talhaoIdResolved?: string | null,
   traceabilityPublicToken?: string
 ) => {
   const dataVenda = data.dataVenda ? data.dataVenda.toISOString() : new Date().toISOString();
@@ -130,6 +133,7 @@ const buildSupabaseVendaPayload = (
     venda: {
       tenant_id: tenantId,
       plantio_id: data.plantioId || null,
+      talhao_id: talhaoIdResolved || data.talhaoId || null,
       hydro_lote_id: data.hydroLoteId || null,
       traceability_public_token: token,
       traceability_public_url: traceabilityPublicUrl,
@@ -236,6 +240,7 @@ const validateVendaFormData = (data: VendaFormData) => {
 const buildVendaPayload = (
   data: VendaFormData,
   tenantId: string,
+  talhaoIdResolved?: string | null,
   traceabilityPublicToken?: string
 ) => {
   const dataVenda = data.dataVenda ? Timestamp.fromDate(data.dataVenda) : Timestamp.now();
@@ -266,6 +271,7 @@ const buildVendaPayload = (
     userId: tenantId, // Mantido por retrocompatibilidade com regras antigas
     createdBy: tenantId,
     plantioId: data.plantioId || null,
+    talhaoId: talhaoIdResolved || data.talhaoId || null,
     hydroLoteId: data.hydroLoteId || null,
     traceabilityPublicToken: token,
     traceabilityPublicUrl,
@@ -307,6 +313,26 @@ const buildVendaPayload = (
   };
 };
 
+const resolveTalhaoIdFromPlantio = async (tenantId: string, plantioId?: string | null) => {
+  if (!plantioId) return null;
+  if (isSupabaseBackend()) {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('plantios')
+      .select('talhao_id')
+      .eq('tenant_id', tenantId)
+      .eq('id', plantioId)
+      .maybeSingle();
+    if (error) return null;
+    return (data as any)?.talhao_id || null;
+  }
+  const snap = await getDoc(doc(db, 'plantios', plantioId));
+  if (!snap.exists()) return null;
+  const plantio = snap.data() as any;
+  if (plantio.tenantId !== tenantId && plantio.userId !== tenantId) return null;
+  return plantio.talhaoId || null;
+};
+
 const mergeVendaDocs = (snaps: Awaited<ReturnType<typeof getDocs>>[]): Venda[] => {
   const vendasMap = new Map<string, Venda>();
   snaps.forEach((snap) => {
@@ -330,7 +356,9 @@ export const createVenda = async (data: VendaFormData, userId: string, options?:
       if (isSupabaseBackend()) {
         const supabase = getSupabaseClient();
         const traceabilityPublicToken = createTraceabilityPublicTokenFromId(`${Date.now()}_${Math.random()}`);
-        const payload = buildSupabaseVendaPayload(data, tenantId, traceabilityPublicToken);
+        const talhaoIdResolved =
+          data.talhaoId !== undefined ? data.talhaoId : await resolveTalhaoIdFromPlantio(tenantId, data.plantioId);
+        const payload = buildSupabaseVendaPayload(data, tenantId, talhaoIdResolved, traceabilityPublicToken);
 
         const { data: inserted, error } = await supabase
           .from('vendas')
@@ -412,7 +440,9 @@ export const createVenda = async (data: VendaFormData, userId: string, options?:
 
       const ref = doc(collection(db, 'vendas'));
       const traceabilityPublicToken = createTraceabilityPublicTokenFromId(ref.id);
-      const payload = buildVendaPayload(data, tenantId, traceabilityPublicToken);
+      const talhaoIdResolved =
+        data.talhaoId !== undefined ? data.talhaoId : await resolveTalhaoIdFromPlantio(tenantId, data.plantioId);
+      const payload = buildVendaPayload(data, tenantId, talhaoIdResolved, traceabilityPublicToken);
       await setDoc(ref, payload);
       const tracePlantioId = data.plantioId || null;
       const traceHydroLoteId =
@@ -546,8 +576,13 @@ export const updateVenda = async (id: string, data: VendaFormData, userId: strin
           pagamentoPara:
             data.pagamentoPara !== undefined ? data.pagamentoPara : (venda as any).pagamentoPara ?? null,
           colheitaId: data.colheitaId ?? venda.colheitaId ?? undefined,
+          talhaoId: data.talhaoId !== undefined ? data.talhaoId : (venda as any).talhaoId ?? null,
         } as VendaFormData;
-        const payload = buildSupabaseVendaPayload(merged, tenantId, venda.traceabilityPublicToken || undefined);
+        const talhaoIdResolved =
+          merged.talhaoId !== undefined && merged.talhaoId !== null
+            ? merged.talhaoId
+            : await resolveTalhaoIdFromPlantio(tenantId, merged.plantioId);
+        const payload = buildSupabaseVendaPayload(merged, tenantId, talhaoIdResolved, venda.traceabilityPublicToken || undefined);
 
         const { error: updateError } = await supabase
           .from('vendas')
@@ -667,8 +702,10 @@ export const updateVenda = async (id: string, data: VendaFormData, userId: strin
       pagamentoPara:
         data.pagamentoPara !== undefined ? data.pagamentoPara : (venda as any).pagamentoPara ?? null,
       colheitaId: data.colheitaId ?? venda.colheitaId ?? undefined,
+      talhaoId: data.talhaoId !== undefined ? data.talhaoId : (venda as any).talhaoId ?? null,
     },
     tenantId,
+    data.talhaoId !== undefined ? data.talhaoId : await resolveTalhaoIdFromPlantio(tenantId, data.plantioId || venda.plantioId || null),
     venda.traceabilityPublicToken || undefined
   );
   await updateDoc(doc(db, 'vendas', id), {
