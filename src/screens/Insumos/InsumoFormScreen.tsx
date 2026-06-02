@@ -6,12 +6,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createInsumo, updateInsumo, getInsumoById, InsumoFormData } from '../../services/insumoService';
 import { useAuth } from '../../hooks/useAuth';
+import { useWriteGuard } from '../../hooks/useWriteGuard';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { queryKeys } from '../../lib/queryClient';
 
 const InsumoFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const canWrite = useWriteGuard(navigation, 'Cadastro de insumo');
   const { settings } = useAppSettings();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -53,6 +55,7 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
   }, [insumoId, selectedTenantId, user?.uid, isEditMode]);
 
   const handleSave = async () => {
+    if (!canWrite) return;
     const targetId = selectedTenantId || user?.uid;
     if (!targetId || !nome) return Alert.alert("Erro", "Nome é obrigatório.");
 

@@ -19,7 +19,7 @@ const CaixaExtratoScreen = () => {
   const theme = useThemeMode();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const { user, selectedTenantId, isOwner, isAdmin } = useAuth();
+  const { user, selectedTenantId, canViewCash } = useAuth();
   const route = useRoute<RouteProp<RootStackParamList, 'CaixaExtrato'>>();
   const isFocused = useIsFocused();
   
@@ -42,7 +42,7 @@ const CaixaExtratoScreen = () => {
   const [hasMore, setHasMore] = useState(false);
   const [caixaPessoas, setCaixaPessoas] = useState<CaixaPessoa[]>([]);
 
-  const canView = Boolean(isOwner || isAdmin);
+  const canView = canViewCash;
   const targetId = selectedTenantId || user?.uid;
 
   const load = useCallback(

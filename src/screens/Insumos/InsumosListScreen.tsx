@@ -7,6 +7,7 @@ import { COLORS, RADIUS, SHADOWS, SPACING } from '../../constants/theme';
 import { useThemeMode } from '../../hooks/useThemeMode';
 import { useFeedback } from '../../hooks/useFeedback';
 import { useInsumosList } from '../../hooks/useInsumosList';
+import { useAuth } from '../../hooks/useAuth';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import EmptyState from '../../components/ui/EmptyState';
 import SkeletonBlock from '../../components/ui/SkeletonBlock';
@@ -17,6 +18,7 @@ const InsumosListScreen = ({ navigation }: any) => {
   const insets = useSafeAreaInsets();
   const { settings } = useAppSettings();
   const { showError } = useFeedback();
+  const { canWrite } = useAuth();
   const { insumos, lowStockCount, loading, refreshing, isError, refetch } = useInsumosList();
 
   useEffect(() => {
@@ -87,13 +89,13 @@ const InsumosListScreen = ({ navigation }: any) => {
         <View style={styles.cardActions}>
           <TouchableOpacity
             style={[styles.cardActionBtn, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
-            onPress={() => navigation.navigate('InsumoForm', { insumoId: item.id })}
+            onPress={canWrite ? () => navigation.navigate('InsumoForm', { insumoId: item.id }) : undefined}
           >
             <Text style={[styles.cardActionText, { color: theme.textPrimary }]}>Editar</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.cardActionBtn, styles.cardActionPrimary]}
-            onPress={() => navigation.navigate('InsumoEntry', { preselectedInsumoId: item.id })}
+            onPress={canWrite ? () => navigation.navigate('InsumoEntry', { preselectedInsumoId: item.id }) : undefined}
           >
             <Text style={[styles.cardActionText, { color: COLORS.textLight }]}>Entrada</Text>
           </TouchableOpacity>
@@ -110,7 +112,7 @@ const InsumosListScreen = ({ navigation }: any) => {
         badgeLabel="Estoque"
         actionLabel="Novo Item"
         actionIcon="plus"
-        onPressAction={() => navigation.navigate('InsumoForm')}
+        onPressAction={canWrite ? () => navigation.navigate('InsumoForm') : undefined}
       >
         <View style={styles.headerStats}>
           <View style={styles.headerStatChip}>
@@ -121,10 +123,10 @@ const InsumosListScreen = ({ navigation }: any) => {
             <Text style={styles.headerStatValue}>{lowStockCount}</Text>
             <Text style={styles.headerStatLabel}>Estoque baixo</Text>
           </View>
-          <TouchableOpacity style={styles.entryChip} onPress={() => navigation.navigate('InsumoEntry')}>
+          {canWrite ? <TouchableOpacity style={styles.entryChip} onPress={() => navigation.navigate('InsumoEntry')}>
             <MaterialCommunityIcons name="arrow-down-bold-box" size={16} color={COLORS.textLight} />
             <Text style={styles.entryChipText}>Entrada</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> : null}
         </View>
       </ScreenHeaderCard>
 
@@ -149,19 +151,21 @@ const InsumosListScreen = ({ navigation }: any) => {
               title="Nenhum insumo cadastrado"
               description="Cadastre seus insumos para controlar estoque e custo médio."
               actionLabel="Adicionar insumo"
-              onAction={() => navigation.navigate('InsumoForm')}
+              onAction={canWrite ? () => navigation.navigate('InsumoForm') : undefined}
             />
           ) : null
         }
         renderItem={renderItem}
       />
 
-      <TouchableOpacity
-        style={[styles.fab, { bottom: (settings.uiV2Enabled ? 132 : 20) + insets.bottom }]}
-        onPress={() => navigation.navigate('InsumoForm')}
-      >
-        <MaterialCommunityIcons name="plus" size={32} color={COLORS.textLight} />
-      </TouchableOpacity>
+      {canWrite ? (
+        <TouchableOpacity
+          style={[styles.fab, { bottom: (settings.uiV2Enabled ? 132 : 20) + insets.bottom }]}
+          onPress={() => navigation.navigate('InsumoForm')}
+        >
+          <MaterialCommunityIcons name="plus" size={32} color={COLORS.textLight} />
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 };

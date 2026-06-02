@@ -16,7 +16,7 @@ import { listEstufas } from '../../services/estufaService';
 const ClientesListScreen = ({ navigation }: any) => {
   const theme = useThemeMode();
   const { showError } = useFeedback();
-  const { user, selectedTenantId, availableTenants } = useAuth();
+  const { canWrite, user, selectedTenantId, availableTenants } = useAuth();
   const { clientes, loading, refreshing, isError, refetch } = useClientesList();
   const targetId = selectedTenantId || user?.uid;
 
@@ -129,7 +129,7 @@ const ClientesListScreen = ({ navigation }: any) => {
         badgeLabel="CRM"
         actionLabel="Novo Cliente"
         actionIcon="plus"
-        onPressAction={() => navigation.navigate('ClienteForm')}
+        onPressAction={canWrite ? () => navigation.navigate('ClienteForm') : undefined}
       >
         <View style={styles.headerStats}>
           <View style={styles.headerStatChip}>
@@ -166,14 +166,14 @@ const ClientesListScreen = ({ navigation }: any) => {
               title="Nenhum cliente cadastrado"
               description="Cadastre clientes para associar vendas e acompanhar historico."
               actionLabel="Adicionar cliente"
-              onAction={() => navigation.navigate('ClienteForm')}
+              onAction={canWrite ? () => navigation.navigate('ClienteForm') : undefined}
             />
           ) : null
         }
         renderItem={({ item }) => (
           <TouchableOpacity
             style={[styles.item, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}
-            onPress={() => navigation.navigate('ClienteForm', { clienteId: item.id })}
+            onPress={canWrite ? () => navigation.navigate('ClienteForm', { clienteId: item.id }) : undefined}
             activeOpacity={0.9}
           >
             <View style={styles.itemTop}>
@@ -212,9 +212,11 @@ const ClientesListScreen = ({ navigation }: any) => {
         )}
       />
 
-      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('ClienteForm')}>
-        <MaterialCommunityIcons name="plus" size={30} color={COLORS.textLight} />
-      </TouchableOpacity>
+      {canWrite ? (
+        <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('ClienteForm')}>
+          <MaterialCommunityIcons name="plus" size={30} color={COLORS.textLight} />
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 };

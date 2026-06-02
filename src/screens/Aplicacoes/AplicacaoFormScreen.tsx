@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker'; 
 import { useAuth } from '../../hooks/useAuth';
+import { useWriteGuard } from '../../hooks/useWriteGuard';
 import { listAllPlantios } from '../../services/plantioService';
 import { listInsumos } from '../../services/insumoService';
 import { createAplicacao, AplicacaoItemData } from '../../services/aplicacaoService';
@@ -16,6 +17,7 @@ import { useAppSettings } from '../../hooks/useAppSettings';
 
 const AplicacaoFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const canWrite = useWriteGuard(navigation, 'Registro de aplicacao');
   const { settings } = useAppSettings();
   const insets = useSafeAreaInsets();
   const targetId = selectedTenantId || user?.uid;
@@ -93,6 +95,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
   };
 
   const handleSave = async () => {
+      if (!canWrite) return;
       if (!targetId) return Alert.alert("Atenção", "Sua sessão expirou. Entre novamente.");
       if (!plantioId) return Alert.alert("Atenção", "Escolha o ciclo para registrar a aplicação.");
       if (itens.length === 0) return Alert.alert("Atenção", "Adicione pelo menos um produto na mistura.");

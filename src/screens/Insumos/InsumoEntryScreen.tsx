@@ -8,6 +8,7 @@ import { Picker } from '@react-native-picker/picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';
+import { useWriteGuard } from '../../hooks/useWriteGuard';
 import { addEstoqueToInsumo, listInsumos, InsumoEntryData } from '../../services/insumoService'; 
 import { Fornecedor, Insumo } from '../../types/domain';
 import { listFornecedores as listFornecedoresService } from '../../services/fornecedorService'; 
@@ -16,6 +17,7 @@ import { queryKeys } from '../../lib/queryClient';
 
 const InsumoEntryScreen = ({ route, navigation }: any) => {
     const { user, selectedTenantId } = useAuth();
+    const canWrite = useWriteGuard(navigation, 'Entrada de estoque');
     const queryClient = useQueryClient();
     const preselectedInsumoId = route.params?.preselectedInsumoId;
 
@@ -95,6 +97,7 @@ const InsumoEntryScreen = ({ route, navigation }: any) => {
     }, [insumoSelecionado, quantidadeComprada, custoUnitarioCompra]);
 
     const handleSaveEntry = async () => {
+        if (!canWrite) return;
         const targetId = selectedTenantId || user?.uid;
         if (!targetId || !selectedInsumoId || !insumoSelecionado) {
             Alert.alert('Erro', 'Selecione um insumo válido.');

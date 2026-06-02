@@ -12,7 +12,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const PlantioDetailScreen = ({ route, navigation }: any) => {
-  const { user, selectedTenantId } = useAuth(); 
+  const { canWrite, user, selectedTenantId } = useAuth(); 
   
   const plantioId = route?.params?.plantioId;
   const isFocused = useIsFocused();
@@ -152,21 +152,21 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
       {/* BOTÕES DE AÇÃO */}
       <View style={styles.blockCard}>
       <View style={styles.gridBtns}>
-          <TouchableOpacity 
+          {canWrite ? <TouchableOpacity 
             style={[styles.btnAction, {borderColor: COLORS.primary}]}
             onPress={() => navigation.navigate('ColheitaForm', { plantioId: plantio.id, estufaId: plantio.estufaId })}
           >
               <MaterialCommunityIcons name="basket-plus" size={26} color={COLORS.primary} />
               <Text style={[styles.btnText, {color: COLORS.primary}]}>Registrar Venda</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> : null}
 
-          <TouchableOpacity 
+          {canWrite ? <TouchableOpacity 
             style={[styles.btnAction, {borderColor: COLORS.blue}]}
             onPress={() => navigation.navigate('AplicacaoForm', { plantioId: plantio.id, estufaId: plantio.estufaId })}
           >
               <MaterialCommunityIcons name="flask-plus" size={26} color={COLORS.blue} />
               <Text style={[styles.btnText, {color: COLORS.blue}]}>Aplicar Insumo</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> : null}
 
           {/* O BOTÃO AGORA REDIRECIONA PARA A TELA DE HISTÓRICO */}
           <TouchableOpacity 
@@ -179,7 +179,7 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
       </View>
 
       <View style={styles.secondaryActions}>
-          {isOwner ? (
+          {isOwner && canWrite ? (
             <TouchableOpacity
               style={styles.secondaryBtn}
               onPress={() => navigation.navigate('PlantioForm', { plantioId: plantio.id, estufaId: plantio.estufaId })}
@@ -188,10 +188,10 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
               <Text style={styles.secondaryBtnText}>Editar Dados do Ciclo</Text>
             </TouchableOpacity>
           ) : null}
-          <TouchableOpacity style={styles.secondaryBtn} onPress={() => navigation.navigate('ContasReceber')}>
+          {canWrite ? <TouchableOpacity style={styles.secondaryBtn} onPress={() => navigation.navigate('ContasReceber')}>
               <MaterialCommunityIcons name="hand-coin-outline" size={16} color={COLORS.warning} />
               <Text style={styles.secondaryBtnText}>Contas a Receber</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> : null}
           <TouchableOpacity style={styles.secondaryBtn} onPress={() => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' })}>
               <MaterialCommunityIcons name="chart-box-outline" size={16} color={COLORS.info} />
               <Text style={styles.secondaryBtnText}>Relatórios de Vendas</Text>
@@ -203,7 +203,7 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
       </View>
       </View>
 
-      {isOwner && !isPlantioInactive && (
+      {isOwner && canWrite && !isPlantioInactive && (
           <TouchableOpacity style={styles.dangerBtn} onPress={handleFinalizar}>
               <Text style={styles.dangerText}>Finalizar este Ciclo</Text>
           </TouchableOpacity>

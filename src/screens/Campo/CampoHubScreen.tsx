@@ -15,7 +15,7 @@ const CampoHubScreen = ({ navigation }: any) => {
   const theme = useThemeMode();
   const insets = useSafeAreaInsets();
   const { settings } = useAppSettings();
-  const { user, selectedTenantId } = useAuth();
+  const { canWrite, user, selectedTenantId } = useAuth();
   const targetId = selectedTenantId || user?.uid;
   const { plantios } = useDashboardMetrics();
   const { data: talhoes = [] } = useTalhoesListData(targetId);
@@ -84,9 +84,9 @@ const CampoHubScreen = ({ navigation }: any) => {
         title="Campo"
         subtitle="Operacao de campo por talhao e ciclo."
         badgeLabel="Operação"
-        actionLabel="Novo Talhao"
+        actionLabel={canWrite ? 'Novo Talhao' : undefined}
         actionIcon="plus"
-        onPressAction={() => navigation.navigate('TalhoesList')}
+        onPressAction={canWrite ? () => navigation.navigate('TalhoesList') : undefined}
       >
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
@@ -110,7 +110,7 @@ const CampoHubScreen = ({ navigation }: any) => {
           { paddingBottom: (settings.uiV2Enabled ? 138 : SPACING.xxl) + insets.bottom },
         ]}
       >
-        <View style={styles.quickGrid}>
+        {canWrite ? <View style={styles.quickGrid}>
           <TouchableOpacity style={styles.quickCard} onPress={abrirNovoPlantio}>
             <MaterialCommunityIcons name="sprout" size={22} color={COLORS.primary} />
             <Text style={[styles.quickTitle, { color: theme.textPrimary }]}>Novo Plantio</Text>
@@ -135,7 +135,7 @@ const CampoHubScreen = ({ navigation }: any) => {
             <Text style={[styles.quickSub, { color: theme.textSecondary }]}>Gestao de areas de campo</Text>
           </TouchableOpacity>
 
-        </View>
+        </View> : null}
 
         <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Ciclos ativos</Text>
         {talhoes.length > 1 ? (
@@ -208,27 +208,27 @@ const CampoHubScreen = ({ navigation }: any) => {
                     <Text style={[styles.actionText, { color: theme.textPrimary }]}>Ciclo</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity
+                  {canWrite ? <TouchableOpacity
                     style={[styles.actionBtn, { borderColor: theme.border }]}
                     onPress={() => navigation.navigate('ManejoForm', { plantioId: plantio.id })}
                   >
                     <Text style={[styles.actionText, { color: theme.textPrimary }]}>Manejo</Text>
-                  </TouchableOpacity>
+                  </TouchableOpacity> : null}
 
-                  <TouchableOpacity
+                  {canWrite ? <TouchableOpacity
                     style={[styles.actionBtn, { borderColor: theme.border }]}
                     onPress={() => navigation.navigate('AplicacaoForm', { plantioId: plantio.id })}
                   >
                     <Text style={[styles.actionText, { color: theme.textPrimary }]}>Aplicação</Text>
-                  </TouchableOpacity>
+                  </TouchableOpacity> : null}
 
-                  <TouchableOpacity
+                  {canWrite ? <TouchableOpacity
                     style={styles.actionPrimary}
                     onPress={() => navigation.navigate('ColheitaForm', { plantioId: plantio.id })}
                   >
                     <MaterialCommunityIcons name="cash-plus" size={14} color={COLORS.textLight} />
                     <Text style={styles.actionPrimaryText}>Vender</Text>
-                  </TouchableOpacity>
+                  </TouchableOpacity> : null}
                 </View>
               </View>
             );

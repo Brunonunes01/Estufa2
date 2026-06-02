@@ -18,6 +18,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createDespesa } from '../../services/despesaService';
 import { useAuth } from '../../hooks/useAuth';
+import { useWriteGuard } from '../../hooks/useWriteGuard';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { queryClient, queryKeys } from '../../lib/queryClient';
@@ -30,6 +31,7 @@ import {
 
 const DespesaFormScreen = ({ navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const canWrite = useWriteGuard(navigation, 'Lancamento de despesa');
   const { settings } = useAppSettings();
   const insets = useSafeAreaInsets();
   const targetId = selectedTenantId || user?.uid;
@@ -63,6 +65,7 @@ const DespesaFormScreen = ({ navigation }: any) => {
   }, [targetId]);
 
   const handleSelecionarComprovante = async () => {
+    if (!canWrite) return;
     if (!targetId) return Alert.alert('Atencao', 'Sua sessao expirou. Entre novamente.');
 
     setUploadingComprovante(true);
@@ -80,6 +83,7 @@ const DespesaFormScreen = ({ navigation }: any) => {
   };
 
   const handleSave = async () => {
+    if (!canWrite) return;
     if (!targetId) return Alert.alert('Atencao', 'Sua sessao expirou. Entre novamente.');
     if (!descricao.trim()) return Alert.alert('Atencao', 'Digite a descricao da despesa.');
     const valorNum = parseFloat(valor.replace(',', '.')) || 0;

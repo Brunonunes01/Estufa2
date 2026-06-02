@@ -29,7 +29,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
   const { showError } = useFeedback();
-  const { isAdmin } = useAuth();
+  const { accessRoleLabel, canManageSharing, canViewFinancialDashboard, canWrite } = useAuth();
   const { settings } = useAppSettings();
   const isHydroMode = settings.activeProductionMode === 'hidroponia';
   const isCampoMode = settings.activeProductionMode === 'campo';
@@ -268,12 +268,14 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
           color: COLORS.info,
           onPress: () => navigateTo('ClientesList'),
         },
-        {
-          label: 'Compartilhar',
-          icon: 'account-multiple-plus',
-          color: COLORS.success,
-          onPress: () => navigateTo('ShareAccount'),
-        },
+        ...(canManageSharing
+          ? [{
+              label: 'Compartilhar',
+              icon: 'account-multiple-plus',
+              color: COLORS.success,
+              onPress: () => navigateTo('ShareAccount'),
+            }]
+          : []),
         {
           label: 'Perfil',
           icon: 'account-circle-outline',
@@ -296,7 +298,9 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
       { label: 'Insumos', icon: 'flask-outline', color: COLORS.primaryDark, onPress: () => navigateTo('InsumosList') },
       { label: 'Clientes', icon: 'account-group-outline', color: COLORS.info, onPress: () => navigateTo('ClientesList') },
       { label: 'Fornecedores', icon: 'truck-delivery-outline', color: COLORS.orange, onPress: () => navigateTo('FornecedoresList') },
-      { label: 'Compartilhar', icon: 'account-multiple-plus', color: COLORS.success, onPress: () => navigateTo('ShareAccount') },
+      ...(canManageSharing
+        ? [{ label: 'Compartilhar', icon: 'account-multiple-plus', color: COLORS.success, onPress: () => navigateTo('ShareAccount') }]
+        : []),
       { label: 'Tarefas', icon: 'calendar-check-outline', color: COLORS.orange, onPress: () => navigateTo('Tarefas') },
       { label: 'Ajustes', icon: 'cog-outline', color: COLORS.secondary, onPress: () => navigateTo('Settings') },
     ];
@@ -311,7 +315,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
     }
 
     return base;
-  }, [isCampoMode, isHydroMode, navigateTo, settings.uiV2Enabled]);
+  }, [canManageSharing, isCampoMode, isHydroMode, navigateTo, settings.uiV2Enabled]);
 
   const uniqueTenants = useMemo(() => {
     const byUid = new Map<string, (typeof availableTenants)[number]>();
@@ -400,7 +404,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         </View>
       )}
 
-      {!isHydroMode ? (
+      {!isHydroMode && canWrite ? (
         <TouchableOpacity style={styles.wizardButton} onPress={() => navigateTo('WizardSelectPlantio')}>
           <MaterialCommunityIcons name="magic-staff" size={24} color={COLORS.textLight} />
           <Text style={styles.wizardButtonText}>{isCampoMode ? 'Registrar atividade do talhao' : 'Registrar Atividade do Dia'}</Text>
@@ -448,11 +452,13 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         />
       </View>
 
-      <View style={[styles.blockCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}> 
-        <QuickActions actions={quickActions} />
-      </View>
+      {canWrite ? (
+        <View style={[styles.blockCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}> 
+          <QuickActions actions={quickActions} />
+        </View>
+      ) : null}
 
-      {isAdmin && (
+      {canViewFinancialDashboard && (
         loadingResumo ? (
           <DashboardLoadingSkeleton />
         ) : (
@@ -492,7 +498,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         <ScreenHeaderCard
           title="Centro de Comando"
           subtitle={`Olá, ${user?.displayName?.split(' ')[0] || 'Gestor'}`}
-          badgeLabel={isAdmin ? 'Administrador' : 'Operador'}
+          badgeLabel={accessRoleLabel}
           actionLabel={settings.uiV2Enabled ? (isHydroMode ? 'Hidroponia' : isCampoMode ? 'Campo' : 'Estufas') : isCampoMode ? 'Talhoes' : 'Estufas'}
           actionIcon={settings.uiV2Enabled ? (isHydroMode ? 'water-outline' : isCampoMode ? 'tractor-variant' : 'greenhouse') : isCampoMode ? 'map-marker-radius-outline' : 'greenhouse'}
           onPressAction={() =>

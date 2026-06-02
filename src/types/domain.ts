@@ -1,6 +1,6 @@
 import { Timestamp } from '../compat/legacyDataApi';
 
-export type UserRole = 'admin' | 'operator';
+export type UserRole = 'admin' | 'operator' | 'guest';
 
 export interface BaseDoc {
   id: string;

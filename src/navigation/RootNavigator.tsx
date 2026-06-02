@@ -161,6 +161,7 @@ const MainTabs = ({ activeMode, uiV2Enabled }: { activeMode: 'ciclo_longo' | 'ca
   const mode = useThemeMode();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { canWrite } = useAuth();
   const [quickActionsVisible, setQuickActionsVisible] = useState(false);
   const OperacaoEntryScreen =
     activeMode === 'hidroponia' ? HidroponiaLotesScreen : activeMode === 'campo' ? CampoHubScreen : EstufasListScreen;
@@ -238,7 +239,7 @@ const MainTabs = ({ activeMode, uiV2Enabled }: { activeMode: 'ciclo_longo' | 'ca
         <Tab.Screen name="PerfilTab" component={PerfilScreen} options={{ title: 'Perfil' }} />
       </Tab.Navigator>
 
-      {uiV2Enabled ? (
+      {uiV2Enabled && canWrite ? (
         <>
           <TouchableOpacity
             activeOpacity={0.88}

@@ -7,11 +7,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Contacts from 'expo-contacts';
 import { createCliente, updateCliente, getClienteById, ClienteFormData } from '../../services/clienteService';
 import { useAuth } from '../../hooks/useAuth';
+import { useWriteGuard } from '../../hooks/useWriteGuard';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const ClienteFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const canWrite = useWriteGuard(navigation, 'Cadastro de cliente');
   const { settings } = useAppSettings();
   const insets = useSafeAreaInsets();
   const clienteId = route.params?.clienteId;
@@ -123,6 +125,7 @@ const ClienteFormScreen = ({ route, navigation }: any) => {
   };
 
   const handleSave = async () => {
+    if (!canWrite) return;
     const targetId = selectedTenantId || user?.uid;
     if (!targetId) return;
     if (!nome.trim()) return Alert.alert('Atenção', 'Nome obrigatório.');

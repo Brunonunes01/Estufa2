@@ -29,7 +29,7 @@ const polygonAreaHectares = (points: LatLng[]) => {
 };
 
 const TalhoesListScreen = ({ navigation }: any) => {
-  const { user, selectedTenantId } = useAuth();
+  const { canWrite, user, selectedTenantId } = useAuth();
   const targetId = selectedTenantId || user?.uid;
   const queryClient = useQueryClient();
   const { data, isLoading } = useTalhoesListData(targetId);
@@ -112,6 +112,7 @@ const TalhoesListScreen = ({ navigation }: any) => {
   });
 
   const openCreateModal = () => {
+    if (!canWrite) return;
     setEditingId(null);
     setNome('');
     setCultura('');
@@ -121,6 +122,7 @@ const TalhoesListScreen = ({ navigation }: any) => {
   };
 
   const openEditModal = (item: any) => {
+    if (!canWrite) return;
     setEditingId(item.id);
     setNome(item.nome || '');
     setCultura(item.culturaPrincipal || '');
@@ -130,6 +132,7 @@ const TalhoesListScreen = ({ navigation }: any) => {
   };
 
   const confirmDelete = (talhaoId: string, talhaoNome: string) => {
+    if (!canWrite) return;
     Alert.alert('Excluir talhao', `Deseja excluir o talhao ${talhaoNome}?`, [
       { text: 'Cancelar', style: 'cancel' },
       {
@@ -150,9 +153,9 @@ const TalhoesListScreen = ({ navigation }: any) => {
           <Text style={styles.title}>Talhoes</Text>
           <Text style={styles.subtitle}>{subtitle}</Text>
         </View>
-        <TouchableOpacity style={styles.addBtn} onPress={openCreateModal}>
+        {canWrite ? <TouchableOpacity style={styles.addBtn} onPress={openCreateModal}>
           <Text style={styles.addBtnText}>Novo</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> : null}
       </View>
 
       {!isLoading && talhoes.length === 0 ? (
@@ -170,22 +173,22 @@ const TalhoesListScreen = ({ navigation }: any) => {
               <Text style={styles.cardMeta}>Area mapa (ha): {item.areaCalculadaHectares ?? '-'}</Text>
               <Text style={styles.badge}>{item.status}</Text>
               <View style={styles.cardActions}>
-                <TouchableOpacity style={styles.cardBtn} onPress={() => navigation.navigate('PlantioForm', { talhaoId: item.id })}>
+                {canWrite ? <TouchableOpacity style={styles.cardBtn} onPress={() => navigation.navigate('PlantioForm', { talhaoId: item.id })}>
                   <Text style={styles.cardBtnText}>Novo Plantio</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.cardBtn} onPress={() => openEditModal(item)}>
+                </TouchableOpacity> : null}
+                {canWrite ? <TouchableOpacity style={styles.cardBtn} onPress={() => openEditModal(item)}>
                   <Text style={styles.cardBtnText}>Editar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.cardBtn, styles.cardBtnDanger]} onPress={() => confirmDelete(item.id, item.nome)}>
+                </TouchableOpacity> : null}
+                {canWrite ? <TouchableOpacity style={[styles.cardBtn, styles.cardBtnDanger]} onPress={() => confirmDelete(item.id, item.nome)}>
                   <Text style={[styles.cardBtnText, styles.cardBtnDangerText]}>Excluir</Text>
-                </TouchableOpacity>
+                </TouchableOpacity> : null}
               </View>
             </View>
           )}
         />
       )}
 
-      <Modal visible={modalOpen} transparent animationType="fade" onRequestClose={() => setModalOpen(false)}>
+      <Modal visible={canWrite && modalOpen} transparent animationType="fade" onRequestClose={() => setModalOpen(false)}>
         <View style={styles.backdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>{editingId ? 'Editar Talhao' : 'Novo Talhao'}</Text>

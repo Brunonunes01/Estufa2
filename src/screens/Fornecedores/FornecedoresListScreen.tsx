@@ -5,6 +5,7 @@ import { COLORS, RADIUS, SHADOWS, SPACING } from '../../constants/theme';
 import { useThemeMode } from '../../hooks/useThemeMode';
 import { useFeedback } from '../../hooks/useFeedback';
 import { useFornecedoresList } from '../../hooks/useFornecedoresList';
+import { useAuth } from '../../hooks/useAuth';
 import EmptyState from '../../components/ui/EmptyState';
 import SkeletonBlock from '../../components/ui/SkeletonBlock';
 import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
@@ -12,6 +13,7 @@ import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 const FornecedoresListScreen = ({ navigation }: any) => {
   const theme = useThemeMode();
   const { showError } = useFeedback();
+  const { canWrite } = useAuth();
   const { fornecedores, loading, refreshing, isError, refetch } = useFornecedoresList();
 
   useEffect(() => {
@@ -26,7 +28,7 @@ const FornecedoresListScreen = ({ navigation }: any) => {
         badgeLabel="Supply"
         actionLabel="Novo Fornecedor"
         actionIcon="plus"
-        onPressAction={() => navigation.navigate('FornecedorForm')}
+        onPressAction={canWrite ? () => navigation.navigate('FornecedorForm') : undefined}
       >
         <View style={styles.headerStats}>
           <View style={styles.headerStatChip}>
@@ -63,14 +65,14 @@ const FornecedoresListScreen = ({ navigation }: any) => {
               title="Nenhum fornecedor encontrado"
               description="Cadastre fornecedores para vincular compras e contatos."
               actionLabel="Adicionar fornecedor"
-              onAction={() => navigation.navigate('FornecedorForm')}
+              onAction={canWrite ? () => navigation.navigate('FornecedorForm') : undefined}
             />
           ) : null
         }
         renderItem={({ item }) => (
           <TouchableOpacity
             style={[styles.item, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}
-            onPress={() => navigation.navigate('FornecedorForm', { fornecedorId: item.id })}
+            onPress={canWrite ? () => navigation.navigate('FornecedorForm', { fornecedorId: item.id }) : undefined}
             activeOpacity={0.9}
           >
             <View style={styles.itemTop}>
@@ -99,9 +101,11 @@ const FornecedoresListScreen = ({ navigation }: any) => {
         )}
       />
 
-      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('FornecedorForm')}>
-        <MaterialCommunityIcons name="plus" size={30} color={COLORS.textLight} />
-      </TouchableOpacity>
+      {canWrite ? (
+        <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('FornecedorForm')}>
+          <MaterialCommunityIcons name="plus" size={30} color={COLORS.textLight} />
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 };

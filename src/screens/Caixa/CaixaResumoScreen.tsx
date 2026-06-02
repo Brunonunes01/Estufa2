@@ -23,14 +23,14 @@ const periods: { id: CaixaPeriod; label: string }[] = [
 const CaixaResumoScreen = () => {
   const theme = useThemeMode();
   const insets = useSafeAreaInsets();
-  const { user, selectedTenantId, isOwner, isAdmin } = useAuth();
+  const { user, selectedTenantId, canViewCash } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isFocused = useIsFocused();
   const [period, setPeriod] = useState<CaixaPeriod>('month');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
 
-  const canView = Boolean(isOwner || isAdmin);
+  const canView = canViewCash;
   const targetId = selectedTenantId || user?.uid;
 
   const load = useCallback(async () => {
@@ -80,7 +80,7 @@ const CaixaResumoScreen = () => {
         <MaterialCommunityIcons name="lock-outline" size={48} color={theme.textSecondary} />
         <Text style={{ color: theme.textPrimary, fontSize: 16, fontWeight: '700', marginTop: 10 }}>Acesso restrito</Text>
         <Text style={{ color: theme.textSecondary, marginTop: 6, textAlign: 'center', paddingHorizontal: 40 }}>
-          O módulo Caixa completo está disponível apenas para dono e admin.
+          O modulo Caixa completo esta disponivel apenas para proprietario e gerente.
         </Text>
       </View>
     );

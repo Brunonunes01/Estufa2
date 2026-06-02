@@ -17,7 +17,7 @@ import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 import { listCaixaPessoas } from '../../services/caixaPessoaService';
 
 const DespesasListScreen = ({ navigation }: any) => {
-  const { isOwner, user, selectedTenantId } = useAuth();
+  const { isOwner, canWrite, user, selectedTenantId } = useAuth();
   const { settings } = useAppSettings();
   const theme = useThemeMode();
   const insets = useSafeAreaInsets();
@@ -145,7 +145,7 @@ const DespesasListScreen = ({ navigation }: any) => {
         badgeLabel="Despesas"
         actionLabel="Nova Despesa"
         actionIcon="plus"
-        onPressAction={() => navigation.navigate('DespesaForm')}
+        onPressAction={canWrite ? () => navigation.navigate('DespesaForm') : undefined}
       >
         <View style={styles.headerStats}>
           <View style={styles.headerStatChip}>
@@ -198,7 +198,7 @@ const DespesasListScreen = ({ navigation }: any) => {
               title="Nenhuma despesa registrada"
               description="Registre sua primeira despesa para acompanhar contas pendentes."
               actionLabel="Adicionar despesa"
-              onAction={() => navigation.navigate('DespesaForm')}
+              onAction={canWrite ? () => navigation.navigate('DespesaForm') : undefined}
             />
           ) : null
         }
@@ -244,7 +244,7 @@ const DespesasListScreen = ({ navigation }: any) => {
               </View>
 
               <View style={[styles.actionsRow, { borderTopColor: theme.divider }]}>
-                {isOwner ? (
+                {isOwner && canWrite ? (
                   <LoadingButton
                     label="Excluir"
                     variant="neutral"
@@ -273,7 +273,7 @@ const DespesasListScreen = ({ navigation }: any) => {
 
       <TouchableOpacity
         style={[styles.fab, { bottom: (settings.uiV2Enabled ? 132 : 20) + insets.bottom }]}
-        onPress={() => navigation.navigate('DespesaForm')}
+        onPress={canWrite ? () => navigation.navigate('DespesaForm') : undefined}
       >
         <MaterialCommunityIcons name="plus" size={30} color={COLORS.textLight} />
       </TouchableOpacity>

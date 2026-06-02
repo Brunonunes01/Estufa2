@@ -104,6 +104,39 @@ Erro: Failed to install build-tools;35.0.0
 - Causa: componente ausente no SDK
 - Solucao: instalar Build-Tools 35.0.0 no SDK Manager
 
+Erro: app:externalNativeBuildCleanRelease FAILED / Android-autolinking.cmake / codegen jni nao existe
+- Causa: cache nativo antigo do Android/CMake apontando para pastas geradas que nao existem mais.
+- Exemplo:
+  add_subdirectory given source "...node_modules/.../android/build/generated/source/codegen/jni/"
+  which is not an existing directory.
+- Solucao: apagar os caches nativos/build do Android e rodar novamente.
+
+No PowerShell, a partir da raiz do projeto:
+
+cd C:\Users\bruno\Desktop\ESTUFA\Estufa2
+
+if (Test-Path .\android\app\.cxx) {
+  cmd /c rmdir /s /q "%CD%\android\app\.cxx"
+}
+
+if (Test-Path .\android\app\build) {
+  Remove-Item -LiteralPath .\android\app\build -Recurse -Force
+}
+
+if (Test-Path .\android\build) {
+  Remove-Item -LiteralPath .\android\build -Recurse -Force
+}
+
+Depois rode:
+
+cd .\android
+.\gradlew clean
+.\gradlew assembleRelease
+
+Observacao:
+- Se o Remove-Item falhar em .cxx por caminho longo, use o comando cmd /c rmdir acima.
+- Esse procedimento apaga apenas caches de build. O Gradle recria tudo.
+
 ====================================================================
 11) COMANDO RAPIDO (RESUMO)
 ====================================================================
@@ -118,4 +151,3 @@ $sdkEscaped = $env:ANDROID_HOME -replace "\\","\\"
 Set-Content -LiteralPath ".\android\local.properties" -Value "sdk.dir=$sdkEscaped"
 cd .\android
 .\gradlew assembleRelease
-

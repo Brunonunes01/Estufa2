@@ -4,11 +4,13 @@ import { View, Text, TextInput, ScrollView, Alert, StyleSheet, ActivityIndicator
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createFornecedor, FornecedorFormData, getFornecedorById, updateFornecedor } from '../../services/fornecedorService';
 import { useAuth } from '../../hooks/useAuth';
+import { useWriteGuard } from '../../hooks/useWriteGuard';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 const FornecedorFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const canWrite = useWriteGuard(navigation, 'Cadastro de fornecedor');
   const { settings } = useAppSettings();
   const insets = useSafeAreaInsets();
   const fornecedorId = route.params?.fornecedorId;
@@ -28,6 +30,7 @@ const FornecedorFormScreen = ({ route, navigation }: any) => {
   }, [fornecedorId, selectedTenantId]);
 
   const handleSave = async () => {
+    if (!canWrite) return;
     const targetId = selectedTenantId || user?.uid;
     if (!targetId || !nome) return Alert.alert('Erro', 'Nome obrigatório.');
     setLoading(true);

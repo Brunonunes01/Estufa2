@@ -21,7 +21,9 @@ import {
     getSharedTenants,
     listTenantMembers,
     removeTenantMember,
+    updateTenantMemberProfile,
     SHARE_CODE_DEFAULT_LENGTH,
+    ShareAccessProfile,
     TenantMember,
 } from '../../services/shareService';
 import { Tenant } from '../../types/domain';
@@ -29,7 +31,7 @@ import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/th
 import { useAppTheme } from '../../hooks/useAppTheme';
 
 export default function ShareAccountScreen({ navigation }: any) {
-    const { user, selectedTenantId, availableTenants, refreshUserProfile, changeTenant } = useAuth();
+    const { user, selectedTenantId, availableTenants, refreshUserProfile, changeTenant, isOwner, canManageSharing, canInviteManager } = useAuth();
     const appTheme = useAppTheme();
     const paperTheme = usePaperTheme();
     
@@ -40,6 +42,7 @@ export default function ShareAccountScreen({ navigation }: any) {
     const [generatedCode, setGeneratedCode] = useState<string | null>(null);
     const [generatedAt, setGeneratedAt] = useState<Date | null>(null);
     const [loadingGen, setLoadingGen] = useState(false);
+    const [inviteProfile, setInviteProfile] = useState<ShareAccessProfile>('operator');
 
     // Estados para RESGATE (Convidado)
     const [inputCode, setInputCode] = useState('');
@@ -51,6 +54,7 @@ export default function ShareAccountScreen({ navigation }: any) {
     const [tenantMembers, setTenantMembers] = useState<TenantMember[]>([]);
     const [loadingMembers, setLoadingMembers] = useState(false);
     const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+    const [updatingMemberProfile, setUpdatingMemberProfile] = useState<{ userId: string; profile: ShareAccessProfile } | null>(null);
     const [memberSearch, setMemberSearch] = useState('');
     const currentTenant = availableTenants.find((tenant) => tenant.uid === selectedTenantId) || null;
 
@@ -106,7 +110,7 @@ export default function ShareAccountScreen({ navigation }: any) {
         try {
             const tenantInfo = availableTenants.find((tenant) => tenant.uid === tenantParaCompartilhar);
             const tenantName = tenantInfo?.name || `Estufa de ${user.name || 'Produtor'}`;
-            const code = await generateShareCode(tenantParaCompartilhar, tenantName, user.name || 'Produtor');
+            const code = await generateShareCode(tenantParaCompartilhar, tenantName, user.name || 'Produtor', inviteProfile);
             setGeneratedCode(code);
             setGeneratedAt(new Date());
         } catch (error: any) {
@@ -166,6 +170,33 @@ export default function ShareAccountScreen({ navigation }: any) {
         );
     };
 
+    const handleChangeMemberProfile = (member: TenantMember, profile: ShareAccessProfile) => {
+        if (!user?.uid || !selectedTenantId) return;
+        const profileLabel = getShareProfileLabel(profile);
+        Alert.alert(
+            'Alterar perfil',
+            `Deseja alterar ${member.name} para ${profileLabel}?`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Alterar',
+                    onPress: async () => {
+                        try {
+                            setUpdatingMemberProfile({ userId: member.userId, profile });
+                            await updateTenantMemberProfile(selectedTenantId, member.userId, user.uid, profile);
+                            await loadTenantMembers();
+                            Alert.alert('Sucesso', `Perfil alterado para ${profileLabel}.`);
+                        } catch (error: any) {
+                            Alert.alert('Erro', error?.message || 'Nao foi possivel alterar o perfil do parceiro.');
+                        } finally {
+                            setUpdatingMemberProfile(null);
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
     const formatDate = (value?: string | number | { toDate?: () => Date }) => {
         if (!value) return 'Data desconhecida';
         const date = typeof value === 'number'
@@ -190,10 +221,22 @@ export default function ShareAccountScreen({ navigation }: any) {
         return date.toLocaleString('pt-BR');
     };
 
-    const getRoleLabel = (role?: string) => {
-        if (role === 'admin') return 'Administrador';
+    const getShareProfileLabel = (profile: ShareAccessProfile) => {
+        if (profile === 'manager') return 'Gerente';
+        if (profile === 'operator') return 'Operador';
+        return 'Relatorios';
+    };
+
+    const getMemberRoleLabel = (role?: string) => {
+        if (role === 'admin') return 'Gerente';
         if (role === 'operator') return 'Operador';
-        return 'Convidado';
+        return 'Relatorios';
+    };
+
+    const getMemberProfile = (member: TenantMember): ShareAccessProfile => {
+        if (member.role === 'admin') return 'manager';
+        if (member.role === 'operator') return 'operator';
+        return 'viewer';
     };
 
     const formatPermissionsList = (permissions?: {
@@ -240,6 +283,20 @@ export default function ShareAccountScreen({ navigation }: any) {
         Alert.alert('Copiado', 'Resumo de acesso copiado para auditoria.');
     };
 
+    const canRemoveMember = (member: TenantMember) => {
+        if (!canManageSharing) return false;
+        if (member.role === 'admin' && !isOwner) return false;
+        return true;
+    };
+
+    const canChangeMemberProfile = (member: TenantMember, profile: ShareAccessProfile) => {
+        if (!canManageSharing) return false;
+        if (getMemberProfile(member) === profile) return false;
+        if (profile === 'manager' && !isOwner) return false;
+        if (member.role === 'admin' && !isOwner) return false;
+        return true;
+    };
+
     // Card para a aba de Parceiros (Estufas que eu fui convidado)
     const renderParceiroItem = ({ item }: { item: Tenant }) => (
         <Card style={[styles.card, { backgroundColor: appTheme.surfaceBackground, borderColor: appTheme.border }]} mode="outlined">
@@ -269,7 +326,7 @@ export default function ShareAccountScreen({ navigation }: any) {
                         <MaterialCommunityIcons name="shield-account" size={16} color={appTheme.textSecondary} />
                         <Text style={[styles.metaText, { color: appTheme.textSecondary }]}>Meu perfil: </Text>
                         <View style={[styles.rolePill, { backgroundColor: appTheme.infoSoft, borderColor: appTheme.info }]}>
-                            <Text style={[styles.rolePillText, { color: appTheme.info }]}>{getRoleLabel((item as any).role)}</Text>
+                            <Text style={[styles.rolePillText, { color: appTheme.info }]}>{getMemberRoleLabel((item as any).role)}</Text>
                         </View>
                     </View>
                     <View style={styles.detailRow}>
@@ -383,6 +440,14 @@ export default function ShareAccountScreen({ navigation }: any) {
                                 </Text>
                             </View>
 
+                            {!canManageSharing ? (
+                                <Surface style={[styles.tenantInfoCard, { backgroundColor: appTheme.surfaceBackground, borderColor: appTheme.border }]} elevation={0}>
+                                    <Text style={[styles.subtitle, { marginBottom: 0, color: appTheme.textSecondary }]}>
+                                        Apenas proprietario e gerente autorizado podem gerar convites e gerenciar membros deste tenant.
+                                    </Text>
+                                </Surface>
+                            ) : null}
+
                             {generatedCode ? (
                                 <Card style={[styles.codeCard, { backgroundColor: appTheme.successSoft, borderColor: appTheme.success }]} mode="outlined">
                                     <Card.Content style={{ alignItems: 'center' }}>
@@ -420,19 +485,58 @@ export default function ShareAccountScreen({ navigation }: any) {
                                     </Card.Content>
                                 </Card>
                             ) : (
-                                <Button 
-                                    mode="contained" 
-                                    onPress={handleGenerate}
-                                    loading={loadingGen}
-                                    disabled={loadingGen}
-                                    buttonColor={appTheme.success}
-                                    style={styles.generateBtn}
-                                    contentStyle={styles.generateBtnContent}
-                                    labelStyle={styles.generateBtnLabel}
-                                    icon="key-plus"
-                                >
-                                    GERAR CONVITE
-                                </Button>
+                                <>
+                                    <Text style={[styles.sectionTitle, { marginTop: 4, marginBottom: 10, color: appTheme.textPrimary }]}>
+                                      Perfil do convite
+                                    </Text>
+                                    <SegmentedButtons
+                                      value={inviteProfile}
+                                      onValueChange={(value) => setInviteProfile(value as ShareAccessProfile)}
+                                      buttons={[
+                                        {
+                                          value: 'manager',
+                                          label: 'Gerente',
+                                          disabled: !canInviteManager,
+                                        },
+                                        {
+                                          value: 'operator',
+                                          label: 'Operador',
+                                        },
+                                        {
+                                          value: 'viewer',
+                                          label: 'Relatorios',
+                                        },
+                                      ]}
+                                      style={styles.segmented}
+                                      theme={{
+                                        colors: {
+                                          secondaryContainer: COLORS.successSoft,
+                                          onSecondaryContainer: COLORS.success,
+                                          outline: appTheme.border,
+                                        }
+                                      }}
+                                    />
+                                    <Text style={[styles.subtitle, { marginTop: 10, marginBottom: 12, color: appTheme.textSecondary }]}>
+                                      {inviteProfile === 'manager'
+                                        ? 'Gerente pode compartilhar acessos e administrar a operacao, mas apenas o proprietario remove outro gerente.'
+                                        : inviteProfile === 'operator'
+                                          ? 'Operador registra dados e executa a rotina diaria sem controlar acessos.'
+                                          : 'Relatorios acessa vendas e relatorios sem alterar dados da operacao.'}
+                                    </Text>
+                                    <Button 
+                                        mode="contained" 
+                                        onPress={handleGenerate}
+                                        loading={loadingGen}
+                                        disabled={loadingGen || !canManageSharing}
+                                        buttonColor={appTheme.success}
+                                        style={styles.generateBtn}
+                                        contentStyle={styles.generateBtnContent}
+                                        labelStyle={styles.generateBtnLabel}
+                                        icon="key-plus"
+                                    >
+                                        {`GERAR CONVITE ${getShareProfileLabel(inviteProfile).toUpperCase()}`}
+                                    </Button>
+                                </>
                             )}
 
                             <Text style={[styles.sectionTitle, { marginTop: 26, marginBottom: 12, color: appTheme.textPrimary }]}> 
@@ -472,6 +576,7 @@ export default function ShareAccountScreen({ navigation }: any) {
                                 <View style={{ marginTop: 4, gap: 10 }}>
                                     {filteredMembers.map((member) => {
                                         const isRemoving = removingMemberId === member.userId;
+                                        const isUpdating = updatingMemberProfile?.userId === member.userId;
                                         return (
                                             <Card
                                                 key={member.userId}
@@ -506,7 +611,7 @@ export default function ShareAccountScreen({ navigation }: any) {
                                                             <MaterialCommunityIcons name="shield-account" size={16} color={appTheme.textSecondary} />
                                                             <Text style={[styles.metaText, { color: appTheme.textSecondary }]}>Perfil: </Text>
                                                             <View style={[styles.rolePill, { backgroundColor: appTheme.successSoft, borderColor: appTheme.success }]}>
-                                                                <Text style={[styles.rolePillText, { color: appTheme.success }]}>{getRoleLabel(member.role)}</Text>
+                                                                <Text style={[styles.rolePillText, { color: appTheme.success }]}>{getMemberRoleLabel(member.role)}</Text>
                                                             </View>
                                                         </View>
                                                         <View style={styles.detailRow}>
@@ -515,6 +620,22 @@ export default function ShareAccountScreen({ navigation }: any) {
                                                         </View>
                                                     </View>
                                                     <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                                                        <View style={styles.memberProfileActions}>
+                                                            {(['manager', 'operator', 'viewer'] as ShareAccessProfile[]).map((profile) => (
+                                                                <Button
+                                                                    key={profile}
+                                                                    mode={getMemberProfile(member) === profile ? 'contained-tonal' : 'text'}
+                                                                    onPress={() => handleChangeMemberProfile(member, profile)}
+                                                                    disabled={!canChangeMemberProfile(member, profile) || isUpdating || isRemoving}
+                                                                    loading={isUpdating && updatingMemberProfile?.profile === profile}
+                                                                    compact
+                                                                    contentStyle={styles.memberProfileButtonContent}
+                                                                    labelStyle={styles.memberProfileButtonLabel}
+                                                                >
+                                                                    {getShareProfileLabel(profile)}
+                                                                </Button>
+                                                            ))}
+                                                        </View>
                                                         <Button
                                                             mode="text"
                                                             icon="content-copy"
@@ -523,16 +644,22 @@ export default function ShareAccountScreen({ navigation }: any) {
                                                         >
                                                             Copiar
                                                         </Button>
-                                                        <Button
-                                                            mode="text"
-                                                            textColor={appTheme.danger}
-                                                            onPress={() => handleRemoveMember(member)}
-                                                            loading={isRemoving}
-                                                            disabled={isRemoving}
-                                                            compact
-                                                        >
-                                                            Remover
-                                                        </Button>
+                                                        {canRemoveMember(member) ? (
+                                                            <Button
+                                                                mode="text"
+                                                                textColor={appTheme.danger}
+                                                                onPress={() => handleRemoveMember(member)}
+                                                                loading={isRemoving}
+                                                                disabled={isRemoving}
+                                                                compact
+                                                            >
+                                                                Remover
+                                                            </Button>
+                                                        ) : (
+                                                            <Text style={[styles.lockedActionText, { color: appTheme.textSecondary }]}>
+                                                                So o proprietario remove gerente
+                                                            </Text>
+                                                        )}
                                                     </View>
                                                 </Card.Content>
                                             </Card>
@@ -592,6 +719,21 @@ const styles = StyleSheet.create({
       paddingVertical: 2,
     },
     rolePillText: { fontSize: 11, fontWeight: '800' },
+    memberProfileActions: {
+      alignItems: 'flex-end',
+      gap: 2,
+      minWidth: 116,
+    },
+    memberProfileButtonContent: {
+      minHeight: 30,
+      paddingHorizontal: 2,
+    },
+    memberProfileButtonLabel: {
+      fontSize: 11,
+      fontWeight: '800',
+      marginHorizontal: 4,
+    },
+    lockedActionText: { fontSize: 11, fontWeight: '700', textAlign: 'right', maxWidth: 110 },
 
     emptyState: { 
       alignItems: 'center', 

@@ -26,7 +26,7 @@ import SkeletonBlock from '../../components/ui/SkeletonBlock';
 import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 
 const EstufasListScreen = ({ navigation, route }: any) => {
-  const { user, selectedTenantId } = useAuth();
+  const { canWrite, user, selectedTenantId } = useAuth();
   const insets = useSafeAreaInsets();
   const theme = useThemeMode();
   const { settings } = useAppSettings();
@@ -95,7 +95,7 @@ const EstufasListScreen = ({ navigation, route }: any) => {
       if (!plantioAtivo) {
         Alert.alert('Sem ciclo ativo', 'Crie um novo ciclo nesta estufa para registrar venda.', [
           { text: 'Cancelar', style: 'cancel' },
-          { text: 'Criar Ciclo', onPress: () => navigation.navigate('PlantioForm', { estufaId }) },
+          { text: 'Criar Ciclo', onPress: () => canWrite && navigation.navigate('PlantioForm', { estufaId }) },
         ]);
         showWarning('Sem ciclo ativo nesta estufa.');
         return;
@@ -152,7 +152,7 @@ const EstufasListScreen = ({ navigation, route }: any) => {
         return;
       }
       if (mode === 'plantio') {
-        navigation.navigate('PlantioForm', { estufaId, talhaoId });
+        if (canWrite) navigation.navigate('PlantioForm', { estufaId, talhaoId });
         return;
       }
       if (mode === 'manejo') {
@@ -318,7 +318,7 @@ const EstufasListScreen = ({ navigation, route }: any) => {
         badgeLabel={mode ? 'Seleção' : 'Operação'}
         actionLabel={mode ? undefined : 'Nova Estufa'}
         actionIcon="plus"
-        onPressAction={mode ? undefined : () => navigation.navigate('EstufaForm')}
+        onPressAction={!mode && canWrite ? () => navigation.navigate('EstufaForm') : undefined}
       >
         <View style={styles.headerStats}>
           <View style={styles.headerStatChip}>
@@ -388,7 +388,7 @@ const EstufasListScreen = ({ navigation, route }: any) => {
               title="Nenhuma estufa cadastrada"
               description="Cadastre sua primeira estufa para iniciar o monitoramento."
               actionLabel="Adicionar estufa"
-              onAction={() => navigation.navigate('EstufaForm')}
+              onAction={canWrite ? () => navigation.navigate('EstufaForm') : undefined}
             />
           ) : null
         }

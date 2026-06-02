@@ -8,7 +8,19 @@ interface AuthContextData {
   loading: boolean;
   selectedTenantId: string;
   changeTenant: (uid: string) => void;
-  availableTenants: { uid: string; name: string; type?: 'owner' | 'shared'; ownerName?: string; role?: 'guest' | 'operator' | 'admin' }[];
+  availableTenants: {
+    uid: string;
+    name: string;
+    type?: 'owner' | 'shared';
+    ownerName?: string;
+    role?: 'guest' | 'operator' | 'admin';
+    permissions?: {
+      canRead?: boolean;
+      canWrite?: boolean;
+      canDelete?: boolean;
+      canManageSharing?: boolean;
+    };
+  }[];
   signIn: (email: string, password: string) => Promise<void>;
   refreshUserProfile: () => Promise<void>;
 }
@@ -28,7 +40,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
   const [availableTenants, setAvailableTenants] = useState<
-    { uid: string; name: string; type?: 'owner' | 'shared'; ownerName?: string; role?: 'guest' | 'operator' | 'admin' }[]
+    {
+      uid: string;
+      name: string;
+      type?: 'owner' | 'shared';
+      ownerName?: string;
+      role?: 'guest' | 'operator' | 'admin';
+      permissions?: {
+        canRead?: boolean;
+        canWrite?: boolean;
+        canDelete?: boolean;
+        canManageSharing?: boolean;
+      };
+    }[]
   >([]);
 
   const ensureSupabaseProfileAndTenants = useCallback(
@@ -49,7 +73,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       let { data: memberships } = await supabase
         .from('tenant_memberships')
-        .select('tenant_id, role, tenants(id, name, owner_user_id)')
+        .select('tenant_id, role, can_read, can_write, can_delete, can_manage_sharing, tenants(id, name, owner_user_id)')
         .eq('user_id', authUser.id);
 
       if (!memberships || memberships.length === 0) {
@@ -65,7 +89,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         const reload = await supabase
           .from('tenant_memberships')
-          .select('tenant_id, role, tenants(id, name, owner_user_id)')
+          .select('tenant_id, role, can_read, can_write, can_delete, can_manage_sharing, tenants(id, name, owner_user_id)')
           .eq('user_id', authUser.id);
         memberships = reload.data || [];
       }
@@ -81,6 +105,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           type: (isOwner ? 'owner' : 'shared') as 'owner' | 'shared',
           ownerName: isOwner ? fallbackName : undefined,
           role: (m.role || 'guest') as 'guest' | 'operator' | 'admin',
+          permissions: isOwner
+            ? {
+                canRead: true,
+                canWrite: true,
+                canDelete: true,
+                canManageSharing: true,
+              }
+            : {
+                canRead: !!m.can_read,
+                canWrite: !!m.can_write,
+                canDelete: !!m.can_delete,
+                canManageSharing: !!m.can_manage_sharing,
+              },
         };
       });
 
@@ -93,7 +130,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       const role =
         (profile?.role as User['role']) ||
-        ((memberships || []).some((m: any) => m.role === 'admin') ? 'admin' : 'operator');
+        ((memberships || []).some((m: any) => m.role === 'admin')
+          ? 'admin'
+          : (memberships || []).some((m: any) => m.role === 'operator')
+            ? 'operator'
+            : 'guest');
 
       setUser({
         uid: authUser.id,

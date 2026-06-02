@@ -21,12 +21,50 @@ const toMillis = (value: ShareCode['expiresAt']) => {
     return value?.toMillis ? value.toMillis() : 0;
 };
 
-const defaultSharePermissions = {
-    canRead: true,
-    canWrite: true,
-    canDelete: false,
-    canManageSharing: false,
+export type ShareAccessProfile = 'manager' | 'operator' | 'viewer';
+
+const shareProfileConfig: Record<ShareAccessProfile, {
+    grantRole: 'guest' | 'operator' | 'admin';
+    permissions: {
+        canRead: boolean;
+        canWrite: boolean;
+        canDelete: boolean;
+        canManageSharing: boolean;
+    };
+}> = {
+    manager: {
+        grantRole: 'admin',
+        permissions: {
+            canRead: true,
+            canWrite: true,
+            canDelete: true,
+            canManageSharing: true,
+        },
+    },
+    operator: {
+        grantRole: 'operator',
+        permissions: {
+            canRead: true,
+            canWrite: true,
+            canDelete: false,
+            canManageSharing: false,
+        },
+    },
+    viewer: {
+        grantRole: 'guest',
+        permissions: {
+            canRead: true,
+            canWrite: false,
+            canDelete: false,
+            canManageSharing: false,
+        },
+    },
 };
+
+const defaultSharePermissions = shareProfileConfig.operator.permissions;
+
+const resolveShareProfile = (profile: ShareAccessProfile = 'operator') =>
+    shareProfileConfig[profile] || shareProfileConfig.operator;
 
 const generatePseudoRandomString = (length: number) => {
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -81,6 +119,8 @@ export interface TenantMember {
     canDelete: boolean;
     canManageSharing: boolean;
 }
+
+type TenantMemberRole = TenantMember['role'];
 
 type RedeemRateState = {
     attempts: number;
@@ -141,7 +181,12 @@ const registerRedeemAttempt = async (success: boolean) => {
 };
 
 // Gera um código de compartilhamento mais forte (sem Cloud Functions)
-export const generateShareCode = async (tenantId: string, tenantName: string, ownerName: string) => {
+export const generateShareCode = async (
+    tenantId: string,
+    tenantName: string,
+    ownerName: string,
+    profile: ShareAccessProfile = 'operator'
+) => {
     const currentUid = auth.currentUser?.uid;
     if (!currentUid || currentUid !== tenantId) {
         if (!isSupabaseBackend()) {
@@ -155,6 +200,18 @@ export const generateShareCode = async (tenantId: string, tenantName: string, ow
         if (!supabaseUid) throw new Error('Usuario nao autenticado.');
 
         await ensureSupabaseSharePermission(tenantId, supabaseUid);
+        const { data: tenantRow, error: tenantError } = await supabase
+            .from('tenants')
+            .select('owner_user_id')
+            .eq('id', tenantId)
+            .maybeSingle();
+        if (tenantError) {
+            throw new Error(`Nao foi possivel validar o proprietario. ${tenantError.message}`);
+        }
+        if (profile === 'manager' && tenantRow?.owner_user_id !== supabaseUid) {
+            throw new Error('Somente o proprietario pode convidar um gerente.');
+        }
+        const resolvedProfile = resolveShareProfile(profile);
 
         const expiresAtIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
@@ -165,8 +222,8 @@ export const generateShareCode = async (tenantId: string, tenantName: string, ow
                 code,
                 tenant_name: tenantName || null,
                 owner_name: ownerName || null,
-                grant_role: 'operator',
-                permissions: defaultSharePermissions,
+                grant_role: resolvedProfile.grantRole,
+                permissions: resolvedProfile.permissions,
                 created_by: supabaseUid,
                 expires_at: expiresAtIso,
                 used_by: [],
@@ -181,6 +238,7 @@ export const generateShareCode = async (tenantId: string, tenantName: string, ow
     }
 
     const expiresAt = Timestamp.fromMillis(Date.now() + (24 * 60 * 60 * 1000)); // 24 horas
+    const resolvedProfile = resolveShareProfile(profile);
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
         const code = generateSecureShareCode();
@@ -196,8 +254,8 @@ export const generateShareCode = async (tenantId: string, tenantName: string, ow
             createdBy: tenantId,
             createdAt: Timestamp.now(),
             updatedAt: Timestamp.now(),
-            grantRole: 'operator',
-            permissions: defaultSharePermissions,
+            grantRole: resolvedProfile.grantRole,
+            permissions: resolvedProfile.permissions,
             expiresAt,
             consumed: false,
             consumedBy: null,
@@ -416,15 +474,20 @@ export const listTenantMembers = async (tenantId: string, currentUserId: string)
     });
 };
 
-export const removeTenantMember = async (tenantId: string, memberUserId: string, currentUserId: string) => {
-    if (!tenantId || !memberUserId) {
-        throw new Error('Parametros invalidos para remover parceiro.');
+export const updateTenantMemberProfile = async (
+    tenantId: string,
+    memberUserId: string,
+    currentUserId: string,
+    profile: ShareAccessProfile
+) => {
+    if (!tenantId || !memberUserId || !currentUserId) {
+        throw new Error('Parametros invalidos para atualizar parceiro.');
     }
     if (!isSupabaseBackend()) {
         throw new Error('Operacao disponivel apenas no modo Supabase.');
     }
     if (memberUserId === currentUserId) {
-        throw new Error('Voce nao pode remover seu proprio acesso por esta tela.');
+        throw new Error('Voce nao pode alterar seu proprio perfil por esta tela.');
     }
 
     const supabase = getSupabaseClient();
@@ -439,7 +502,100 @@ export const removeTenantMember = async (tenantId: string, memberUserId: string,
         throw new Error(`Falha ao validar proprietario do tenant. ${tenantError.message}`);
     }
     if (tenantRow?.owner_user_id === memberUserId) {
+        throw new Error('Nao e permitido alterar o perfil do proprietario do tenant.');
+    }
+
+    const currentIsOwner = tenantRow?.owner_user_id === currentUserId;
+    if (profile === 'manager' && !currentIsOwner) {
+        throw new Error('Somente o proprietario pode promover um parceiro para gerente.');
+    }
+
+    const { data: targetMembership, error: targetMembershipError } = await supabase
+        .from('tenant_memberships')
+        .select('role')
+        .eq('tenant_id', tenantId)
+        .eq('user_id', memberUserId)
+        .maybeSingle();
+    if (targetMembershipError) {
+        throw new Error(`Falha ao validar o perfil do parceiro. ${targetMembershipError.message}`);
+    }
+    if (!targetMembership) {
+        throw new Error('Parceiro nao encontrado neste tenant.');
+    }
+    if ((targetMembership.role as TenantMemberRole) === 'admin' && !currentIsOwner) {
+        throw new Error('Somente o proprietario pode alterar o perfil de um gerente.');
+    }
+
+    const resolvedProfile = resolveShareProfile(profile);
+    const { error } = await supabase
+        .from('tenant_memberships')
+        .update({
+            role: resolvedProfile.grantRole,
+            can_read: resolvedProfile.permissions.canRead,
+            can_write: resolvedProfile.permissions.canWrite,
+            can_delete: resolvedProfile.permissions.canDelete,
+            can_manage_sharing: resolvedProfile.permissions.canManageSharing,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('tenant_id', tenantId)
+        .eq('user_id', memberUserId);
+    if (error) {
+        throw new Error(`Falha ao atualizar perfil do parceiro. ${error.message}`);
+    }
+};
+
+export const removeTenantMember = async (tenantId: string, memberUserId: string, currentUserId: string) => {
+    if (!tenantId || !memberUserId) {
+        throw new Error('Parametros invalidos para remover parceiro.');
+    }
+    if (!isSupabaseBackend()) {
+        throw new Error('Operacao disponivel apenas no modo Supabase.');
+    }
+    if (memberUserId === currentUserId) {
+        throw new Error('Voce nao pode remover seu proprio acesso por esta tela.');
+    }
+
+    const supabase = getSupabaseClient();
+    await ensureSupabaseSharePermission(tenantId, currentUserId);
+
+    const { data: currentMembership, error: currentMembershipError } = await supabase
+        .from('tenant_memberships')
+        .select('role')
+        .eq('tenant_id', tenantId)
+        .eq('user_id', currentUserId)
+        .maybeSingle();
+    if (currentMembershipError) {
+        throw new Error(`Falha ao validar seu acesso no tenant. ${currentMembershipError.message}`);
+    }
+
+    const { data: tenantRow, error: tenantError } = await supabase
+        .from('tenants')
+        .select('owner_user_id')
+        .eq('id', tenantId)
+        .maybeSingle();
+    if (tenantError) {
+        throw new Error(`Falha ao validar proprietario do tenant. ${tenantError.message}`);
+    }
+    if (tenantRow?.owner_user_id === memberUserId) {
         throw new Error('Nao e permitido remover o proprietario do tenant.');
+    }
+
+    const { data: targetMembership, error: targetMembershipError } = await supabase
+        .from('tenant_memberships')
+        .select('role')
+        .eq('tenant_id', tenantId)
+        .eq('user_id', memberUserId)
+        .maybeSingle();
+    if (targetMembershipError) {
+        throw new Error(`Falha ao validar o perfil do parceiro. ${targetMembershipError.message}`);
+    }
+
+    const currentIsOwner = tenantRow?.owner_user_id === currentUserId;
+    const currentRole = currentIsOwner ? 'owner' : currentMembership?.role || 'guest';
+    const targetRole = targetMembership?.role || 'guest';
+
+    if (!currentIsOwner && currentRole === 'admin' && targetRole === 'admin') {
+        throw new Error('Somente o proprietario pode remover um gerente.');
     }
 
     const { error } = await supabase

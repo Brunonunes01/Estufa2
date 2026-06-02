@@ -29,7 +29,7 @@ import {
 import { getSupabaseClient } from '../../services/supabaseClient';
 
 const SettingsScreen = ({ navigation }: any) => {
-  const { user, isAdmin, refreshUserProfile } = useAuth();
+  const { user, accessRoleLabel, canManageSecurity, isManager, isOwner, refreshUserProfile } = useAuth();
   const { signOut } = useDashboardActions();
   const { settings, updateSettings } = useAppSettings();
   const { showSuccess, showError, showWarning } = useFeedback();
@@ -47,7 +47,7 @@ const SettingsScreen = ({ navigation }: any) => {
   const [syncState, setSyncState] = useState<OfflineSyncState>(getOfflineSyncState());
   const [syncingNow, setSyncingNow] = useState(false);
 
-  const roleLabel = useMemo(() => (isAdmin ? 'Administrador' : 'Operador'), [isAdmin]);
+  const roleLabel = useMemo(() => accessRoleLabel, [accessRoleLabel]);
   const appVersion = Constants.expoConfig?.version || '1.0.0';
 
   useEffect(() => {
@@ -115,8 +115,8 @@ const SettingsScreen = ({ navigation }: any) => {
   };
 
   const handleAlterarSenha = async () => {
-    if (!isAdmin) {
-      showWarning('Somente administradores podem alterar a senha crítica.');
+    if (!canManageSecurity) {
+      showWarning('Apenas proprietario ou gerente podem alterar a senha critica.');
       return;
     }
     if (!senhaAtual || !senhaNova || !senhaConfirmacao) {
@@ -183,7 +183,7 @@ const SettingsScreen = ({ navigation }: any) => {
       <SectionHeading title="Configurações" subtitle="Conta, segurança e preferências do sistema" />
 
       <View style={styles.roleBadge}>
-        <MaterialCommunityIcons name={isAdmin ? 'shield-account' : 'account'} size={16} color={COLORS.textLight} />
+        <MaterialCommunityIcons name={isOwner || isManager ? 'shield-account' : 'account'} size={16} color={COLORS.textLight} />
         <Text style={styles.roleBadgeText}>{roleLabel}</Text>
       </View>
 
@@ -218,11 +218,11 @@ const SettingsScreen = ({ navigation }: any) => {
         <Text style={styles.label}>Confirmar nova senha</Text>
         <TextInput style={styles.input} value={senhaConfirmacao} onChangeText={setSenhaConfirmacao} secureTextEntry />
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={handleAlterarSenha} disabled={savingSecurity || !isAdmin}>
+        <TouchableOpacity style={styles.primaryBtn} onPress={handleAlterarSenha} disabled={savingSecurity || !canManageSecurity}>
           {savingSecurity ? (
             <ActivityIndicator color={COLORS.textLight} />
           ) : (
-            <Text style={styles.primaryBtnText}>{isAdmin ? 'Atualizar Senha Admin' : 'Apenas Administrador'}</Text>
+            <Text style={styles.primaryBtnText}>{canManageSecurity ? 'Atualizar Senha Critica' : 'Apenas Proprietario/Gerente'}</Text>
           )}
         </TouchableOpacity>
       </View>

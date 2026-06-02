@@ -40,7 +40,7 @@ import EmptyState from '../../components/ui/EmptyState';
 type FinancialStatus = 'pendente' | 'pago' | 'cancelado';
 
 const VendasListScreen = ({ navigation }: any) => {
-  const { user, selectedTenantId, availableTenants, isOwner, isAdmin } = useAuth();
+  const { canWrite, user, selectedTenantId, availableTenants, canViewCash } = useAuth();
   const { settings } = useAppSettings();
   const theme = useThemeMode();
   const insets = useSafeAreaInsets();
@@ -749,7 +749,7 @@ const VendasListScreen = ({ navigation }: any) => {
         </TouchableOpacity>
 
         <View style={[styles.saleFooter, { borderTopColor: theme.divider }]}> 
-          {status === 'pendente' ? (
+          {canWrite && status === 'pendente' ? (
             <TouchableOpacity style={styles.saleFooterBtn} onPress={goToContasReceber}>
               <MaterialCommunityIcons name="cash-check" size={20} color={COLORS.success} />
               <Text style={[styles.saleFooterBtnText, { color: COLORS.success }]}>Receber</Text>
@@ -843,7 +843,7 @@ const VendasListScreen = ({ navigation }: any) => {
               >
                 <Text style={[styles.financeLinkText, { color: theme.textSecondary }]}>Despesas</Text>
               </TouchableOpacity>
-              {isOwner || isAdmin ? (
+              {canViewCash ? (
                 <TouchableOpacity
                   style={[styles.financeLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
                   onPress={() => navigation.navigate('CaixaResumo')}

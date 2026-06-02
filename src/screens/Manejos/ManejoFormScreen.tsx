@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../hooks/useAuth';
+import { useWriteGuard } from '../../hooks/useWriteGuard';
 import { createManejo } from '../../services/manejoService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { Timestamp } from '../../compat/legacyDataApi'; 
@@ -18,6 +19,7 @@ const tiposManejo = [
 
 const ManejoFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
+  const canWrite = useWriteGuard(navigation, 'Registro de manejo');
   const { settings } = useAppSettings();
   const insets = useSafeAreaInsets();
   
@@ -42,6 +44,7 @@ const ManejoFormScreen = ({ route, navigation }: any) => {
   }, [navigation]);
 
   const handleSave = async () => {
+    if (!canWrite) return;
     const targetId = (selectedTenantId || user?.uid) as string;
     
     if (!plantioId || !estufaId) {
