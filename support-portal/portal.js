@@ -1,6 +1,13 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
 const PAGE_SIZE = 20;
+const TEAM_AUDIT_PAGE_SIZE = 6;
+const CASE_SLA_HOURS = {
+  critica: 4,
+  alta: 8,
+  media: 24,
+  baixa: 48,
+};
 const STORAGE_KEY = 'sge_support_supabase_cfg';
 const WRITE_UNLOCK_KEY = 'sge_support_write_unlock_until';
 const WRITE_UNLOCK_MINUTES = 20;
@@ -41,6 +48,15 @@ const state = {
   globalSearchResults: [],
   globalSearching: false,
   auditFilters: { action: '', actor: '', from: '', to: '' },
+  teamRows: [],
+  teamFilters: { term: '', role: '' },
+  teamSort: { key: 'updated_at', direction: 'desc' },
+  teamAuditRows: [],
+  teamAuditPage: 1,
+  teamFilterDebounceHandle: null,
+  supportCases: [],
+  supportOps: { statusFilter: '' },
+  supportExpandedCaseId: '',
 };
 
 const appRoot = document.getElementById('portalApp');
@@ -80,7 +96,14 @@ const MENU = [
   },
   {
     section: 'Seguranca',
-    items: [{ id: 'support_audit', label: 'Auditoria' }],
+    items: [
+      { id: 'team_access', label: 'Equipe e Acessos' },
+      { id: 'support_audit', label: 'Auditoria' },
+    ],
+  },
+  {
+    section: 'Suporte',
+    items: [{ id: 'support_ops', label: 'Central de Suporte' }],
   },
 ];
 
@@ -746,6 +769,224 @@ function renderGlobalSearchCard() {
   `;
 }
 
+function roleBadge(role) {
+  const clean = String(role || 'guest').toLowerCase();
+  const cls = clean === 'admin' ? 'danger' : clean === 'operator' ? 'warn' : 'muted';
+  return `<span class="tag ${cls}">${escapeHtml(clean)}</span>`;
+}
+
+function permissionSummary(row) {
+  const flags = [];
+  if (row.can_read) flags.push('R');
+  if (row.can_write) flags.push('W');
+  if (row.can_delete) flags.push('D');
+  if (row.can_manage_sharing) flags.push('S');
+  return flags.join(' ') || '-';
+}
+
+function rolePreset(role) {
+  const clean = String(role || '').toLowerCase();
+  if (clean === 'admin') {
+    return { role: 'admin', can_read: true, can_write: true, can_delete: true, can_manage_sharing: true };
+  }
+  if (clean === 'operator') {
+    return { role: 'operator', can_read: true, can_write: true, can_delete: false, can_manage_sharing: false };
+  }
+  return { role: 'guest', can_read: true, can_write: false, can_delete: false, can_manage_sharing: false };
+}
+
+async function loadTeamAccessRows() {
+  if (!state.selectedTenantId) return [];
+  const { data, error } = await supabase
+    .from('tenant_memberships')
+    .select('id,user_id,role,can_read,can_write,can_delete,can_manage_sharing,created_at,updated_at')
+    .eq('tenant_id', state.selectedTenantId)
+    .order('updated_at', { ascending: false });
+  if (error) throw error;
+  const rows = data || [];
+  const userIds = [...new Set(rows.map((row) => row.user_id).filter(Boolean))];
+  let profileMap = new Map();
+  if (userIds.length) {
+    const { data: profiles, error: profileError } = await supabase
+      .from('profiles')
+      .select('id,name,email')
+      .in('id', userIds);
+    if (profileError) throw profileError;
+    profileMap = new Map((profiles || []).map((profile) => [profile.id, profile]));
+  }
+  return rows.map((row) => {
+    const profile = profileMap.get(row.user_id);
+    return {
+      ...row,
+      user_name: profile?.name || '-',
+      user_email: profile?.email || '-',
+    };
+  });
+}
+
+function renderTeamAccessCard() {
+  const term = String(state.teamFilters.term || '').toLowerCase().trim();
+  const roleFilter = String(state.teamFilters.role || '').toLowerCase().trim();
+  const filteredRows = state.teamRows.filter((row) => {
+    const matchesRole = !roleFilter || String(row.role || '').toLowerCase() === roleFilter;
+    if (!matchesRole) return false;
+    if (!term) return true;
+    return [row.user_name, row.user_email, row.user_id, row.role].some((value) =>
+      String(value || '').toLowerCase().includes(term)
+    );
+  });
+
+  const directionFactor = state.teamSort.direction === 'asc' ? 1 : -1;
+  const rows = [...filteredRows].sort((a, b) => {
+    const key = state.teamSort.key;
+    const aValue = a?.[key];
+    const bValue = b?.[key];
+    if (key === 'updated_at') {
+      const aTime = new Date(aValue || a.created_at || 0).getTime();
+      const bTime = new Date(bValue || b.created_at || 0).getTime();
+      return (aTime - bTime) * directionFactor;
+    }
+    return String(aValue || '')
+      .localeCompare(String(bValue || ''), 'pt-BR', { sensitivity: 'base' }) * directionFactor;
+  });
+
+  const sortIcon = (key) => {
+    if (state.teamSort.key !== key) return '';
+    return state.teamSort.direction === 'asc' ? ' ^' : ' v';
+  };
+
+  const tableRows = rows
+    .map(
+      (row) => `
+      <tr data-row-id="${escapeHtml(row.id)}">
+        <td>${escapeHtml(row.user_name)}</td>
+        <td>${escapeHtml(row.user_email)}</td>
+        <td>${escapeHtml(row.user_id)}</td>
+        <td>${roleBadge(row.role)}</td>
+        <td>${escapeHtml(permissionSummary(row))}</td>
+        <td>${formatDateTime(row.updated_at || row.created_at)}</td>
+        <td>
+          <div class="table-actions">
+            <button class="btn btn-soft" data-action="team-set-role" data-id="${escapeHtml(row.id)}" data-role="admin" ${!isWriteUnlocked() ? 'disabled' : ''}>Admin</button>
+            <button class="btn btn-soft" data-action="team-set-role" data-id="${escapeHtml(row.id)}" data-role="operator" ${!isWriteUnlocked() ? 'disabled' : ''}>Operador</button>
+            <button class="btn btn-outline" data-action="team-set-role" data-id="${escapeHtml(row.id)}" data-role="guest" ${!isWriteUnlocked() ? 'disabled' : ''}>Guest</button>
+            <button class="btn btn-danger" data-action="team-remove" data-id="${escapeHtml(row.id)}" ${!isWriteUnlocked() ? 'disabled' : ''}>Remover</button>
+          </div>
+        </td>
+      </tr>
+    `
+    )
+    .join('');
+
+  return `
+    <div class="card">
+      <h2>Equipe e Acessos</h2>
+      <p class="support-note">Permissoes por tenant. R=read, W=write, D=delete, S=sharing.</p>
+      <div class="row">
+        <button class="btn btn-primary" data-action="team-add-member" ${!isWriteUnlocked() ? 'disabled' : ''}>Adicionar membro</button>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <input class="input" id="team-filter-term" placeholder="Buscar por nome, email, user ID..." value="${escapeHtml(
+          state.teamFilters.term
+        )}" />
+        <select class="input" id="team-filter-role">
+          <option value="" ${state.teamFilters.role ? '' : 'selected'}>Todas as roles</option>
+          <option value="admin" ${state.teamFilters.role === 'admin' ? 'selected' : ''}>admin</option>
+          <option value="operator" ${state.teamFilters.role === 'operator' ? 'selected' : ''}>operator</option>
+          <option value="guest" ${state.teamFilters.role === 'guest' ? 'selected' : ''}>guest</option>
+        </select>
+      </div>
+      <div class="table-wrap" style="margin-top:10px;">
+        <table>
+          <thead>
+            <tr>
+              <th><button class="btn btn-outline" data-action="team-sort" data-key="user_name">Nome${sortIcon('user_name')}</button></th>
+              <th><button class="btn btn-outline" data-action="team-sort" data-key="user_email">Email${sortIcon('user_email')}</button></th>
+              <th><button class="btn btn-outline" data-action="team-sort" data-key="user_id">User ID${sortIcon('user_id')}</button></th>
+              <th><button class="btn btn-outline" data-action="team-sort" data-key="role">Role${sortIcon('role')}</button></th>
+              <th>Perm.</th>
+              <th><button class="btn btn-outline" data-action="team-sort" data-key="updated_at">Atualizado${sortIcon('updated_at')}</button></th>
+              <th>Acoes</th>
+            </tr>
+          </thead>
+          <tbody>${tableRows || '<tr><td colspan="7">Sem membros neste tenant.</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:10px;justify-content:space-between;align-items:center;">
+        <small>${rows.length} membro(s)</small>
+      </div>
+    </div>
+  `;
+}
+
+async function loadTeamAuditRows() {
+  if (!state.selectedTenantId) return [];
+  const actions = ['tenant_memberships.create', 'tenant_memberships.update', 'tenant_memberships.delete'];
+  const { data, error } = await supabase
+    .from('support_audit')
+    .select('id,created_at,created_by,action,note,metadata')
+    .eq('tenant_id', state.selectedTenantId)
+    .in('action', actions)
+    .order('created_at', { ascending: false })
+    .limit(12);
+  if (error) throw error;
+  return data || [];
+}
+
+function summarizeTeamAuditEntry(row) {
+  const md = row?.metadata || {};
+  const after = md.after || {};
+  const before = md.before || {};
+  if (row.action === 'tenant_memberships.create') {
+    return `Acesso criado para ${after.user_id || '-'} como ${after.role || '-'}`;
+  }
+  if (row.action === 'tenant_memberships.delete') {
+    return `Acesso removido de ${before.user_id || '-'}`;
+  }
+  if (row.action === 'tenant_memberships.update') {
+    return `Role alterada de ${before.role || '-'} para ${after.role || '-'}`;
+  }
+  return row.action;
+}
+
+function renderTeamAuditCard() {
+  const totalPages = Math.max(1, Math.ceil(state.teamAuditRows.length / TEAM_AUDIT_PAGE_SIZE));
+  state.teamAuditPage = Math.max(1, Math.min(state.teamAuditPage, totalPages));
+  const start = (state.teamAuditPage - 1) * TEAM_AUDIT_PAGE_SIZE;
+  const rows = state.teamAuditRows.slice(start, start + TEAM_AUDIT_PAGE_SIZE);
+  const body = rows
+    .map(
+      (row) => `
+      <tr>
+        <td>${formatDateTime(row.created_at)}</td>
+        <td>${escapeHtml(row.created_by)}</td>
+        <td>${escapeHtml(summarizeTeamAuditEntry(row))}</td>
+        <td>${escapeHtml(row.note || '-')}</td>
+      </tr>
+    `
+    )
+    .join('');
+  return `
+    <div class="card">
+      <h2>Historico de Acessos</h2>
+      <div class="table-wrap" style="margin-top:10px;">
+        <table>
+          <thead><tr><th>Data</th><th>Tecnico</th><th>Mudanca</th><th>Justificativa</th></tr></thead>
+          <tbody>${body || '<tr><td colspan="4">Sem historico recente.</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:10px;justify-content:space-between;align-items:center;">
+        <small>${state.teamAuditRows.length} evento(s)</small>
+        <div class="row">
+          <button class="btn btn-outline" data-action="team-audit-prev">Anterior</button>
+          <span>Pagina ${state.teamAuditPage}/${totalPages}</span>
+          <button class="btn btn-outline" data-action="team-audit-next">Proxima</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 async function runGlobalSearch(term) {
   const clean = String(term || '').trim();
   if (!clean) {
@@ -786,11 +1027,12 @@ async function runGlobalSearch(term) {
 
 async function renderOverview() {
   if (!state.selectedTenantId) return '<div class="card">Selecione um tenant para iniciar.</div>';
-  const [estufas, plantios, vendas, despesas] = await Promise.all([
+  const [estufas, plantios, vendas, despesas, members] = await Promise.all([
     queryTenantCollection('estufas'),
     queryTenantCollection('plantios'),
     queryTenantCollection('vendas'),
     queryTenantCollection('despesas'),
+    loadTeamAccessRows(),
   ]);
   const totalReceber = vendas
     .filter((v) => v.status_pagamento === 'pendente' || v.status_pagamento === 'atrasado')
@@ -806,6 +1048,7 @@ async function renderOverview() {
         <div class="kpi"><span class="label">Plantios ativos</span><span class="value">${plantios.filter((p) => p.status !== 'finalizado').length}</span></div>
         <div class="kpi"><span class="label">Total a receber</span><span class="value">${formatCurrency(totalReceber)}</span></div>
         <div class="kpi"><span class="label">Total a pagar</span><span class="value">${formatCurrency(totalPagar)}</span></div>
+        <div class="kpi"><span class="label">Membros</span><span class="value">${members.length}</span></div>
       </div>
     </div>
     ${renderGlobalSearchCard()}
@@ -1147,6 +1390,181 @@ function triggerCsvDownload(csv, filename) {
   URL.revokeObjectURL(url);
 }
 
+function generateSupportCaseId() {
+  const token = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `CASE-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-${token}`;
+}
+
+function getCaseSlaHours(priority) {
+  const key = String(priority || 'media').toLowerCase();
+  return CASE_SLA_HOURS[key] || CASE_SLA_HOURS.media;
+}
+
+function getCaseSlaState(item) {
+  const baseTime = new Date(item.created_at || item.updated_at || Date.now()).getTime();
+  const slaHours = getCaseSlaHours(item.priority);
+  const deadline = baseTime + slaHours * 60 * 60 * 1000;
+  const remainingMs = deadline - Date.now();
+  if (item.status === 'resolvido') {
+    return { label: 'Resolvido', cls: 'success' };
+  }
+  if (remainingMs <= 0) {
+    return { label: `SLA vencido (${slaHours}h)`, cls: 'danger' };
+  }
+  const remainingHours = Math.ceil(remainingMs / (60 * 60 * 1000));
+  if (remainingHours <= Math.max(1, Math.floor(slaHours * 0.25))) {
+    return { label: `SLA risco (${remainingHours}h)`, cls: 'warn' };
+  }
+  return { label: `SLA ok (${remainingHours}h)`, cls: 'success' };
+}
+
+async function loadSupportCases() {
+  if (!state.selectedTenantId) return [];
+  const { data, error } = await supabase
+    .from('support_audit')
+    .select('id,created_at,created_by,action,note,metadata')
+    .eq('tenant_id', state.selectedTenantId)
+    .in('action', ['support.case.opened', 'support.case.updated'])
+    .order('created_at', { ascending: false })
+    .limit(400);
+  if (error) throw error;
+
+  const map = new Map();
+  (data || []).forEach((row) => {
+    const md = row.metadata || {};
+    const caseId = String(md.case_id || '').trim();
+    if (!caseId) return;
+    if (!map.has(caseId)) {
+      map.set(caseId, {
+        case_id: caseId,
+        title: md.title || 'Sem titulo',
+        status: md.status || 'aberto',
+        priority: md.priority || 'media',
+        assigned_to: md.assigned_to || '',
+        tenant_id: state.selectedTenantId,
+        last_note: row.note || '',
+        created_at: row.created_at,
+        updated_at: row.created_at,
+        created_by: row.created_by,
+        history: [],
+      });
+    }
+    const current = map.get(caseId);
+    current.history.push({
+      audit_id: row.id,
+      at: row.created_at,
+      by: row.created_by,
+      action: row.action,
+      note: row.note || '',
+      status: md.status || current.status,
+      priority: md.priority || current.priority,
+      assigned_to: md.assigned_to || current.assigned_to || '',
+    });
+    const newer = new Date(row.created_at).getTime() > new Date(current.updated_at).getTime();
+    if (newer) {
+      current.status = md.status || current.status;
+      current.priority = md.priority || current.priority;
+      current.assigned_to = md.assigned_to || current.assigned_to;
+      current.last_note = row.note || current.last_note;
+      current.updated_at = row.created_at;
+    }
+  });
+
+  return [...map.values()].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+}
+
+function renderSupportOpsCard() {
+  const statusFilter = String(state.supportOps.statusFilter || '');
+  const cases = state.supportCases.filter((item) => !statusFilter || item.status === statusFilter);
+  const openCount = state.supportCases.filter((item) => item.status === 'aberto').length;
+  const progressCount = state.supportCases.filter((item) => item.status === 'em_andamento').length;
+  const closedCount = state.supportCases.filter((item) => item.status === 'resolvido').length;
+
+  const rows = cases
+    .map((item) => {
+      const expanded = state.supportExpandedCaseId === item.case_id;
+      const timeline = expanded
+        ? `<tr><td colspan="8">${renderSupportTimelineHtml(item)}</td></tr>`
+        : '';
+      return `
+      <tr>
+        <td>${escapeHtml(item.case_id)}</td>
+        <td>${escapeHtml(item.title)}</td>
+        <td>${formatStatus(item.status)}</td>
+        <td>${escapeHtml(item.priority)}</td>
+        <td>${escapeHtml(item.assigned_to || '-')}</td>
+        <td><span class="tag ${getCaseSlaState(item).cls}">${escapeHtml(getCaseSlaState(item).label)}</span></td>
+        <td>${formatDateTime(item.updated_at)}</td>
+        <td>
+          <div class="table-actions">
+            <button class="btn btn-soft" data-action="support-case-update" data-case-id="${escapeHtml(item.case_id)}">Atualizar</button>
+            <button class="btn btn-outline" data-action="support-case-toggle-timeline" data-case-id="${escapeHtml(item.case_id)}">${expanded ? 'Ocultar timeline' : 'Ver timeline'}</button>
+            <button class="btn btn-danger" data-action="support-case-escalate" data-case-id="${escapeHtml(item.case_id)}" ${!isWriteUnlocked() ? 'disabled' : ''}>Escalar</button>
+          </div>
+        </td>
+      </tr>
+      ${timeline}
+    `;
+    })
+    .join('');
+
+  return `
+    <div class="card">
+      <h2>Central de Suporte</h2>
+      <div class="grid cols-4">
+        <div class="kpi"><span class="label">Casos abertos</span><span class="value">${openCount}</span></div>
+        <div class="kpi"><span class="label">Em andamento</span><span class="value">${progressCount}</span></div>
+        <div class="kpi"><span class="label">Resolvidos</span><span class="value">${closedCount}</span></div>
+        <div class="kpi"><span class="label">Total</span><span class="value">${state.supportCases.length}</span></div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn btn-primary" data-action="support-case-create" ${!isWriteUnlocked() ? 'disabled' : ''}>Abrir caso</button>
+        <select class="input" id="support-status-filter">
+          <option value="" ${!statusFilter ? 'selected' : ''}>Todos os status</option>
+          <option value="aberto" ${statusFilter === 'aberto' ? 'selected' : ''}>aberto</option>
+          <option value="em_andamento" ${statusFilter === 'em_andamento' ? 'selected' : ''}>em_andamento</option>
+          <option value="resolvido" ${statusFilter === 'resolvido' ? 'selected' : ''}>resolvido</option>
+        </select>
+      </div>
+      <div class="table-wrap" style="margin-top:10px;">
+        <table>
+          <thead><tr><th>Case ID</th><th>Titulo</th><th>Status</th><th>Prioridade</th><th>Atribuido</th><th>SLA</th><th>Atualizado</th><th>Acoes</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="8">Sem casos para este filtro.</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderSupportTimelineHtml(selected) {
+  const history = [...(selected.history || [])].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  const items = history
+    .map(
+      (item) => `
+      <div class="card" style="padding:10px;">
+        <div class="row" style="justify-content:space-between;align-items:center;">
+          <strong>${escapeHtml(item.action)}</strong>
+          <small>${formatDateTime(item.at)}</small>
+        </div>
+        <div><small>Por: ${escapeHtml(item.by || '-')}</small></div>
+        <div class="row" style="margin-top:6px;">
+          <span class="tag muted">status: ${escapeHtml(item.status || '-')}</span>
+          <span class="tag muted">prioridade: ${escapeHtml(item.priority || '-')}</span>
+          <span class="tag muted">atribuido: ${escapeHtml(item.assigned_to || '-')}</span>
+        </div>
+        <p style="margin:8px 0 0;">${escapeHtml(item.note || '-')}</p>
+      </div>
+    `
+    )
+    .join('');
+  return `
+    <div>
+      <label>Timeline do caso ${escapeHtml(selected.case_id || '')}</label>
+      <div class="grid" style="max-height:220px;overflow:auto;">${items || '<small>Sem eventos.</small>'}</div>
+    </div>
+  `;
+}
+
 async function auditedUpdate({ collectionName, docId, before, patch, action, note }) {
   ensureWriteAllowed();
   await logSupportAction({
@@ -1189,10 +1607,17 @@ async function renderMain() {
     return;
   }
   const viewConfig = MODULE_CONFIG[state.currentView];
-  el.viewTitle.textContent = viewConfig?.title || 'Portal de Suporte';
+  el.viewTitle.textContent = state.currentView === 'team_access' ? 'Equipe e Acessos' : viewConfig?.title || 'Portal de Suporte';
   let viewHtml = '';
   if (state.currentView === 'overview') {
     viewHtml = await renderOverview();
+  } else if (state.currentView === 'team_access') {
+    state.teamRows = await loadTeamAccessRows();
+    state.teamAuditRows = await loadTeamAuditRows();
+    viewHtml = `${renderTeamAccessCard()}${renderTeamAuditCard()}`;
+  } else if (state.currentView === 'support_ops') {
+    state.supportCases = await loadSupportCases();
+    viewHtml = renderSupportOpsCard();
   } else {
     const rows = await loadRows(viewConfig.collection);
     viewHtml = buildTableHtml(viewConfig, rows, viewConfig.collection);
@@ -1346,6 +1771,362 @@ function attachGlobalListeners() {
       const rows = state.cachedRows.support_audit || [];
       const csv = buildCsvFromRows(rows);
       triggerCsvDownload(csv, `support_audit_${new Date().toISOString().slice(0, 10)}.csv`);
+      return;
+    }
+
+    if (action === 'team-add-member') {
+      if (!isWriteUnlocked()) {
+        setStatus('Modo leitura ativo. Destrave a escrita antes de adicionar membro.', true);
+        return;
+      }
+      const html = `
+        <div class="form-grid">
+          <div>
+            <label>User ID *</label>
+            <input class="input" name="user_id" required placeholder="UUID do usuario" />
+          </div>
+          <div>
+            <label>Role *</label>
+            <select class="input" name="role" required>
+              <option value="operator">operator</option>
+              <option value="guest">guest</option>
+              <option value="admin">admin</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label>Justificativa</label>
+          <textarea name="auditNote" required minlength="8" placeholder="Descreva o motivo da concessao de acesso."></textarea>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-outline" type="button" id="cancelRecordEdit">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Adicionar</button>
+        </div>
+      `;
+      openRecordModal('Adicionar membro do tenant', html, async (formData) => {
+        const userId = String(formData.get('user_id') || '').trim();
+        const role = String(formData.get('role') || 'operator').trim();
+        const note = String(formData.get('auditNote') || '').trim();
+        if (!isUuid(userId)) throw new Error('User ID invalido. Informe um UUID valido.');
+        if (note.length < 8) throw new Error('Justificativa minima de 8 caracteres.');
+        const payload = {
+          tenant_id: state.selectedTenantId,
+          user_id: userId,
+          ...rolePreset(role),
+        };
+        await logSupportAction({
+          action: 'tenant_memberships.create',
+          note,
+          metadata: { collection_name: 'tenant_memberships', before: null, after: payload },
+        });
+        const { error } = await supabase.from('tenant_memberships').insert(payload);
+        if (error) throw error;
+        setStatus('Membro adicionado com sucesso.');
+      });
+      return;
+    }
+
+    if (action === 'team-audit-prev' || action === 'team-audit-next') {
+      state.teamAuditPage = Math.max(1, state.teamAuditPage + (action === 'team-audit-next' ? 1 : -1));
+      await safeRenderMain();
+      return;
+    }
+
+    if (action === 'team-sort') {
+      const key = actionBtn.dataset.key;
+      if (!key) return;
+      if (state.teamSort.key === key) {
+        state.teamSort.direction = state.teamSort.direction === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.teamSort.key = key;
+        state.teamSort.direction = key === 'updated_at' ? 'desc' : 'asc';
+      }
+      await safeRenderMain();
+      return;
+    }
+
+    if (action === 'team-set-role') {
+      if (!isWriteUnlocked()) {
+        setStatus('Modo leitura ativo. Destrave a escrita antes de alterar role.', true);
+        return;
+      }
+      const membershipId = actionBtn.dataset.id;
+      const nextRole = actionBtn.dataset.role;
+      const row = state.teamRows.find((item) => item.id === membershipId);
+      if (!row) return;
+      if (row.user_id === state.user?.id && String(nextRole) !== 'admin') {
+        setStatus('Voce nao pode rebaixar seu proprio acesso admin nesta tela.', true);
+        return;
+      }
+      const patch = rolePreset(nextRole);
+      if (String(nextRole) === 'admin' && String(row.role || '').toLowerCase() !== 'admin') {
+        const confirmPhrase = window.prompt('Confirme a promocao digitando: PROMOVER ADMIN');
+        if (confirmPhrase !== 'PROMOVER ADMIN') {
+          setStatus('Promocao para admin cancelada: confirmacao invalida.', true);
+          return;
+        }
+      }
+      openAuditModal(`Alterar role para ${nextRole}`, async (note) => {
+        await logSupportAction({
+          action: 'tenant_memberships.update',
+          note,
+          metadata: {
+            collection_name: 'tenant_memberships',
+            doc_id: row.id,
+            before: row,
+            after: patch,
+          },
+        });
+        const { error } = await supabase
+          .from('tenant_memberships')
+          .update(patch)
+          .eq('id', row.id)
+          .eq('tenant_id', state.selectedTenantId);
+        if (error) throw error;
+      });
+      return;
+    }
+
+    if (action === 'team-remove') {
+      if (!isWriteUnlocked()) {
+        setStatus('Modo leitura ativo. Destrave a escrita antes de remover membro.', true);
+        return;
+      }
+      const membershipId = actionBtn.dataset.id;
+      const row = state.teamRows.find((item) => item.id === membershipId);
+      if (!row) return;
+      if (row.user_id === state.user?.id) {
+        setStatus('Voce nao pode remover seu proprio acesso para evitar lockout.', true);
+        return;
+      }
+      openAuditModal(`Remover acesso de ${row.user_name}`, async (note) => {
+        await logSupportAction({
+          action: 'tenant_memberships.delete',
+          note,
+          metadata: { collection_name: 'tenant_memberships', doc_id: row.id, before: row, after: null },
+        });
+        const { error } = await supabase
+          .from('tenant_memberships')
+          .delete()
+          .eq('id', row.id)
+          .eq('tenant_id', state.selectedTenantId);
+        if (error) throw error;
+      });
+      return;
+    }
+
+    if (action === 'support-case-create') {
+      if (!isWriteUnlocked()) {
+        setStatus('Modo leitura ativo. Destrave a escrita antes de abrir caso.', true);
+        return;
+      }
+      const html = `
+        <div class="form-grid">
+          <div>
+            <label>Titulo *</label>
+            <input class="input" name="title" required placeholder="Ex.: Falha no cadastro de vendas" />
+          </div>
+          <div>
+            <label>Prioridade *</label>
+            <select class="input" name="priority" required>
+              <option value="baixa">baixa</option>
+              <option value="media" selected>media</option>
+              <option value="alta">alta</option>
+              <option value="critica">critica</option>
+            </select>
+          </div>
+          <div>
+            <label>Atribuir para (user_id)</label>
+            <input class="input" name="assigned_to" placeholder="UUID opcional" />
+          </div>
+          <div>
+            <label>Status inicial *</label>
+            <select class="input" name="status" required>
+              <option value="aberto" selected>aberto</option>
+              <option value="em_andamento">em_andamento</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label>Descricao tecnica / justificativa *</label>
+          <textarea name="auditNote" required minlength="8" placeholder="Descreva contexto tecnico, impacto e proximo passo."></textarea>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-outline" type="button" id="cancelRecordEdit">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Abrir caso</button>
+        </div>
+      `;
+      openRecordModal('Abrir caso de suporte', html, async (formData) => {
+        const note = String(formData.get('auditNote') || '').trim();
+        const title = String(formData.get('title') || '').trim();
+        const priority = String(formData.get('priority') || 'media');
+        const status = String(formData.get('status') || 'aberto');
+        const assignedTo = String(formData.get('assigned_to') || '').trim();
+        if (note.length < 8) throw new Error('Justificativa minima de 8 caracteres.');
+        if (!title) throw new Error('Titulo e obrigatorio.');
+        if (assignedTo && !isUuid(assignedTo)) throw new Error('Atribuido deve ser UUID valido.');
+        const caseId = generateSupportCaseId();
+        await logSupportAction({
+          action: 'support.case.opened',
+          note,
+          metadata: {
+            case_id: caseId,
+            title,
+            status,
+            priority,
+            assigned_to: assignedTo || null,
+          },
+        });
+        setStatus(`Caso aberto com sucesso: ${caseId}`);
+      });
+      return;
+    }
+
+    if (action === 'support-case-update') {
+      if (!isWriteUnlocked()) {
+        setStatus('Modo leitura ativo. Destrave a escrita antes de atualizar caso.', true);
+        return;
+      }
+      const caseId = String(actionBtn.dataset.caseId || '').trim();
+      const selected = state.supportCases.find((item) => item.case_id === caseId);
+      if (!selected) {
+        setStatus('Caso nao encontrado para atualizacao.', true);
+        return;
+      }
+      const html = `
+        ${renderSupportTimelineHtml(selected)}
+        <div class="form-grid">
+          <div>
+            <label>Status *</label>
+            <select class="input" name="status" required>
+              <option value="aberto" ${selected.status === 'aberto' ? 'selected' : ''}>aberto</option>
+              <option value="em_andamento" ${selected.status === 'em_andamento' ? 'selected' : ''}>em_andamento</option>
+              <option value="resolvido" ${selected.status === 'resolvido' ? 'selected' : ''}>resolvido</option>
+            </select>
+          </div>
+          <div>
+            <label>Prioridade *</label>
+            <select class="input" name="priority" required>
+              <option value="baixa" ${selected.priority === 'baixa' ? 'selected' : ''}>baixa</option>
+              <option value="media" ${selected.priority === 'media' ? 'selected' : ''}>media</option>
+              <option value="alta" ${selected.priority === 'alta' ? 'selected' : ''}>alta</option>
+              <option value="critica" ${selected.priority === 'critica' ? 'selected' : ''}>critica</option>
+            </select>
+          </div>
+          <div>
+            <label>Atribuir para (user_id)</label>
+            <input class="input" name="assigned_to" value="${escapeHtml(selected.assigned_to || '')}" placeholder="UUID opcional" />
+          </div>
+        </div>
+        <div>
+          <label>Atualizacao tecnica / justificativa *</label>
+          <textarea name="auditNote" required minlength="8" placeholder="Descreva progresso, bloqueios e proximo passo."></textarea>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-outline" type="button" id="cancelRecordEdit">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Salvar atualizacao</button>
+        </div>
+      `;
+      openRecordModal(`Atualizar ${caseId}`, html, async (formData) => {
+        const note = String(formData.get('auditNote') || '').trim();
+        const status = String(formData.get('status') || selected.status || 'aberto');
+        const priority = String(formData.get('priority') || selected.priority || 'media');
+        const assignedTo = String(formData.get('assigned_to') || '').trim();
+        if (note.length < 8) throw new Error('Justificativa minima de 8 caracteres.');
+        if (assignedTo && !isUuid(assignedTo)) throw new Error('Atribuido deve ser UUID valido.');
+        await logSupportAction({
+          action: 'support.case.updated',
+          note,
+          metadata: {
+            case_id: selected.case_id,
+            title: selected.title,
+            status,
+            priority,
+            assigned_to: assignedTo || null,
+          },
+        });
+        setStatus(`Caso ${selected.case_id} atualizado.`);
+      });
+      return;
+    }
+
+    if (action === 'support-case-toggle-timeline') {
+      const caseId = String(actionBtn.dataset.caseId || '').trim();
+      if (!caseId) return;
+      state.supportExpandedCaseId = state.supportExpandedCaseId === caseId ? '' : caseId;
+      await safeRenderMain();
+      return;
+    }
+
+    if (action === 'support-case-escalate') {
+      if (!isWriteUnlocked()) {
+        setStatus('Modo leitura ativo. Destrave a escrita antes de escalar caso.', true);
+        return;
+      }
+      const caseId = String(actionBtn.dataset.caseId || '').trim();
+      const selected = state.supportCases.find((item) => item.case_id === caseId);
+      if (!selected) {
+        setStatus('Caso nao encontrado para escalonamento.', true);
+        return;
+      }
+      const html = `
+        ${renderSupportTimelineHtml(selected)}
+        <div class="form-grid">
+          <div>
+            <label>Responsavel (user_id) *</label>
+            <input class="input" name="assigned_to" required placeholder="UUID do responsavel" value="${escapeHtml(
+              selected.assigned_to || ''
+            )}" />
+          </div>
+          <div>
+            <label>Canal de escalonamento *</label>
+            <select class="input" name="escalation_channel" required>
+              <option value="on_call">on_call</option>
+              <option value="engenharia">engenharia</option>
+              <option value="produto">produto</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label>Motivo tecnico do escalonamento *</label>
+          <textarea name="auditNote" required minlength="8" placeholder="Descreva o impacto e por que precisa escalonar."></textarea>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-outline" type="button" id="cancelRecordEdit">Cancelar</button>
+          <button class="btn btn-danger" type="submit">Escalar caso</button>
+        </div>
+      `;
+      openRecordModal(`Escalar ${caseId}`, html, async (formData) => {
+        const note = String(formData.get('auditNote') || '').trim();
+        const assignedTo = String(formData.get('assigned_to') || '').trim();
+        const channel = String(formData.get('escalation_channel') || '').trim();
+        if (note.length < 8) throw new Error('Justificativa minima de 8 caracteres.');
+        if (!isUuid(assignedTo)) throw new Error('Responsavel deve ser UUID valido.');
+        await logSupportAction({
+          action: 'support.case.escalated',
+          note,
+          metadata: {
+            case_id: selected.case_id,
+            title: selected.title,
+            status: 'em_andamento',
+            priority: 'critica',
+            assigned_to: assignedTo,
+            escalation_channel: channel || 'on_call',
+          },
+        });
+        await logSupportAction({
+          action: 'support.case.updated',
+          note: `Escalonado para ${channel || 'on_call'}. ${note}`,
+          metadata: {
+            case_id: selected.case_id,
+            title: selected.title,
+            status: 'em_andamento',
+            priority: 'critica',
+            assigned_to: assignedTo,
+          },
+        });
+        setStatus(`Caso ${selected.case_id} escalado com prioridade critica.`);
+      });
       return;
     }
 
@@ -1519,11 +2300,38 @@ function attachGlobalListeners() {
 
   el.mainContent.addEventListener('change', async (event) => {
     const target = event.target;
-    if (target.id !== 'tenantSelector') return;
-    state.selectedTenantId = target.value;
-    state.cachedRows = {};
-    state.globalSearchResults = [];
-    await safeRenderMain();
+    if (target.id === 'tenantSelector') {
+      state.selectedTenantId = target.value;
+      state.cachedRows = {};
+      state.globalSearchResults = [];
+      state.teamRows = [];
+      state.teamAuditRows = [];
+      state.teamAuditPage = 1;
+      state.supportCases = [];
+      state.supportExpandedCaseId = '';
+      await safeRenderMain();
+      return;
+    }
+    if (target.id === 'team-filter-role') {
+      state.teamFilters.role = target.value || '';
+      await safeRenderMain();
+      return;
+    }
+    if (target.id === 'support-status-filter') {
+      state.supportOps.statusFilter = target.value || '';
+      await safeRenderMain();
+    }
+  });
+
+  el.mainContent.addEventListener('input', async (event) => {
+    const target = event.target;
+    if (target.id !== 'team-filter-term') return;
+    state.teamFilters.term = target.value || '';
+    if (state.teamFilterDebounceHandle) clearTimeout(state.teamFilterDebounceHandle);
+    state.teamFilterDebounceHandle = setTimeout(async () => {
+      state.teamFilterDebounceHandle = null;
+      await safeRenderMain();
+    }, 250);
   });
 
   el.recordModalClose.addEventListener('click', closeRecordModal);

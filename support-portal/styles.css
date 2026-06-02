@@ -373,6 +373,11 @@ th {
   color: #9a3412;
 }
 
+.tag.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .tag.muted {
   background: #e2e8f0;
   color: #334155;
