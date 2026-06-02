@@ -26,6 +26,7 @@ import { getColheitaById } from '../../services/colheitaService';
 import { getPlantioById, listAllPlantios } from '../../services/plantioService';
 import { listClientes } from '../../services/clienteService';
 import { listEstufas } from '../../services/estufaService';
+import { listTalhoes } from '../../services/talhaoService';
 import { getTotalDespesasPendentes } from '../../services/despesaService';
 import { listCaixaPessoas } from '../../services/caixaPessoaService';
 import { exportSalesAccountingExcel, shareSalesAccountingPdf, shareSalesReportPdf } from '../../services/receiptService';
@@ -39,7 +40,7 @@ import EmptyState from '../../components/ui/EmptyState';
 type FinancialStatus = 'pendente' | 'pago' | 'cancelado';
 
 const VendasListScreen = ({ navigation }: any) => {
-  const { user, selectedTenantId, availableTenants } = useAuth();
+  const { user, selectedTenantId, availableTenants, isOwner, isAdmin } = useAuth();
   const { settings } = useAppSettings();
   const theme = useThemeMode();
   const insets = useSafeAreaInsets();
@@ -50,6 +51,7 @@ const VendasListScreen = ({ navigation }: any) => {
   const [clientesMap, setClientesMap] = useState<Record<string, string>>({});
   const [caixaPessoasMap, setCaixaPessoasMap] = useState<Record<string, string>>({});
   const [estufasMap, setEstufasMap] = useState<Record<string, string>>({});
+  const [talhoesMap, setTalhoesMap] = useState<Record<string, string>>({});
   const [plantiosCulturaMap, setPlantiosCulturaMap] = useState<Record<string, string>>({});
   const [totalPagar, setTotalPagar] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -64,6 +66,10 @@ const VendasListScreen = ({ navigation }: any) => {
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+  const [reportStartDate, setReportStartDate] = useState<Date | null>(null);
+  const [reportEndDate, setReportEndDate] = useState<Date | null>(null);
+  const [showReportStartPicker, setShowReportStartPicker] = useState(false);
+  const [showReportEndPicker, setShowReportEndPicker] = useState(false);
 
   const toDate = (value: any): Date | null => {
     if (!value) return null;
@@ -156,11 +162,12 @@ const VendasListScreen = ({ navigation }: any) => {
     else if (allVendas.length === 0) setLoading(true);
 
     try {
-      const [vendasData, clientesData, pessoasCaixaData, estufasData, plantiosData, despesasPendentes] = await Promise.all([
+      const [vendasData, clientesData, pessoasCaixaData, estufasData, talhoesData, plantiosData, despesasPendentes] = await Promise.all([
         listAllVendas(targetId),
         listClientes(targetId),
         listCaixaPessoas(targetId),
         listEstufas(targetId),
+        listTalhoes(targetId),
         listAllPlantios(targetId),
         getTotalDespesasPendentes(targetId),
       ]);
@@ -178,11 +185,18 @@ const VendasListScreen = ({ navigation }: any) => {
       });
       setCaixaPessoasMap(caixaMap);
 
+      const tMap: Record<string, string> = {};
+
       const eMap: Record<string, string> = {};
       estufasData.forEach((e) => {
         if (e.id) eMap[e.id] = e.nome;
       });
       setEstufasMap(eMap);
+
+      talhoesData.forEach((t: any) => {
+        if (t?.id) tMap[t.id] = t.nome;
+      });
+      setTalhoesMap(tMap);
 
       const pMap: Record<string, string> = {};
       plantiosData.forEach((p) => {
@@ -202,7 +216,7 @@ const VendasListScreen = ({ navigation }: any) => {
 
   useEffect(() => {
     if (isFocused) {
-      void loadData();
+      void loadData(true);
     }
   }, [isFocused, selectedTenantId, user?.uid]);
 
@@ -254,13 +268,14 @@ const VendasListScreen = ({ navigation }: any) => {
         const recebidoPor = getRecebidoPor(venda);
         const obs = venda.observacoes || '';
         const metodo = venda.metodoPagamento || venda.formaPagamento || '';
-        const content = normalizeText(`${cliente} ${estufa} ${recebidoPor} ${obs} ${metodo}`);
+        const talhao = talhoesMap[venda.talhaoId] || '';
+        const content = normalizeText(`${cliente} ${estufa} ${talhao} ${recebidoPor} ${obs} ${metodo}`);
         matchSearch = content.includes(search);
       }
 
       return matchCliente && matchStatus && matchDate && matchSearch;
     });
-  }, [allVendas, filterCliente, filterStatus, startDate, endDate, searchText, clientesMap, estufasMap, caixaPessoasMap]);
+  }, [allVendas, filterCliente, filterStatus, startDate, endDate, searchText, clientesMap, estufasMap, talhoesMap, caixaPessoasMap]);
 
   const stats = useMemo(() => {
     const data = {
@@ -316,6 +331,77 @@ const VendasListScreen = ({ navigation }: any) => {
     return `Ate ${endDate?.toLocaleDateString('pt-BR')}`;
   }, [startDate, endDate]);
 
+  const reportPeriodLabel = useMemo(() => {
+    if (!reportStartDate && !reportEndDate) return periodLabel;
+    if (reportStartDate && reportEndDate) {
+      return `${reportStartDate.toLocaleDateString('pt-BR')} ate ${reportEndDate.toLocaleDateString('pt-BR')}`;
+    }
+    if (reportStartDate) return `A partir de ${reportStartDate.toLocaleDateString('pt-BR')}`;
+    return `Ate ${reportEndDate?.toLocaleDateString('pt-BR')}`;
+  }, [periodLabel, reportStartDate, reportEndDate]);
+
+  const reportFilteredVendas = useMemo(() => {
+    if (!reportStartDate && !reportEndDate) return filteredVendas;
+
+    return filteredVendas.filter((venda) => {
+      const vendaData = getVendaData(venda);
+      if (!vendaData) return false;
+
+      const dt = toDate(vendaData);
+      if (!dt) return false;
+
+      const base = new Date(dt);
+      base.setHours(0, 0, 0, 0);
+
+      if (reportStartDate) {
+        const min = new Date(reportStartDate);
+        min.setHours(0, 0, 0, 0);
+        if (base < min) return false;
+      }
+
+      if (reportEndDate) {
+        const max = new Date(reportEndDate);
+        max.setHours(0, 0, 0, 0);
+        if (base > max) return false;
+      }
+
+      return true;
+    });
+  }, [filteredVendas, reportStartDate, reportEndDate]);
+
+  const reportStats = useMemo(() => {
+    const data = {
+      totalValor: 0,
+      totalItens: 0,
+      totalItensFinanceiros: 0,
+      totalRecebido: 0,
+      totalReceber: 0,
+      ticketMedio: 0,
+      porMetodo: {} as Record<string, number>,
+    };
+
+    reportFilteredVendas.forEach((venda) => {
+      const val = getVendaTotal(venda);
+      const status = getFinancialStatus(venda);
+      const ignorarFinanceiro = status === 'cancelado';
+
+      data.totalItens += 1;
+      if (ignorarFinanceiro) return;
+
+      data.totalItensFinanceiros += 1;
+      data.totalValor += val;
+      if (status === 'pago') data.totalRecebido += val;
+      if (status === 'pendente') data.totalReceber += val;
+
+      const metodoRaw = String(venda.metodoPagamento || venda.formaPagamento || 'nao definido');
+      const metodo = metodoRaw.charAt(0).toUpperCase() + metodoRaw.slice(1);
+      data.porMetodo[metodo] = (data.porMetodo[metodo] || 0) + val;
+    });
+
+    data.ticketMedio = data.totalItensFinanceiros > 0 ? data.totalValor / data.totalItensFinanceiros : 0;
+    return data;
+  }, [reportFilteredVendas]);
+
   const clearFilters = () => {
     setFilterCliente('todos');
     setFilterStatus('todos');
@@ -324,30 +410,32 @@ const VendasListScreen = ({ navigation }: any) => {
     setShowFilterModal(false);
   };
 
-  const handleShareReport = async () => {
+  const handleShareReport = async (sourceVendas = filteredVendas, sourceStats = stats, sourcePeriodLabel = periodLabel) => {
     let msg = '*Relatorio de Vendas - SGE*\n';
     msg += '-----------------------------\n';
-    msg += `Periodo: ${periodLabel}\n`;
-    msg += `Total vendido: ${formatCurrency(stats.totalValor)}\n`;
-    msg += `Recebido: ${formatCurrency(stats.totalRecebido)}\n`;
-    msg += `A receber: ${formatCurrency(stats.totalReceber)}\n`;
+    msg += `Periodo: ${sourcePeriodLabel}\n`;
+    msg += `Total vendido: ${formatCurrency(sourceStats.totalValor)}\n`;
+    msg += `Recebido: ${formatCurrency(sourceStats.totalRecebido)}\n`;
+    msg += `A receber: ${formatCurrency(sourceStats.totalReceber)}\n`;
     msg += `A pagar: ${formatCurrency(totalPagar)}\n`;
-    msg += `Saldo atual: ${formatCurrency(saldoAtual)}\n`;
-    msg += `Saldo projetado: ${formatCurrency(saldoProjetado)}\n`;
-    msg += `Vendas: ${stats.totalItens}\n`;
+    msg += `Saldo atual: ${formatCurrency(sourceStats.totalRecebido - totalPagar)}\n`;
+    msg += `Saldo projetado: ${formatCurrency(sourceStats.totalRecebido + sourceStats.totalReceber - totalPagar)}\n`;
+    msg += `Vendas: ${sourceStats.totalItens}\n`;
     msg += '-----------------------------\n\n';
 
     msg += 'Metodos de pagamento:\n';
-    Object.keys(stats.porMetodo).forEach((metodo) => {
-      msg += `- ${metodo}: ${formatCurrency(stats.porMetodo[metodo])}\n`;
+    Object.keys(sourceStats.porMetodo).forEach((metodo) => {
+      msg += `- ${metodo}: ${formatCurrency(sourceStats.porMetodo[metodo])}\n`;
     });
 
     msg += '\nPrincipais vendas:\n';
-    filteredVendas.slice(0, 10).forEach((venda) => {
-      msg += `- ${getClienteNome(venda.clienteId)}: ${formatCurrency(getVendaTotal(venda))}\n`;
+    sourceVendas.slice(0, 10).forEach((venda) => {
+      const metodo = String(venda.metodoPagamento || venda.formaPagamento || 'nao definido');
+      const metodoLabel = metodo.charAt(0).toUpperCase() + metodo.slice(1);
+      msg += `- ${getClienteNome(venda.clienteId)}: ${formatCurrency(getVendaTotal(venda))} | ${metodoLabel}\n`;
     });
-    if (filteredVendas.length > 10) {
-      msg += `... e mais ${filteredVendas.length - 10} vendas.\n`;
+    if (sourceVendas.length > 10) {
+      msg += `... e mais ${sourceVendas.length - 10} vendas.\n`;
     }
 
     msg += `\nGerado em: ${new Date().toLocaleString('pt-BR')}`;
@@ -359,7 +447,7 @@ const VendasListScreen = ({ navigation }: any) => {
     }
   };
 
-  const handleExportPdf = async () => {
+  const handleExportPdf = async (sourceVendas = filteredVendas, sourcePeriodLabel = periodLabel) => {
     const targetId = selectedTenantId || user?.uid;
     if (!targetId) {
       Alert.alert('Erro', 'Usuario invalido para gerar relatorio.');
@@ -370,7 +458,7 @@ const VendasListScreen = ({ navigation }: any) => {
     const nomeProdutor = currentTenant?.ownerName || user?.name || 'Produtor';
 
     try {
-      const totaisRelatorio = filteredVendas.reduce(
+      const totaisRelatorio = sourceVendas.reduce(
         (acc, item) => {
           const total = getVendaTotal(item);
           const status = getFinancialStatus(item);
@@ -384,7 +472,7 @@ const VendasListScreen = ({ navigation }: any) => {
         { totalVendido: 0, totalRecebido: 0, totalReceber: 0, totalRegistros: 0 }
       );
 
-      const itens = filteredVendas.map((item) => {
+      const itens = sourceVendas.map((item) => {
       const status = getFinancialStatus(item);
       return {
           codigo: item.id,
@@ -403,8 +491,8 @@ const VendasListScreen = ({ navigation }: any) => {
         nomeProdutor,
         nomeEstufa: Object.keys(estufasMap).length === 1 ? Object.values(estufasMap)[0] : 'Relatorio Consolidado',
         tituloRelatorio: 'Relatorio Gerencial de Vendas',
-        periodo: periodLabel,
-        observacoes: `Relatorio consolidado com ${filteredVendas.length} vendas.`,
+        periodo: sourcePeriodLabel,
+        observacoes: `Relatorio consolidado com ${sourceVendas.length} vendas.`,
         totais: {
           totalReceber: totaisRelatorio.totalReceber,
           totalPagar,
@@ -598,6 +686,8 @@ const VendasListScreen = ({ navigation }: any) => {
     const clienteNome = getClienteNome(item.clienteId);
     const recebidoPor = getRecebidoPor(item);
     const estufa = estufasMap[item.estufaId] || 'Sem estufa';
+    const talhao = talhoesMap[item.talhaoId] || 'Sem talhao';
+    const isCampoSale = !!item.talhaoId;
     const status = getFinancialStatus(item);
     const metodo = String(item.metodoPagamento || item.formaPagamento || 'nao definido');
     const isHydroSale = item.originType === 'hydro_lote' || !!item.hydroLoteId;
@@ -648,7 +738,11 @@ const VendasListScreen = ({ navigation }: any) => {
           </View>
 
           <Text style={[styles.saleMeta, { color: theme.textSecondary }]}>Data: {formatDate(dataVenda)}</Text>
-          <Text style={[styles.saleMeta, { color: theme.textSecondary }]}>Estufa: {estufa}</Text>
+          {isCampoSale ? (
+            <Text style={[styles.saleMeta, { color: theme.textSecondary }]}>Talhao: {talhao}</Text>
+          ) : (
+            <Text style={[styles.saleMeta, { color: theme.textSecondary }]}>Estufa: {estufa}</Text>
+          )}
           <Text style={[styles.saleMeta, { color: theme.textSecondary }]}>
             {status === 'pago' ? `Recebido por: ${recebidoPor}` : 'Recebimento: pendente'}
           </Text>
@@ -749,6 +843,14 @@ const VendasListScreen = ({ navigation }: any) => {
               >
                 <Text style={[styles.financeLinkText, { color: theme.textSecondary }]}>Despesas</Text>
               </TouchableOpacity>
+              {isOwner || isAdmin ? (
+                <TouchableOpacity
+                  style={[styles.financeLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
+                  onPress={() => navigation.navigate('CaixaResumo')}
+                >
+                  <Text style={[styles.financeLinkText, { color: theme.textSecondary }]}>Caixa</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
 
             <View style={styles.toolbarRow}>
@@ -793,7 +895,7 @@ const VendasListScreen = ({ navigation }: any) => {
 
               <TouchableOpacity
                 style={[styles.actionBtn, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
-                onPress={handleExportPdf}
+                onPress={() => void handleExportPdf()}
               >
                 <MaterialCommunityIcons name="file-pdf-box" size={18} color={theme.info} />
                 <Text style={[styles.actionBtnText, { color: theme.textPrimary }]}>PDF</Text>
@@ -889,6 +991,7 @@ const VendasListScreen = ({ navigation }: any) => {
                   }}
                 />
               ) : null}
+
             </ScrollView>
 
             <View style={styles.modalActions}>
@@ -912,28 +1015,74 @@ const VendasListScreen = ({ navigation }: any) => {
             <View style={styles.reportHeader}>
               <View style={styles.reportHeaderTextWrap}>
                 <Text style={[styles.reportTitle, { color: theme.textPrimary }]}>Resumo gerencial</Text>
-                <Text style={[styles.reportPeriod, { color: theme.textSecondary }]}>{periodLabel}</Text>
+                <Text style={[styles.reportPeriod, { color: theme.textSecondary }]}>{reportPeriodLabel}</Text>
               </View>
               <TouchableOpacity onPress={() => setShowReportModal(false)}>
                 <MaterialCommunityIcons name="close" size={24} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
 
+            <View style={styles.dateRow}>
+              <TouchableOpacity
+                style={[styles.dateBtn, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}
+                onPress={() => setShowReportStartPicker(true)}
+              >
+                <Text style={[styles.dateBtnText, { color: theme.textPrimary }]}>
+                  {reportStartDate ? reportStartDate.toLocaleDateString('pt-BR') : 'Inicio'}
+                </Text>
+                <MaterialCommunityIcons name="calendar" size={16} color={theme.info} />
+              </TouchableOpacity>
+              <Text style={[styles.dateSeparator, { color: theme.textSecondary }]}>ate</Text>
+              <TouchableOpacity
+                style={[styles.dateBtn, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}
+                onPress={() => setShowReportEndPicker(true)}
+              >
+                <Text style={[styles.dateBtnText, { color: theme.textPrimary }]}>
+                  {reportEndDate ? reportEndDate.toLocaleDateString('pt-BR') : 'Fim'}
+                </Text>
+                <MaterialCommunityIcons name="calendar" size={16} color={theme.info} />
+              </TouchableOpacity>
+            </View>
+
+            {showReportStartPicker ? (
+              <DateTimePicker
+                value={reportStartDate || new Date()}
+                mode="date"
+                display="default"
+                onChange={(_, d) => {
+                  setShowReportStartPicker(false);
+                  if (d) setReportStartDate(d);
+                }}
+              />
+            ) : null}
+
+            {showReportEndPicker ? (
+              <DateTimePicker
+                value={reportEndDate || new Date()}
+                mode="date"
+                display="default"
+                onChange={(_, d) => {
+                  setShowReportEndPicker(false);
+                  if (d) setReportEndDate(d);
+                }}
+              />
+            ) : null}
+
             <View style={[styles.bigStat, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
               <Text style={[styles.bigStatLabel, { color: theme.textSecondary }]}>Total vendido</Text>
-              <Text style={[styles.bigStatValue, { color: theme.textPrimary }]}>{formatCurrency(stats.totalValor)}</Text>
+              <Text style={[styles.bigStatValue, { color: theme.textPrimary }]}>{formatCurrency(reportStats.totalValor)}</Text>
             </View>
 
             <View style={[styles.sectionBox, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
               <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Metodos de pagamento</Text>
-              {Object.keys(stats.porMetodo).length === 0 ? (
+              {Object.keys(reportStats.porMetodo).length === 0 ? (
                 <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Sem dados no periodo.</Text>
               ) : (
-                Object.keys(stats.porMetodo).map((metodo) => (
+                Object.keys(reportStats.porMetodo).map((metodo) => (
                   <View key={metodo} style={[styles.statRow, { borderBottomColor: theme.divider }]}>
                     <Text style={[styles.statLabel, { color: theme.textSecondary }]}>{metodo}</Text>
                     <Text style={[styles.statValue, { color: theme.textPrimary }]}>
-                      {formatCurrency(stats.porMetodo[metodo])}
+                      {formatCurrency(reportStats.porMetodo[metodo])}
                     </Text>
                   </View>
                 ))
@@ -941,7 +1090,10 @@ const VendasListScreen = ({ navigation }: any) => {
             </View>
 
             <View style={styles.reportActions}>
-              <TouchableOpacity style={[styles.reportActionBtn, { backgroundColor: theme.info }]} onPress={handleExportPdf}>
+              <TouchableOpacity
+                style={[styles.reportActionBtn, { backgroundColor: theme.info }]}
+                onPress={() => handleExportPdf(reportFilteredVendas, reportPeriodLabel)}
+              >
                 <MaterialCommunityIcons name="file-pdf-box" size={18} color={COLORS.textLight} />
                 <Text style={styles.reportActionText}>Exportar PDF</Text>
               </TouchableOpacity>
@@ -961,7 +1113,7 @@ const VendasListScreen = ({ navigation }: any) => {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.reportActionBtn, { backgroundColor: COLORS.whatsapp }]}
-                onPress={handleShareReport}
+                onPress={() => handleShareReport(reportFilteredVendas, reportStats, reportPeriodLabel)}
               >
                 <MaterialCommunityIcons name="whatsapp" size={18} color={COLORS.textLight} />
                 <Text style={styles.reportActionText}>Compartilhar</Text>
@@ -1162,11 +1314,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    minHeight: 42,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   saleFooterBtnText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '700',
   },
 

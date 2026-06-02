@@ -74,13 +74,17 @@ const RelatoriosScreen = () => {
       const fallbackTotal = Number(item?.quantidade || 0) * Number(item?.valorUnitario || 0);
       return acc + Number(v.valorTotal || fallbackTotal || 0);
     }, 0);
-    const despesaTotal = despesas.reduce((acc, d) => acc + Number(d.valor || 0), 0);
+
+    // Filtrar despesas de mudas (investimento inicial) para que nao aparecam no relatorio financeiro geral
+    const despesasFiltradas = despesas.filter(d => d.tipoGasto !== 'investimento_inicial');
+
+    const despesaTotal = despesasFiltradas.reduce((acc, d) => acc + Number(d.valor || 0), 0);
     const lucroLiquido = receitaTotal - despesaTotal;
     
     const margem = receitaTotal > 0 ? (lucroLiquido / receitaTotal) * 100 : 0;
     
     const porCategoria: Record<string, number> = {};
-    despesas.forEach(d => {
+    despesasFiltradas.forEach(d => {
       const cat = d.categoria || 'outros';
       porCategoria[cat] = (porCategoria[cat] || 0) + Number(d.valor || 0);
     });

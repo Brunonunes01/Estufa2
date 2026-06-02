@@ -12,7 +12,11 @@ export const useDespesasList = () => {
   const [payingId, setPayingId] = useState<string | null>(null);
 
   const query = useDespesasListData(targetId);
-  const despesas = query.data || [];
+  const despesasRaw = query.data || [];
+
+  const despesas = useMemo(() => {
+    return despesasRaw.filter(d => d.tipoGasto !== 'investimento_inicial');
+  }, [despesasRaw]);
 
   const totals = useMemo(() => {
     const totalGasto = despesas.reduce((acc, curr) => acc + curr.valor, 0);

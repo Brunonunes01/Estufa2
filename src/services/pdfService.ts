@@ -536,3 +536,108 @@ export const compartilharPDF = async (input: ComprovantePDFInput) => {
     setShareLocked(false);
   }
 };
+
+export interface RelatorioCaixaInput {
+  tenantNome: string;
+  periodo: string;
+  totalEntradas: number;
+  totalSaidas: number;
+  saldoFinal: number;
+  movimentos: Array<{
+    data: Date;
+    descricao: string;
+    pessoa: string;
+    valor: number;
+    tipo: 'entrada' | 'saida';
+    origem: string;
+    metodoPagamento?: string;
+    observacoes?: string;
+  }>;
+}
+
+export const gerarRelatorioCaixaPDF = async (input: RelatorioCaixaInput) => {
+  const html = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <style>
+          body { font-family: sans-serif; padding: 20px; color: #333; }
+          .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+          .summary { display: flex; justify-content: space-around; margin-bottom: 30px; background: #f9f9f9; padding: 15px; border-radius: 8px; }
+          .summary-item { text-align: center; }
+          .summary-item label { display: block; font-size: 12px; color: #666; text-transform: uppercase; }
+          .summary-item value { font-size: 18px; font-weight: bold; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th, td { border: 1px solid #eee; padding: 10px; text-align: left; font-size: 12px; }
+          th { background: #f4f4f4; }
+          .entrada { color: #166534; font-weight: bold; }
+          .saida { color: #991b1b; font-weight: bold; }
+          .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #999; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Relatório de Caixa</h1>
+          <p>${escapeHtml(input.tenantNome)} - Período: ${escapeHtml(input.periodo)}</p>
+        </div>
+        <div class="summary">
+          <div class="summary-item">
+            <label>Total Entradas</label>
+            <span class="entrada">${formatCurrency(input.totalEntradas)}</span>
+          </div>
+          <div class="summary-item">
+            <label>Total Saídas</label>
+            <span class="saida">${formatCurrency(input.totalSaidas)}</span>
+          </div>
+          <div class="summary-item">
+            <label>Saldo Final</label>
+            <span style="font-weight: bold;">${formatCurrency(input.saldoFinal)}</span>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Descrição</th>
+              <th>Responsável</th>
+              <th>Origem</th>
+              ${input.movimentos.some(m => m.metodoPagamento) ? '<th>Meio Pgto</th>' : ''}
+              ${input.movimentos.some(m => m.observacoes) ? '<th>Observações</th>' : ''}
+              <th>Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${input.movimentos.map(m => `
+              <tr>
+                <td>${formatDateTime(m.data).date}</td>
+                <td>${escapeHtml(m.descricao)}</td>
+                <td>${escapeHtml(m.pessoa)}</td>
+                <td>${escapeHtml(m.origem.toUpperCase())}</td>
+                ${input.movimentos.some(mov => mov.metodoPagamento) ? `<td>${escapeHtml(String(m.metodoPagamento || '-').toUpperCase())}</td>` : ''}
+                ${input.movimentos.some(mov => mov.observacoes) ? `<td>${escapeHtml(m.observacoes || '-')}</td>` : ''}
+                <td class="${m.tipo}">${m.tipo === 'entrada' ? '+' : '-'} ${formatCurrency(m.valor)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="footer">
+          Gerado em ${formatDateTime(new Date()).date} ${formatDateTime(new Date()).time}
+        </div>
+      </body>
+    </html>
+  `;
+  
+  const { uri } = await Print.printToFileAsync({ html });
+  
+  const nomeArquivo = `Relatorio_Caixa_${sanitizeFilenameSegment(input.periodo)}.pdf`;
+  const destinoUri = `${FileSystem.cacheDirectory}${nomeArquivo}`;
+  
+  await FileSystem.copyAsync({ from: uri, to: destinoUri });
+  
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(destinoUri);
+  } else {
+    await downloadPdfOnWeb(destinoUri, nomeArquivo);
+  }
+};

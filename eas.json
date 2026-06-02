@@ -16,7 +16,9 @@
         "EXPO_PUBLIC_AUTOMATION_WEBHOOK_SECRET": "disabled",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "878004575186-oa7bfl8igpooat8te1ipfefdl8d8qcpr.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "878004575186-oa7bfl8igpooat8te1ipfefdl8d8qcpr.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "878004575186-oa7bfl8igpooat8te1ipfefdl8d8qcpr.apps.googleusercontent.com"
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "878004575186-oa7bfl8igpooat8te1ipfefdl8d8qcpr.apps.googleusercontent.com",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "dv8nmmx3z",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "sge_comprovantes_unsigned"
       }
     },
     "preview": {
@@ -33,7 +35,9 @@
         "EXPO_PUBLIC_AUTOMATION_WEBHOOK_SECRET": "disabled",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "878004575186-oa7bfl8igpooat8te1ipfefdl8d8qcpr.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "878004575186-oa7bfl8igpooat8te1ipfefdl8d8qcpr.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "878004575186-oa7bfl8igpooat8te1ipfefdl8d8qcpr.apps.googleusercontent.com"
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "878004575186-oa7bfl8igpooat8te1ipfefdl8d8qcpr.apps.googleusercontent.com",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "dv8nmmx3z",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "sge_comprovantes_unsigned"
       }
     },
     "production": {
@@ -47,7 +51,9 @@
         "EXPO_PUBLIC_AUTOMATION_WEBHOOK_SECRET": "disabled",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "878004575186-oa7bfl8igpooat8te1ipfefdl8d8qcpr.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "878004575186-oa7bfl8igpooat8te1ipfefdl8d8qcpr.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "878004575186-oa7bfl8igpooat8te1ipfefdl8d8qcpr.apps.googleusercontent.com"
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "878004575186-oa7bfl8igpooat8te1ipfefdl8d8qcpr.apps.googleusercontent.com",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "dv8nmmx3z",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "sge_comprovantes_unsigned"
       }
     }
   },

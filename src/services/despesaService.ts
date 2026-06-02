@@ -30,6 +30,12 @@ export type DespesaFormData = {
   observacoes?: string | null;
   plantioId?: string | null;
   estufaId?: string | null;
+  pagamentoPara?: string | null;
+  comprovanteUrl?: string | null;
+  comprovantePublicId?: string | null;
+  comprovanteNome?: string | null;
+  comprovanteMime?: string | null;
+  comprovanteBytes?: number | null;
 };
 
 const mapSupabaseDespesaToDomain = (row: any): Despesa => ({
@@ -46,6 +52,13 @@ const mapSupabaseDespesaToDomain = (row: any): Despesa => ({
   status: row.status_pagamento,
   plantioId: row.plantio_id || undefined,
   estufaId: row.estufa_id || undefined,
+  pagamentoPara: row.pagamento_para || null,
+  tipoGasto: row.tipo_gasto || null,
+  comprovanteUrl: row.comprovante_url || null,
+  comprovantePublicId: row.comprovante_public_id || null,
+  comprovanteNome: row.comprovante_nome || null,
+  comprovanteMime: row.comprovante_mime || null,
+  comprovanteBytes: row.comprovante_bytes != null ? Number(row.comprovante_bytes) : null,
   createdAt: new Date(row.created_at).getTime(),
   updatedAt: new Date(row.updated_at).getTime(),
 });
@@ -60,7 +73,13 @@ const buildSupabaseDespesaPayload = (data: DespesaFormData, tenantId: string) =>
   status_pagamento: data.statusPagamento,
   plantio_id: data.plantioId || null,
   estufa_id: data.estufaId || null,
+  pagamento_para: data.pagamentoPara || null,
   observacoes: data.observacoes || null,
+  comprovante_url: data.comprovanteUrl || null,
+  comprovante_public_id: data.comprovantePublicId || null,
+  comprovante_nome: data.comprovanteNome || null,
+  comprovante_mime: data.comprovanteMime || null,
+  comprovante_bytes: data.comprovanteBytes || null,
 });
 
 const createDespesaLegacy = async (data: DespesaFormData, tenantId: string) => {
@@ -74,6 +93,7 @@ const createDespesaLegacy = async (data: DespesaFormData, tenantId: string) => {
     createdAt: now,
     updatedAt: now,
     status: data.statusPagamento,
+    pagamentoPara: data.pagamentoPara || null,
   };
   const docRef = await addDoc(collection(db, 'despesas'), novaDespesa);
   return docRef.id;
@@ -286,11 +306,15 @@ export const getTotalDespesasPendentes = async (userId: string): Promise<number>
     const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from('despesas')
-      .select('valor')
+      .select('valor, tipo_gasto')
       .eq('tenant_id', tenantId)
       .eq('status_pagamento', 'pendente');
     if (error) throw new Error(`Não foi possível calcular despesas pendentes. ${error.message}`);
-    return (data || []).reduce((acc, item: any) => acc + Number(item.valor || 0), 0);
+    
+    // Filtrar fora investimento_inicial (mudas) conforme solicitado
+    return (data || [])
+      .filter((item: any) => item.tipo_gasto !== 'investimento_inicial')
+      .reduce((acc, item: any) => acc + Number(item.valor || 0), 0);
   }
 
   const q = query(
@@ -300,20 +324,14 @@ export const getTotalDespesasPendentes = async (userId: string): Promise<number>
   );
 
   try {
-    const snapshot = await getAggregateFromServer(q, {
-      total: sum('valor'),
-    });
-
-    return snapshot.data().total || 0;
+    const snap = await getDocs(q);
+    return snap.docs.reduce((acc, item) => {
+      const despesa = item.data() as Partial<Despesa>;
+      // Compatibilidade legada para tipoGasto
+      if (despesa.tipoGasto === 'investimento_inicial') return acc;
+      return acc + Number(despesa.valor || 0);
+    }, 0);
   } catch (error: any) {
-    // Fallback para ambientes/projetos sem índice de agregação composto.
-    if (error?.code === 'failed-precondition' || error?.code === 'unimplemented') {
-      const snap = await getDocs(q);
-      return snap.docs.reduce((acc, item) => {
-        const despesa = item.data() as Partial<Despesa>;
-        return acc + Number(despesa.valor || 0);
-      }, 0);
-    }
     throw error;
   }
 };

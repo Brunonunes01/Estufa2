@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect } from 'react';
-import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,9 +14,10 @@ import EmptyState from '../../components/ui/EmptyState';
 import SkeletonBlock from '../../components/ui/SkeletonBlock';
 import LoadingButton from '../../components/ui/LoadingButton';
 import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
+import { listCaixaPessoas } from '../../services/caixaPessoaService';
 
 const DespesasListScreen = ({ navigation }: any) => {
-  const { isOwner } = useAuth();
+  const { isOwner, user, selectedTenantId } = useAuth();
   const { settings } = useAppSettings();
   const theme = useThemeMode();
   const insets = useSafeAreaInsets();
@@ -34,6 +35,25 @@ const DespesasListScreen = ({ navigation }: any) => {
     deletingId,
     payingId,
   } = useDespesasList();
+  const [caixaPessoasMap, setCaixaPessoasMap] = React.useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const load = async () => {
+      const targetId = selectedTenantId || user?.uid;
+      if (!targetId) return;
+      try {
+        const pessoas = await listCaixaPessoas(targetId);
+        const map: Record<string, string> = {};
+        pessoas.forEach((p) => {
+          map[p.id] = p.nome;
+        });
+        setCaixaPessoasMap(map);
+      } catch (_error) {
+        setCaixaPessoasMap({});
+      }
+    };
+    void load();
+  }, [selectedTenantId, user?.uid]);
 
   useEffect(() => {
     if (isError) showError('Não foi possível carregar as despesas.');
@@ -85,6 +105,20 @@ const DespesasListScreen = ({ navigation }: any) => {
     },
     [markDespesaAsPaid, showError, showSuccess]
   );
+
+  const handleOpenComprovante = useCallback(async (url?: string | null) => {
+    if (!url) return;
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) {
+        Alert.alert('Comprovante', 'Nao foi possivel abrir o comprovante neste dispositivo.');
+        return;
+      }
+      await Linking.openURL(url);
+    } catch (_error) {
+      Alert.alert('Comprovante', 'Falha ao abrir o comprovante.');
+    }
+  }, []);
 
   const getIcon = (cat: string) => {
     switch (cat) {
@@ -200,6 +234,13 @@ const DespesasListScreen = ({ navigation }: any) => {
                     Vencimento: {item.dataVencimento.toDate().toLocaleDateString()}
                   </Text>
                 ) : null}
+                <Text style={[styles.dueText, { color: theme.textSecondary }]}>Saida para: {caixaPessoasMap[item.pagamentoPara || ''] || 'Nao informado'}</Text>
+                {item.comprovanteUrl ? (
+                  <TouchableOpacity style={styles.comprovanteRow} onPress={() => void handleOpenComprovante(item.comprovanteUrl)}>
+                    <MaterialCommunityIcons name="eye-outline" size={15} color={theme.info} />
+                    <Text style={[styles.dueText, { color: theme.info }]}>Ver comprovante</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
 
               <View style={[styles.actionsRow, { borderTopColor: theme.divider }]}>
@@ -311,6 +352,13 @@ const styles = StyleSheet.create({
   moneyLabel: { fontSize: 11, fontWeight: '700' },
   moneyValue: { marginTop: 3, fontSize: 22, fontWeight: '900' },
   dueText: { marginTop: 4, fontSize: 11, fontWeight: '600' },
+  comprovanteRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+  },
 
   actionsRow: {
     marginTop: 12,

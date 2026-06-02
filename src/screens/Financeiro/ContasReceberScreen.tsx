@@ -49,11 +49,11 @@ const ContasReceberScreen = ({ navigation }: any) => {
   const [novoCaixaNome, setNovoCaixaNome] = useState('');
   const [salvandoCaixaPessoa, setSalvandoCaixaPessoa] = useState(false);
 
-  const carregarDados = async () => {
+  const carregarDados = async (isRefresh = false) => {
     const targetId = selectedTenantId || user?.uid;
     if (!targetId) return;
 
-    setLoading(true);
+    if (!isRefresh) setLoading(true);
     try {
       const [listaContas, listaClientes, listaCaixaPessoas] = await Promise.all([
         listContasAReceber(targetId),
@@ -80,7 +80,7 @@ const ContasReceberScreen = ({ navigation }: any) => {
   };
 
   useEffect(() => {
-    if (isFocused) carregarDados();
+    if (isFocused) carregarDados(true);
   }, [isFocused, selectedTenantId, user?.uid]);
 
   const getVendaTotal = (venda: Venda) => {
@@ -483,11 +483,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    minHeight: 46,
+    paddingVertical: 12,
     borderRadius: RADIUS.md,
     gap: 6,
   },
-  btnText: { color: COLORS.textLight, fontWeight: '800', fontSize: 13 },
+  btnText: { color: COLORS.textLight, fontWeight: '800', fontSize: 14 },
 
   modalOverlay: { flex: 1, justifyContent: 'center', padding: 20 },
   modalContent: { borderRadius: RADIUS.lg, padding: SPACING.xl, ...SHADOWS.card },

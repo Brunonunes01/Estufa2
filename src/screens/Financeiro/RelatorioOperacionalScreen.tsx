@@ -74,7 +74,8 @@ const RelatorioOperacionalScreen = () => {
     }
 
     const { vendas, estufa } = analysisData;
-    const { custoAcumulado = 0 } = selectedPlantio;
+    const custoMuda = Number(selectedPlantio.custoEstimadoInicial || 0);
+    const custoAcumulado = Math.max(0, Number(selectedPlantio.custoAcumulado || 0) - custoMuda);
     const estufaArea = estufa.area || 0;
 
     const totalVolumeVendido = vendas.reduce((acc, v) => acc + getVendaQuantidade(v), 0);

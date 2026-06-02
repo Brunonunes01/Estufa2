@@ -53,9 +53,10 @@ const ClientesListScreen = ({ navigation }: any) => {
     }
     try {
       const [vendasRaw, estufas] = await Promise.all([listAllVendas(targetId), listEstufas(targetId)]);
-      const vendas = vendasRaw.filter((v) => v.clienteId === cliente.id);
+      const vendasCliente = vendasRaw.filter((v) => v.clienteId === cliente.id);
+      const vendas = vendasCliente.filter((venda) => normalizeStatus(venda) !== 'CANCELADO');
       if (vendas.length === 0) {
-        Alert.alert('Sem compras', 'Este cliente ainda nao possui compras registradas.');
+        Alert.alert('Sem contas', 'Este cliente ainda nao possui contas pagas ou pendentes.');
         return;
       }
 
@@ -92,9 +93,9 @@ const ClientesListScreen = ({ navigation }: any) => {
       await shareSalesReportPdf({
         nomeProdutor,
         nomeEstufa: cliente.nome,
-        tituloRelatorio: `Compras do Cliente - ${cliente.nome}`,
+        tituloRelatorio: `Contas do Cliente - ${cliente.nome}`,
         periodo,
-        observacoes: `Relatorio consolidado de compras do cliente ${cliente.nome}.`,
+        observacoes: `Relatorio consolidado de contas pagas e pendentes do cliente ${cliente.nome}.`,
         totais: {
           totalReceber,
           totalPagar: 0,
@@ -204,7 +205,7 @@ const ClientesListScreen = ({ navigation }: any) => {
                 onPress={() => handleExportClientReport(item)}
               >
                 <MaterialCommunityIcons name="file-chart-outline" size={16} color={COLORS.info} />
-                <Text style={styles.reportBtnText}>Relatorio de compras</Text>
+                <Text style={styles.reportBtnText}>PDF contas (pago/pendente)</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
