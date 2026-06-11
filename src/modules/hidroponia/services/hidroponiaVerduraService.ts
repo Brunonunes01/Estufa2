@@ -1,17 +1,5 @@
-import {
-  addDoc,
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  Timestamp,
-  updateDoc,
-  where,
-} from '../../../compat/legacyDataApi';
-import { db } from '../../../services/removedBackend';
+import { Timestamp } from '../../../lib/timestamp';
 import { assertTenantId } from '../../../services/tenantGuard';
-import { isSupabaseBackend } from '../../../services/backendConfig';
 import { getSupabaseClient } from '../../../services/supabaseClient';
 import { HydroVerdura, HydroVerduraFormData } from '../types';
 
@@ -110,106 +98,60 @@ const buildPayload = (data: HydroVerduraFormData) => {
 export const createHydroVerdura = async (data: HydroVerduraFormData, userId: string) => {
   const tenantId = assertTenantId(userId);
   const payload = buildPayload(data);
-  if (isSupabaseBackend()) {
-    const supabase = getSupabaseClient();
-    const { data: inserted, error } = await supabase
-      .from('hidro_verduras')
-      .insert({
-        tenant_id: tenantId,
-        nome_comum: payload.nomeComum,
-        nome_cientifico: payload.nomeCientifico,
-        variedade_padrao: payload.variedadePadrao,
-        ciclo_dias: payload.cicloDias,
-        ph_min: payload.phMin,
-        ph_max: payload.phMax,
-        ec_min: payload.ecMin,
-        ec_max: payload.ecMax,
-        temperatura_min_c: payload.temperaturaMinC,
-        temperatura_max_c: payload.temperaturaMaxC,
-        observacoes: payload.observacoes,
-        ativo: payload.ativo,
-      })
-      .select('id')
-      .single();
-    if (error || !inserted?.id) throw new Error(`Erro ao cadastrar verdura. ${error?.message || ''}`.trim());
-    return inserted.id as string;
+  const supabase = getSupabaseClient();
+  const { data: inserted, error } = await supabase
+    .from('hidro_verduras')
+    .insert({
+      tenant_id: tenantId,
+      nome_comum: payload.nomeComum,
+      nome_cientifico: payload.nomeCientifico,
+      variedade_padrao: payload.variedadePadrao,
+      ciclo_dias: payload.cicloDias,
+      ph_min: payload.phMin,
+      ph_max: payload.phMax,
+      ec_min: payload.ecMin,
+      ec_max: payload.ecMax,
+      temperatura_min_c: payload.temperaturaMinC,
+      temperatura_max_c: payload.temperaturaMaxC,
+      observacoes: payload.observacoes,
+      ativo: payload.ativo,
+    })
+    .select('id')
+    .single();
+  if (error || !inserted?.id) {
+    throw new Error(`Erro ao cadastrar verdura. ${error?.message || ''}`.trim());
   }
-
-  const now = Timestamp.now();
-  const ref = await addDoc(collection(db, 'hidroponia_verduras'), {
-    ...payload,
-    tenantId,
-    userId: tenantId,
-    createdAt: now,
-    updatedAt: now,
-  });
-  return ref.id;
+  return inserted.id as string;
 };
 
-export const getHydroVerduraById = async (
-  verduraId: string,
-  userId: string
-): Promise<HydroVerdura | null> => {
+export const getHydroVerduraById = async (verduraId: string, userId: string): Promise<HydroVerdura | null> => {
   const tenantId = assertTenantId(userId);
-  if (isSupabaseBackend()) {
-    const supabase = getSupabaseClient();
-    const { data, error } = await supabase
-      .from('hidro_verduras')
-      .select('*')
-      .eq('id', verduraId)
-      .eq('tenant_id', tenantId)
-      .maybeSingle();
-    if (error) throw new Error(`Erro ao buscar verdura. ${error.message}`);
-    return data ? mapSupabaseVerduraToDomain(data) : null;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('hidro_verduras')
+    .select('*')
+    .eq('id', verduraId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`Erro ao buscar verdura. ${error.message}`);
   }
-
-  const snap = await getDoc(doc(db, 'hidroponia_verduras', verduraId));
-  if (!snap.exists()) return null;
-  const data = snap.data() as HydroVerdura;
-  if (data.tenantId !== tenantId && data.userId !== tenantId) {
-    throw new Error('Acesso negado ao cadastro de verduras.');
-  }
-  return normalizeVerdura(data, snap.id);
+  return data ? mapSupabaseVerduraToDomain(data) : null;
 };
 
-export const listHydroVerduras = async (
-  userId: string,
-  includeInactive = false
-): Promise<HydroVerdura[]> => {
+export const listHydroVerduras = async (userId: string, includeInactive = false): Promise<HydroVerdura[]> => {
   const tenantId = assertTenantId(userId);
-  if (isSupabaseBackend()) {
-    const supabase = getSupabaseClient();
-    let request = supabase
-      .from('hidro_verduras')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .order('nome_comum', { ascending: true });
-    if (!includeInactive) {
-      request = request.eq('ativo', true);
-    }
-    const { data, error } = await request;
-    if (error) throw new Error(`Erro ao listar verduras. ${error.message}`);
-    return (data || [])
-      .map(mapSupabaseVerduraToDomain)
-      .sort((a, b) => {
-        const nameCmp = a.nomeComum.localeCompare(b.nomeComum, 'pt-BR');
-        if (nameCmp !== 0) return nameCmp;
-        return String(a.variedadePadrao || '').localeCompare(String(b.variedadePadrao || ''), 'pt-BR');
-      });
+  const supabase = getSupabaseClient();
+  let request = supabase.from('hidro_verduras').select('*').eq('tenant_id', tenantId).order('nome_comum', { ascending: true });
+  if (!includeInactive) {
+    request = request.eq('ativo', true);
   }
-
-  const [byTenant, byUser] = await Promise.all([
-    getDocs(query(collection(db, 'hidroponia_verduras'), where('tenantId', '==', tenantId))),
-    getDocs(query(collection(db, 'hidroponia_verduras'), where('userId', '==', tenantId))),
-  ]);
-
-  const map = new Map<string, HydroVerdura>();
-  [...byTenant.docs, ...byUser.docs].forEach((item) => {
-    map.set(item.id, normalizeVerdura(item.data() as HydroVerdura, item.id));
-  });
-
-  return Array.from(map.values())
-    .filter((item) => (includeInactive ? true : item.ativo !== false))
+  const { data, error } = await request;
+  if (error) {
+    throw new Error(`Erro ao listar verduras. ${error.message}`);
+  }
+  return (data || [])
+    .map(mapSupabaseVerduraToDomain)
     .sort((a, b) => {
       const nameCmp = a.nomeComum.localeCompare(b.nomeComum, 'pt-BR');
       if (nameCmp !== 0) return nameCmp;
@@ -217,72 +159,53 @@ export const listHydroVerduras = async (
     });
 };
 
-export const updateHydroVerdura = async (
-  verduraId: string,
-  data: HydroVerduraFormData,
-  userId: string
-) => {
+export const updateHydroVerdura = async (verduraId: string, data: HydroVerduraFormData, userId: string) => {
   const tenantId = assertTenantId(userId);
   const verdura = await getHydroVerduraById(verduraId, tenantId);
   if (!verdura) throw new Error('Verdura não encontrada.');
 
   const payload = buildPayload(data);
-  if (isSupabaseBackend()) {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from('hidro_verduras')
-      .update({
-        nome_comum: payload.nomeComum,
-        nome_cientifico: payload.nomeCientifico,
-        variedade_padrao: payload.variedadePadrao,
-        ciclo_dias: payload.cicloDias,
-        ph_min: payload.phMin,
-        ph_max: payload.phMax,
-        ec_min: payload.ecMin,
-        ec_max: payload.ecMax,
-        temperatura_min_c: payload.temperaturaMinC,
-        temperatura_max_c: payload.temperaturaMaxC,
-        observacoes: payload.observacoes,
-        ativo: payload.ativo,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', verduraId)
-      .eq('tenant_id', tenantId);
-    if (error) throw new Error(`Erro ao atualizar verdura. ${error.message}`);
-    return;
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('hidro_verduras')
+    .update({
+      nome_comum: payload.nomeComum,
+      nome_cientifico: payload.nomeCientifico,
+      variedade_padrao: payload.variedadePadrao,
+      ciclo_dias: payload.cicloDias,
+      ph_min: payload.phMin,
+      ph_max: payload.phMax,
+      ec_min: payload.ecMin,
+      ec_max: payload.ecMax,
+      temperatura_min_c: payload.temperaturaMinC,
+      temperatura_max_c: payload.temperaturaMaxC,
+      observacoes: payload.observacoes,
+      ativo: payload.ativo,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', verduraId)
+    .eq('tenant_id', tenantId);
+  if (error) {
+    throw new Error(`Erro ao atualizar verdura. ${error.message}`);
   }
-
-  await updateDoc(doc(db, 'hidroponia_verduras', verduraId), {
-    ...payload,
-    updatedAt: Timestamp.now(),
-  });
 };
 
-export const setHydroVerduraActive = async (
-  verduraId: string,
-  ativo: boolean,
-  userId: string
-) => {
+export const setHydroVerduraActive = async (verduraId: string, ativo: boolean, userId: string) => {
   const tenantId = assertTenantId(userId);
   const verdura = await getHydroVerduraById(verduraId, tenantId);
   if (!verdura) throw new Error('Verdura não encontrada.');
 
-  if (isSupabaseBackend()) {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from('hidro_verduras')
-      .update({
-        ativo,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', verduraId)
-      .eq('tenant_id', tenantId);
-    if (error) throw new Error(`Erro ao atualizar status da verdura. ${error.message}`);
-    return;
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('hidro_verduras')
+    .update({
+      ativo,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', verduraId)
+    .eq('tenant_id', tenantId);
+  if (error) {
+    throw new Error(`Erro ao atualizar status da verdura. ${error.message}`);
   }
-
-  await updateDoc(doc(db, 'hidroponia_verduras', verduraId), {
-    ativo,
-    updatedAt: Timestamp.now(),
-  });
 };
+

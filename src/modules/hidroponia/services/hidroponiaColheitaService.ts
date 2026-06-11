@@ -1,17 +1,9 @@
-import { collection, doc, runTransaction, Timestamp, writeBatch } from '../../../compat/legacyDataApi';
-import { db } from '../../../services/removedBackend';
+import { Timestamp } from '../../../lib/timestamp';
 import { assertTenantId } from '../../../services/tenantGuard';
 import { createTraceabilityEventSafely } from '../../../services/traceabilityService';
 import { createVenda } from '../../../services/vendaService';
-import { isSupabaseBackend } from '../../../services/backendConfig';
 import { getSupabaseClient } from '../../../services/supabaseClient';
 import { getClienteById } from '../../../services/clienteService';
-import {
-  buildPublicTraceabilityLookupUrl,
-  createTraceabilityPublicTokenFromId,
-} from '../../../services/publicTraceabilityService';
-import { Venda } from '../../../types/domain';
-import { HydroOcupacao } from '../types';
 import { getHydroLoteById, syncHydroLoteStatus } from './hidroponiaLoteService';
 import { getHydroOcupacaoById, listHydroOcupacoesByLote } from './hidroponiaOcupacaoService';
 import { OfflineWriteOptions } from '../../../services/offline/offlineStorage';
@@ -49,15 +41,15 @@ type Allocation = {
   quantidade: number;
 };
 
+type OccupancySnapshot = {
+  id: string;
+  status: string;
+  quantidadeAlocada: number;
+  dataFim?: Timestamp | null;
+};
+
 const buildClienteEndereco = (cliente: any) => {
-  const parts = [
-    cliente?.endereco,
-    cliente?.numero,
-    cliente?.bairro,
-    cliente?.cidade,
-    cliente?.estado,
-    cliente?.cep,
-  ].filter(Boolean);
+  const parts = [cliente?.endereco, cliente?.numero, cliente?.bairro, cliente?.cidade, cliente?.estado, cliente?.cep].filter(Boolean);
   return parts.length > 0 ? parts.join(', ') : null;
 };
 
@@ -72,107 +64,49 @@ const resolveCompradorTrace = async (tenantId: string, clienteId?: string | null
   }
   const cliente = await getClienteById(clienteId, tenantId);
   return {
-    nome: cliente?.nome || 'Cliente não identificado',
+    nome: cliente?.nome || 'Cliente nÃ£o identificado',
     documento: cliente?.documento || null,
     endereco: cliente ? buildClienteEndereco(cliente) : null,
     tipo: 'comprador',
   };
 };
 
-const applyAllocation = (
-  batch: ReturnType<typeof writeBatch>,
-  ocupacao: HydroOcupacao,
-  quantidadeAbater: number,
-  now: Timestamp,
-  dataOp: Timestamp
-) => {
-  const restante = Math.max(0, Number(ocupacao.quantidadeAlocada || 0) - quantidadeAbater);
-  const ref = doc(db, 'hidroponia_ocupacoes', ocupacao.id);
-  if (restante <= 0) {
-    batch.update(ref, {
-      status: 'encerrada',
-      quantidadeAlocada: 0,
-      dataFim: dataOp,
-      updatedAt: now,
-    });
-  } else {
-    batch.update(ref, {
-      quantidadeAlocada: restante,
-      updatedAt: now,
-    });
-  }
-};
-
-const toStatusPagamento = (metodoPagamento?: string) =>
-  metodoPagamento === 'prazo' ? 'pendente' : 'pago';
-
 const validateVendaValues = (quantidade: number, unidade: string, precoUnitario: number) => {
-  if (!Number.isFinite(quantidade) || quantidade <= 0) {
-    throw new Error('Quantidade inválida para venda.');
-  }
-  if (!unidade?.trim()) {
-    throw new Error('Informe a unidade da venda.');
-  }
-  if (!Number.isFinite(precoUnitario) || precoUnitario < 0) {
-    throw new Error('Preço unitário da venda não pode ser negativo.');
+  if (!Number.isFinite(quantidade) || quantidade <= 0) throw new Error('Quantidade invÃ¡lida para venda.');
+  if (!unidade?.trim()) throw new Error('Informe a unidade da venda.');
+  if (!Number.isFinite(precoUnitario) || precoUnitario < 0) throw new Error('PreÃ§o unitÃ¡rio da venda nÃ£o pode ser negativo.');
+};
+
+const restoreHydroOccupancies = async (
+  snapshots: OccupancySnapshot[],
+  tenantId: string
+) => {
+  if (snapshots.length === 0) return;
+
+  const supabase = getSupabaseClient();
+  const restoredAt = new Date().toISOString();
+
+  for (const snapshot of snapshots) {
+    const { error } = await supabase
+      .from('hidro_ocupacoes')
+      .update({
+        status: snapshot.status,
+        quantidade_alocada: Number(snapshot.quantidadeAlocada || 0),
+        data_fim: snapshot.dataFim ? snapshot.dataFim.toDate().toISOString() : null,
+        updated_at: restoredAt,
+      })
+      .eq('id', snapshot.id)
+      .eq('tenant_id', tenantId);
+    if (error) {
+      throw new Error(`Falha ao restaurar saldo hidropÃ´nico. ${error.message}`);
+    }
   }
 };
 
-const createVendaPayload = (
-  tenantId: string,
-  loteId: string,
-  estufaId: string,
-  quantidade: number,
-  unidade: string,
-  precoUnitario: number,
-  metodoPagamento: string,
-  dataOp: Timestamp,
-  descricaoItem: string,
-  observacoes: string,
-  clienteId?: string | null,
-  pagamentoPara?: string | null,
-  traceabilityPublicToken?: string | null
-): Omit<Venda, 'id'> & { quantidade: number; unidade: string; precoUnitario: number } => {
-  const valorTotal = Number(quantidade || 0) * Number(precoUnitario || 0);
-  const statusPagamento = toStatusPagamento(metodoPagamento);
-  const token = String(traceabilityPublicToken || '').trim() || null;
-
-  return {
-    tenantId,
-    userId: tenantId,
-    createdBy: tenantId,
-    hydroLoteId: loteId,
-    traceabilityPublicToken: token,
-    traceabilityPublicUrl: token ? buildPublicTraceabilityLookupUrl(token) || null : null,
-    originType: 'hydro_lote',
-    originId: loteId,
-    estufaId,
-    clienteId: clienteId || null,
-    dataVenda: dataOp,
-    dataVencimento:
-      statusPagamento === 'pendente'
-        ? Timestamp.fromMillis(dataOp.toMillis() + 15 * 24 * 60 * 60 * 1000)
-        : null,
-    itens: [
-      {
-        descricao: descricaoItem,
-        quantidade: Number(quantidade || 0),
-        unidade,
-        valorUnitario: Number(precoUnitario || 0),
-      },
-    ],
-    valorTotal,
-    statusPagamento,
-    formaPagamento: (metodoPagamento || 'pix') as Venda['formaPagamento'],
-    metodoPagamento: metodoPagamento || 'pix',
-    pagamentoPara: pagamentoPara || null,
-    observacoes,
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
-    quantidade: Number(quantidade || 0),
-    unidade,
-    precoUnitario: Number(precoUnitario || 0),
-  };
+const rollbackCreatedVenda = async (vendaId: string, tenantId: string) => {
+  const supabase = getSupabaseClient();
+  await supabase.from('venda_itens').delete().eq('venda_id', vendaId).eq('tenant_id', tenantId);
+  await supabase.from('vendas').delete().eq('id', vendaId).eq('tenant_id', tenantId);
 };
 
 export const registrarColheitaHidroponica = async (
@@ -191,24 +125,31 @@ export const registrarColheitaHidroponica = async (
       const dataOp = data.dataColheita ? Timestamp.fromDate(data.dataColheita) : now;
 
       const ocupacao = await getHydroOcupacaoById(data.ocupacaoId, tenantId);
-      if (!ocupacao) throw new Error('Ocupação não encontrada.');
-      if (ocupacao.status !== 'ativa') throw new Error('A ocupação selecionada já está encerrada.');
+      if (!ocupacao) throw new Error('OcupaÃ§Ã£o nÃ£o encontrada.');
+      if (ocupacao.status !== 'ativa') throw new Error('A ocupaÃ§Ã£o selecionada jÃ¡ estÃ¡ encerrada.');
 
       const quantidade = Number(data.quantidadeColhida || 0);
       validateVendaValues(quantidade, data.unidade, Number(data.precoUnitario || 0));
       if (quantidade > Number(ocupacao.quantidadeAlocada || 0)) {
-        throw new Error(
-          `Quantidade acima do saldo da bancada (${Number(ocupacao.quantidadeAlocada || 0)} unidades).`
-        );
+        throw new Error(`Quantidade acima do saldo da bancada (${Number(ocupacao.quantidadeAlocada || 0)} unidades).`);
       }
 
       const lote = await getHydroLoteById(ocupacao.loteId, tenantId);
-      if (!lote) throw new Error('Produção hidropônica não encontrada.');
+      if (!lote) throw new Error('ProduÃ§Ã£o hidropÃ´nica nÃ£o encontrada.');
       const compradorTrace = await resolveCompradorTrace(tenantId, data.clienteId || null);
 
-      if (isSupabaseBackend()) {
-        const supabase = getSupabaseClient();
-        const restante = Math.max(0, Number(ocupacao.quantidadeAlocada || 0) - quantidade);
+      const supabase = getSupabaseClient();
+      const restante = Math.max(0, Number(ocupacao.quantidadeAlocada || 0) - quantidade);
+      const snapshot: OccupancySnapshot = {
+        id: ocupacao.id,
+        status: ocupacao.status,
+        quantidadeAlocada: Number(ocupacao.quantidadeAlocada || 0),
+        dataFim: ocupacao.dataFim || null,
+      };
+
+      let vendaId: string | null = null;
+
+      try {
         const { error: ocupError } = await supabase
           .from('hidro_ocupacoes')
           .update(
@@ -226,11 +167,11 @@ export const registrarColheitaHidroponica = async (
           )
           .eq('id', ocupacao.id)
           .eq('tenant_id', tenantId);
-        if (ocupError) throw new Error(`Erro ao atualizar ocupação da colheita. ${ocupError.message}`);
+        if (ocupError) throw new Error(`Erro ao atualizar ocupaÃ§Ã£o da colheita. ${ocupError.message}`);
 
-        const descricaoItem = `${ocupacao.cultura || 'Produção hidropônica'} - Colheita Hidropônica`;
+        const descricaoItem = `${ocupacao.cultura || 'ProduÃ§Ã£o hidropÃ´nica'} - Colheita HidropÃ´nica`;
         const observacoesFinal = data.observacoes || `Bancada ${ocupacao.estruturaId}`;
-        const vendaId = await createVenda(
+        vendaId = await createVenda(
           {
             hydroLoteId: ocupacao.loteId,
             originType: 'hydro_lote',
@@ -250,100 +191,30 @@ export const registrarColheitaHidroponica = async (
           tenantId
         );
         await syncHydroLoteStatus(ocupacao.loteId, tenantId);
-
-        await createTraceabilityEventSafely(tenantId, {
-          hydroLoteId: ocupacao.loteId,
-          estufaId: ocupacao.estufaId,
-          entidade: 'venda',
-          entidadeId: vendaId,
-          acao: 'colhido',
-          descricao: `Colheita e venda de ${quantidade} ${data.unidade} de ${ocupacao.cultura}.`,
-          actorUid: tenantId,
-          metadata: {
-            ocupacaoId: ocupacao.id,
-            quantidade,
-            bancada: ocupacao.estruturaId,
-            produto: {
-              codigoRastreio: lote.codigoLote,
-              descricao: `${ocupacao.cultura || 'Produção hidropônica'} - Colheita`,
-              quantidade,
-              unidade: data.unidade,
-            },
-            enteAnterior: {
-              nome: lote.nomeOperacional || lote.codigoLote,
-              documento: lote.id,
-              tipo: 'producao_hidroponica',
-            },
-            entePosterior: compradorTrace,
-          },
-        });
-
-        return vendaId;
+      } catch (error) {
+        if (vendaId) {
+          await rollbackCreatedVenda(vendaId, tenantId);
+        }
+        await restoreHydroOccupancies([snapshot], tenantId);
+        await syncHydroLoteStatus(ocupacao.loteId, tenantId);
+        throw error;
       }
-
-      const vendaRef = doc(collection(db, 'vendas'));
-      const traceabilityPublicToken = createTraceabilityPublicTokenFromId(vendaRef.id);
-
-      const descricaoItem = `${ocupacao.cultura || 'Produção hidropônica'} - Colheita Hidropônica`;
-      const observacoesFinal = data.observacoes || `Bancada ${ocupacao.estruturaId}`;
-      const payload = createVendaPayload(
-        tenantId,
-        ocupacao.loteId,
-        ocupacao.estufaId,
-        quantidade,
-        data.unidade,
-        Number(data.precoUnitario || 0),
-        data.metodoPagamento || 'pix',
-        dataOp,
-        descricaoItem,
-        observacoesFinal,
-        data.clienteId,
-        data.pagamentoPara || null,
-        traceabilityPublicToken
-      );
-
-      await runTransaction(db, async (transaction) => {
-        const ocupacaoRef = doc(db, 'hidroponia_ocupacoes', ocupacao.id);
-        const ocupacaoSnap = await transaction.get(ocupacaoRef);
-        if (!ocupacaoSnap.exists()) throw new Error('Ocupação não encontrada.');
-
-        const currentOcupacao = { ...(ocupacaoSnap.data() as HydroOcupacao), id: ocupacaoSnap.id };
-        if (currentOcupacao.tenantId !== tenantId && currentOcupacao.userId !== tenantId) {
-          throw new Error('Acesso negado à ocupação selecionada.');
-        }
-        if (currentOcupacao.status !== 'ativa') {
-          throw new Error('A ocupação selecionada já está encerrada.');
-        }
-        if (quantidade > Number(currentOcupacao.quantidadeAlocada || 0)) {
-          throw new Error(
-            `Quantidade acima do saldo da bancada (${Number(currentOcupacao.quantidadeAlocada || 0)} unidades).`
-          );
-        }
-
-        transaction.set(vendaRef, {
-          ...payload,
-          hydroAllocations: [{ ocupacaoId: currentOcupacao.id, estruturaId: currentOcupacao.estruturaId, quantidade }],
-        } as any);
-        applyAllocation(transaction as unknown as ReturnType<typeof writeBatch>, currentOcupacao, quantidade, now, dataOp);
-      });
-      await syncHydroLoteStatus(ocupacao.loteId, tenantId);
 
       await createTraceabilityEventSafely(tenantId, {
         hydroLoteId: ocupacao.loteId,
         estufaId: ocupacao.estufaId,
         entidade: 'venda',
-        entidadeId: vendaRef.id,
+        entidadeId: vendaId,
         acao: 'colhido',
         descricao: `Colheita e venda de ${quantidade} ${data.unidade} de ${ocupacao.cultura}.`,
         actorUid: tenantId,
         metadata: {
           ocupacaoId: ocupacao.id,
           quantidade,
-          valorTotal: payload.valorTotal,
           bancada: ocupacao.estruturaId,
           produto: {
             codigoRastreio: lote.codigoLote,
-            descricao: `${ocupacao.cultura || 'Produção hidropônica'} - Colheita`,
+            descricao: `${ocupacao.cultura || 'ProduÃ§Ã£o hidropÃ´nica'} - Colheita`,
             quantidade,
             unidade: data.unidade,
           },
@@ -353,12 +224,10 @@ export const registrarColheitaHidroponica = async (
             tipo: 'producao_hidroponica',
           },
           entePosterior: compradorTrace,
-          traceabilityPublicToken: payload.traceabilityPublicToken || null,
-          traceabilityPublicUrl: payload.traceabilityPublicUrl || null,
         },
       });
 
-      return vendaRef.id;
+      return vendaId;
     },
   });
 };
@@ -375,10 +244,8 @@ export const registrarVendaHidroponicaPorLote = async (
     options,
     onQueuedValue: () => buildOfflinePlaceholderId(),
     write: async () => {
-      const now = Timestamp.now();
-      const dataOp = data.dataColheita ? Timestamp.fromDate(data.dataColheita) : now;
       const lote = await getHydroLoteById(data.loteId, tenantId);
-      if (!lote) throw new Error('Produção hidropônica não encontrada.');
+      if (!lote) throw new Error('ProduÃ§Ã£o hidropÃ´nica nÃ£o encontrada.');
       const compradorTrace = await resolveCompradorTrace(tenantId, data.clienteId || null);
 
       const quantidade = Number(data.quantidadeColhida || 0);
@@ -390,16 +257,11 @@ export const registrarVendaHidroponicaPorLote = async (
         return msA - msB;
       });
 
-      if (ocupacoesAtivas.length === 0) {
-        throw new Error('Esta produção não possui bancadas ativas para venda.');
-      }
+      if (ocupacoesAtivas.length === 0) throw new Error('Esta produÃ§Ã£o nÃ£o possui bancadas ativas para venda.');
 
-      const totalDisponivel = ocupacoesAtivas.reduce(
-        (sum, item) => sum + Number(item.quantidadeAlocada || 0),
-        0
-      );
+      const totalDisponivel = ocupacoesAtivas.reduce((sum, item) => sum + Number(item.quantidadeAlocada || 0), 0);
       if (quantidade > totalDisponivel) {
-        throw new Error(`Quantidade acima do saldo ativo da produção (${totalDisponivel} unidades).`);
+        throw new Error(`Quantidade acima do saldo ativo da produÃ§Ã£o (${totalDisponivel} unidades).`);
       }
 
       let restante = quantidade;
@@ -412,24 +274,39 @@ export const registrarVendaHidroponicaPorLote = async (
         allocations.push({
           ocupacaoId: ocupacao.id,
           estruturaId: ocupacao.estruturaId,
-          cultura: ocupacao.cultura || 'Produção hidropônica',
+          cultura: ocupacao.cultura || 'ProduÃ§Ã£o hidropÃ´nica',
           quantidade: abater,
         });
         restante -= abater;
       }
 
       if (allocations.length === 0 || restante > 0) {
-        throw new Error('Não foi possível distribuir a baixa de saldo nas bancadas ativas.');
+        throw new Error('NÃ£o foi possÃ­vel distribuir a baixa de saldo nas bancadas ativas.');
       }
 
       const culturas = Array.from(new Set(allocations.map((item) => item.cultura))).filter(Boolean);
-      const descricaoItem =
-        data.itemDescricao?.trim() ||
-        (culturas.length > 0 ? culturas.join(' / ') : 'Produção hidropônica');
-      const observacoesFinal = data.observacoes?.trim() || `Produção hidropônica: ${lote.codigoLote}`;
+      const descricaoItem = data.itemDescricao?.trim() || (culturas.length > 0 ? culturas.join(' / ') : 'ProduÃ§Ã£o hidropÃ´nica');
+      const observacoesFinal = data.observacoes?.trim() || `ProduÃ§Ã£o hidropÃ´nica: ${lote.codigoLote}`;
 
-      if (isSupabaseBackend()) {
-        const supabase = getSupabaseClient();
+      const supabase = getSupabaseClient();
+      const now = Timestamp.now();
+      const dataOp = data.dataColheita ? Timestamp.fromDate(data.dataColheita) : now;
+      const touchedSnapshots: OccupancySnapshot[] = allocations
+        .map((allocation) => {
+          const ocupacao = ocupacoesAtivas.find((item) => item.id === allocation.ocupacaoId);
+          if (!ocupacao) return null;
+          return {
+            id: ocupacao.id,
+            status: ocupacao.status,
+            quantidadeAlocada: Number(ocupacao.quantidadeAlocada || 0),
+            dataFim: ocupacao.dataFim || null,
+          } as OccupancySnapshot;
+        })
+        .filter(Boolean) as OccupancySnapshot[];
+
+      let vendaId: string | null = null;
+
+      try {
         for (const allocation of allocations) {
           const ocupacao = ocupacoesAtivas.find((item) => item.id === allocation.ocupacaoId);
           if (!ocupacao) continue;
@@ -454,7 +331,7 @@ export const registrarVendaHidroponicaPorLote = async (
           if (error) throw new Error(`Erro ao baixar saldo da bancada. ${error.message}`);
         }
 
-        const vendaId = await createVenda(
+        vendaId = await createVenda(
           {
             hydroLoteId: data.loteId,
             originType: 'hydro_lote',
@@ -474,104 +351,25 @@ export const registrarVendaHidroponicaPorLote = async (
           tenantId
         );
         await syncHydroLoteStatus(data.loteId, tenantId);
-
-        await createTraceabilityEventSafely(tenantId, {
-          hydroLoteId: data.loteId,
-          estufaId: lote.estufaId,
-          entidade: 'venda',
-          entidadeId: vendaId,
-          acao: 'colhido',
-          descricao: `Venda hidropônica da produção ${lote.codigoLote} (${quantidade} ${data.unidade}).`,
-          actorUid: tenantId,
-          metadata: {
-            quantidade,
-            metodoPagamento: data.metodoPagamento || 'pix',
-            pagamentoPara: data.pagamentoPara || null,
-            allocations,
-            produto: {
-              codigoRastreio: lote.codigoLote,
-              descricao: descricaoItem,
-              quantidade,
-              unidade: data.unidade,
-            },
-            enteAnterior: {
-              nome: lote.nomeOperacional || lote.codigoLote,
-              documento: lote.id,
-              tipo: 'producao_hidroponica',
-            },
-            entePosterior: compradorTrace,
-          },
-        });
-
-        return vendaId;
-      }
-
-      const vendaRef = doc(collection(db, 'vendas'));
-      const traceabilityPublicToken = createTraceabilityPublicTokenFromId(vendaRef.id);
-      const payload = createVendaPayload(
-        tenantId,
-        data.loteId,
-        lote.estufaId,
-        quantidade,
-        data.unidade,
-        Number(data.precoUnitario || 0),
-        data.metodoPagamento || 'pix',
-        dataOp,
-        descricaoItem,
-        observacoesFinal,
-        data.clienteId,
-        data.pagamentoPara || null,
-        traceabilityPublicToken
-      );
-
-      await runTransaction(db, async (transaction) => {
-        const currentOcupacoes: HydroOcupacao[] = [];
-        for (const allocation of allocations) {
-          const ocupacaoRef = doc(db, 'hidroponia_ocupacoes', allocation.ocupacaoId);
-          const ocupacaoSnap = await transaction.get(ocupacaoRef);
-          if (!ocupacaoSnap.exists()) throw new Error('Ocupação selecionada não encontrada.');
-
-          const currentOcupacao = { ...(ocupacaoSnap.data() as HydroOcupacao), id: ocupacaoSnap.id };
-          if (currentOcupacao.tenantId !== tenantId && currentOcupacao.userId !== tenantId) {
-            throw new Error('Acesso negado à ocupação selecionada.');
-          }
-          if (currentOcupacao.status !== 'ativa') {
-            throw new Error('Uma das bancadas selecionadas já foi encerrada.');
-          }
-          if (allocation.quantidade > Number(currentOcupacao.quantidadeAlocada || 0)) {
-            throw new Error('Saldo da produção mudou. Revise a venda e tente novamente.');
-          }
-          currentOcupacoes.push(currentOcupacao);
+      } catch (error) {
+        if (vendaId) {
+          await rollbackCreatedVenda(vendaId, tenantId);
         }
-
-        transaction.set(vendaRef, {
-          ...payload,
-          hydroAllocations: allocations.map((item) => ({
-            ocupacaoId: item.ocupacaoId,
-            estruturaId: item.estruturaId,
-            quantidade: item.quantidade,
-          })),
-        } as any);
-
-        allocations.forEach((allocation) => {
-          const ocupacao = currentOcupacoes.find((item) => item.id === allocation.ocupacaoId);
-          if (!ocupacao) return;
-          applyAllocation(transaction as unknown as ReturnType<typeof writeBatch>, ocupacao, allocation.quantidade, now, dataOp);
-        });
-      });
-      await syncHydroLoteStatus(data.loteId, tenantId);
+        await restoreHydroOccupancies(touchedSnapshots, tenantId);
+        await syncHydroLoteStatus(data.loteId, tenantId);
+        throw error;
+      }
 
       await createTraceabilityEventSafely(tenantId, {
         hydroLoteId: data.loteId,
         estufaId: lote.estufaId,
         entidade: 'venda',
-        entidadeId: vendaRef.id,
+        entidadeId: vendaId,
         acao: 'colhido',
-        descricao: `Venda hidropônica da produção ${lote.codigoLote} (${quantidade} ${data.unidade}).`,
+        descricao: `Venda hidropÃ´nica da produÃ§Ã£o ${lote.codigoLote} (${quantidade} ${data.unidade}).`,
         actorUid: tenantId,
         metadata: {
           quantidade,
-          valorTotal: payload.valorTotal,
           metodoPagamento: data.metodoPagamento || 'pix',
           pagamentoPara: data.pagamentoPara || null,
           allocations,
@@ -587,12 +385,10 @@ export const registrarVendaHidroponicaPorLote = async (
             tipo: 'producao_hidroponica',
           },
           entePosterior: compradorTrace,
-          traceabilityPublicToken: payload.traceabilityPublicToken || null,
-          traceabilityPublicUrl: payload.traceabilityPublicUrl || null,
         },
       });
 
-      return vendaRef.id;
+      return vendaId;
     },
   });
 };

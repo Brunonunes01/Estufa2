@@ -21,6 +21,13 @@ export const signInWithPasswordBridge = async (email: string, password: string) 
   if (error) throw error;
 };
 
+export const resetPasswordForEmailBridge = async (email: string) => {
+  ensureSupabaseReady();
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+  if (error) throw error;
+};
+
 export const signUpWithPasswordBridge = async (name: string, email: string, password: string) => {
   ensureSupabaseReady();
   const supabase = getSupabaseClient();
@@ -36,35 +43,6 @@ export const signUpWithPasswordBridge = async (name: string, email: string, pass
   const user = data.user;
   if (!user) {
     throw new Error('Não foi possível criar a conta.');
-  }
-
-  // Com confirmação de e-mail ativa, pode não haver sessão imediata.
-  if (!data.session) {
-    return;
-  }
-
-  const { error: profileError } = await supabase.from('profiles').upsert(
-    {
-      id: user.id,
-      email: user.email || email.trim(),
-      name,
-      role: 'admin',
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'id' }
-  );
-  if (profileError) throw profileError;
-
-  const tenantName = `Estufa de ${name.split(' ')[0] || 'Usuário'}`;
-  const { error: tenantError } = await supabase.from('tenants').insert({
-    owner_user_id: user.id,
-    name: tenantName,
-  });
-  if (tenantError) {
-    const msg = String(tenantError.message || '');
-    if (!msg.toLowerCase().includes('duplicate')) {
-      throw tenantError;
-    }
   }
 };
 

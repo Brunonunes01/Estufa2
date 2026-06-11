@@ -231,7 +231,6 @@ export const buildHtmlTemplate = (input: ComprovantePDFInput, logoBase64: string
   const clienteCidade = cliente?.cidade || 'Não informada';
   const clienteEndereco = formatAddress(cliente || {});
   const metodoPagamento = colheita.metodoPagamento || colheita.formaPagamento || 'Não informado';
-  const dataVencimento = colheita.dataVencimento ? formatDateTime(colheita.dataVencimento).date : '-';
   const lotePlantio = plantio?.codigoLote || colheita.codigoLote || friendlyCode(colheita.plantioId, 'PLANTIO');
   const loteColheita =
     colheita.loteColheita || colheita.lote || friendlyCode(colheita.colheitaId, 'COLHEITA');
@@ -389,7 +388,6 @@ export const buildHtmlTemplate = (input: ComprovantePDFInput, logoBase64: string
               </div>
               <div>
                 <div class="kv"><strong>Data da Venda:</strong> ${escapeHtml(dataOperacao.date)} às ${escapeHtml(dataOperacao.time)}</div>
-                <div class="kv"><strong>Data de Vencimento:</strong> ${escapeHtml(dataVencimento)}</div>
                 <div class="kv"><strong>Estado do Pagamento:</strong> <span class="status ${statusClasse}">${statusLabel}</span></div>
                 <div class="kv"><strong>Código do Documento:</strong> ${escapeHtml(codigoPdf)}</div>
               </div>
@@ -490,12 +488,247 @@ export const buildHtmlTemplate = (input: ComprovantePDFInput, logoBase64: string
   `;
 };
 
+const buildHtmlTemplateV2 = (input: ComprovantePDFInput, logoBase64: string) => {
+  const { colheita, cliente, plantio, nomeEstufa, nomeFazenda, cultura, contatoFazenda } = input;
+  const dataOperacao = formatDateTime(colheita.dataVenda || colheita.dataColheita);
+  const dataEmissao = formatDateTime(new Date());
+  const codigoVenda = friendlyCode(colheita.id, 'VENDA');
+  const codigoPdf = `COMP-${dataOperacao.isoDay.replace(/-/g, '')}-${friendlyCode(colheita.id, 'VENDA')}`;
+  const culturaNome = plantio?.cultura || cultura || colheita.cultura || 'Cultura nao informada';
+  const variedadeNome = plantio?.variedade || colheita.variedade || '';
+  const produtoLabel = variedadeNome ? `${culturaNome} - ${variedadeNome}` : culturaNome;
+  const itens = normalizeSaleItems(colheita, produtoLabel);
+  const quantidadeTotal = itens.reduce((acc, item) => acc + toNumber(item.quantidade, 0), 0);
+  const unidadeTotal = normalizeUnitLabel(itens[0]?.unidade || colheita.unidade || colheita.unidadeMedida || 'un');
+  const valorTotalItens = itens.reduce((acc, item) => acc + toNumber(item.subtotal, 0), 0);
+  const valorTotal = toNumber(colheita.valorTotal, valorTotalItens);
+  const precoMedio = quantidadeTotal > 0 ? valorTotal / quantidadeTotal : toNumber(colheita.precoUnitario, 0);
+  const statusPagamento = (colheita.statusPagamento || 'pago') as PaymentStatus;
+  const statusClasse = statusPagamento === 'pago' ? 'status-paid' : 'status-pending';
+  const statusLabel = statusPagamento.toUpperCase();
+  const clienteNome = cliente?.nome || 'Cliente avulso';
+  const clienteDocumento = cliente?.documento || 'Nao informado';
+  const clienteTelefone = cliente?.telefone || 'Nao informado';
+  const clienteCidade = cliente?.cidade || 'Nao informada';
+  const clienteEndereco = formatAddress(cliente || {});
+  const metodoPagamento = colheita.metodoPagamento || colheita.formaPagamento || 'Nao informado';
+  const lotePlantio = plantio?.codigoLote || colheita.codigoLote || friendlyCode(colheita.plantioId, 'PLANTIO');
+  const loteColheita = colheita.loteColheita || colheita.lote || friendlyCode(colheita.colheitaId, 'COLHEITA');
+  const observacoesVenda = String(colheita.observacoes || '').trim();
+  const origem = nomeEstufa || nomeFazenda || 'Origem nao informada';
+  const traceabilityToken = resolveTraceabilityPublicToken({
+    id: colheita.id,
+    traceabilityPublicToken: colheita.traceabilityPublicToken || null,
+  });
+  const traceabilityLink = String(colheita.traceabilityPublicUrl || '').trim() || buildPublicTraceabilityLookupUrl(traceabilityToken);
+  const traceabilityTextPayload = buildTraceabilityTextPayload({
+    token: traceabilityToken || codigoVenda,
+    produto: produtoLabel,
+    origem,
+    loteOrigem: String(lotePlantio || 'Nao informado'),
+    loteColheita: String(loteColheita || 'Nao informado'),
+    dataVenda: `${dataOperacao.date} ${dataOperacao.time}`,
+    quantidade: `${formatQuantity(quantidadeTotal)} ${String(unidadeTotal)}`,
+  });
+  const traceabilityQrSource = traceabilityLink || traceabilityTextPayload;
+  const traceabilityQrUrl = buildPublicTraceabilityQrUrl(traceabilityQrSource);
+  const traceabilityLinkLabel = traceabilityLink || 'QR com dados offline';
+  const pagamentoResumo =
+    statusPagamento === 'pago'
+      ? 'Pagamento liquidado.'
+      : statusPagamento === 'cancelado'
+      ? 'Venda cancelada.'
+      : 'Pagamento pendente.';
+
+  const itensRows = itens
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHtml(item.descricao)}</td>
+          <td>${escapeHtml(formatQuantity(item.quantidade))} ${escapeHtml(item.unidade)}</td>
+          <td class="align-right">${formatCurrency(item.valorUnitario)}</td>
+          <td class="align-right">${formatCurrency(item.subtotal)}</td>
+        </tr>
+      `
+    )
+    .join('');
+
+  return `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <style>
+          * { box-sizing: border-box; }
+          body { margin: 0; padding: 20px; font-family: 'Segoe UI', Arial, sans-serif; color: #1f2937; background: #eef2f7; }
+          .doc { max-width: 860px; margin: 0 auto; background: #ffffff; border: 1px solid #dbe4ef; border-radius: 18px; overflow: hidden; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08); }
+          .hero { padding: 22px 24px 18px; background: linear-gradient(135deg, #0f766e 0%, #1d4ed8 100%); color: #ffffff; }
+          .hero-top { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+          .hero-left { display: flex; align-items: center; gap: 14px; }
+          .brand { display: flex; flex-direction: column; gap: 4px; }
+          .estufa { font-size: 24px; font-weight: 900; margin: 0; color: #ffffff; }
+          .produtor { font-size: 12px; margin: 0; color: rgba(255,255,255,0.86); }
+          .title { font-size: 14px; font-weight: 800; margin: 2px 0 0; letter-spacing: 0.5px; text-transform: uppercase; }
+          .hero-right { text-align: right; font-size: 11px; line-height: 1.55; color: rgba(255,255,255,0.92); }
+          .hero-tags { display: grid; grid-template-columns: 1.2fr 0.8fr 0.8fr; gap: 10px; margin-top: 16px; }
+          .hero-card { border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.12); border-radius: 12px; padding: 10px 12px; }
+          .hero-card span { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.35px; color: rgba(255,255,255,0.75); margin-bottom: 4px; }
+          .hero-card strong { display: block; font-size: 15px; color: #ffffff; }
+          .logo { width: 70px; height: 70px; object-fit: contain; display: block; background: rgba(255,255,255,0.92); border-radius: 14px; padding: 6px; }
+          .content { padding: 18px 22px 22px; }
+          .card { padding: 16px; border: 1px solid #e5edf5; border-radius: 14px; margin-bottom: 14px; background: #fbfdff; }
+          .card h2 { margin: 0 0 12px; font-size: 12px; text-transform: uppercase; color: #475569; letter-spacing: 0.45px; }
+          .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+          .summary-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+          .summary-item { border: 1px solid #dbe4ef; background: #ffffff; border-radius: 12px; padding: 10px 12px; }
+          .summary-item span { display: block; font-size: 10px; text-transform: uppercase; color: #64748b; letter-spacing: 0.35px; margin-bottom: 4px; }
+          .summary-item strong { display: block; font-size: 15px; color: #0f172a; }
+          .kv { font-size: 12px; margin-bottom: 8px; line-height: 1.45; }
+          .status { display: inline-block; padding: 5px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; }
+          .status-paid { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+          .status-pending { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+          table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; border: 1px solid #dbe4ef; border-radius: 12px; overflow: hidden; }
+          th, td { border-bottom: 1px solid #e5e7eb; padding: 9px; text-align: left; }
+          th { background: #f8fafc; font-weight: 800; font-size: 10px; text-transform: uppercase; letter-spacing: 0.35px; color: #64748b; }
+          tbody tr:nth-child(even) { background: #f8fafc; }
+          .align-right { text-align: right; }
+          tfoot td { font-weight: 900; font-size: 13px; background: #f8fafc; }
+          .totals-highlight { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: #eff6ff; border: 1px solid #bfdbfe; }
+          .totals-highlight strong { font-size: 22px; color: #0f172a; }
+          .totals-caption { font-size: 12px; color: #334155; line-height: 1.45; }
+          .trace-box { border: 1px solid #bbf7d0; background: #f0fdf4; border-radius: 12px; padding: 14px; display: flex; justify-content: space-between; gap: 14px; }
+          .trace-left { font-size: 12px; flex: 1; }
+          .trace-row { margin-bottom: 6px; line-height: 1.45; }
+          .muted { color: #64748b; font-size: 10px; }
+          .qr-placeholder { width: 92px; height: 92px; border: 2px dashed #16a34a; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #166534; font-size: 10px; text-align: center; padding: 6px; background: #ffffff; }
+          .qr-image { width: 92px; height: 92px; border: 1px solid #16a34a; border-radius: 8px; background: #ffffff; }
+          .notes { border: 1px solid #dbe4ef; border-radius: 10px; padding: 12px; font-size: 12px; background: #ffffff; min-height: 52px; line-height: 1.5; }
+          .signature-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 18px; }
+          .signature-line { padding-top: 40px; border-top: 1px solid #94a3b8; text-align: center; font-size: 11px; color: #475569; }
+          .footer { padding: 16px 22px 22px; font-size: 11px; color: #475569; background: #f8fafc; border-top: 1px solid #e5e7eb; }
+        </style>
+      </head>
+      <body>
+        <div class="doc">
+          <header class="hero">
+            <div class="hero-top">
+              <div class="hero-left">
+                ${logoBase64 ? `<img class="logo" src="data:image/png;base64,${logoBase64}" alt="Logo da propriedade" />` : ''}
+                <div class="brand">
+                  <p class="estufa">${escapeHtml(nomeEstufa || 'Estufa')}</p>
+                  <p class="produtor">Produtor: ${escapeHtml(nomeFazenda || 'Nao informado')}</p>
+                  <p class="title">Comprovante de venda</p>
+                </div>
+              </div>
+              <div class="hero-right">
+                <div><strong>Venda:</strong> ${escapeHtml(codigoVenda)}</div>
+                <div><strong>Documento:</strong> ${escapeHtml(codigoPdf)}</div>
+                <div><strong>Emissao:</strong> ${escapeHtml(dataEmissao.date)} ${escapeHtml(dataEmissao.time)}</div>
+              </div>
+            </div>
+            <div class="hero-tags">
+              <div class="hero-card"><span>Cliente</span><strong>${escapeHtml(clienteNome)}</strong></div>
+              <div class="hero-card"><span>Status</span><strong>${escapeHtml(statusLabel)}</strong></div>
+              <div class="hero-card"><span>Valor final</span><strong>${formatCurrency(valorTotal)}</strong></div>
+            </div>
+          </header>
+          <main class="content">
+            <section class="card">
+              <h2>Dados comerciais</h2>
+              <div class="grid-2">
+                <div>
+                  <div class="kv"><strong>Cliente:</strong> ${escapeHtml(clienteNome)}</div>
+                  <div class="kv"><strong>Documento:</strong> ${escapeHtml(clienteDocumento)}</div>
+                  <div class="kv"><strong>Contato:</strong> ${escapeHtml(clienteTelefone)} • ${escapeHtml(clienteCidade)}</div>
+                  <div class="kv"><strong>Endereco:</strong> ${escapeHtml(clienteEndereco)}</div>
+                </div>
+                <div>
+                  <div class="kv"><strong>Data da venda:</strong> ${escapeHtml(dataOperacao.date)} as ${escapeHtml(dataOperacao.time)}</div>
+                  <div class="kv"><strong>Metodo de pagamento:</strong> ${escapeHtml(String(metodoPagamento).toUpperCase())}</div>
+                  <div class="kv"><strong>Pagamento:</strong> <span class="status ${statusClasse}">${escapeHtml(statusLabel)}</span></div>
+                </div>
+              </div>
+            </section>
+            <section class="card">
+              <h2>Itens da venda</h2>
+              <div class="summary-strip">
+                <div class="summary-item"><span>Produto</span><strong>${escapeHtml(produtoLabel)}</strong></div>
+                <div class="summary-item"><span>Quantidade</span><strong>${escapeHtml(formatQuantity(quantidadeTotal))} ${escapeHtml(String(unidadeTotal))}</strong></div>
+                <div class="summary-item"><span>Preco medio</span><strong>${formatCurrency(precoMedio)}</strong></div>
+                <div class="summary-item"><span>Valor total</span><strong>${formatCurrency(valorTotal)}</strong></div>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Produto</th>
+                    <th>Quantidade</th>
+                    <th class="align-right">Preco unitario</th>
+                    <th class="align-right">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>${itensRows}</tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="3" class="align-right">Valor total da venda</td>
+                    <td class="align-right">${formatCurrency(valorTotal)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+              <div class="totals-highlight">
+                <div class="totals-caption">${escapeHtml(pagamentoResumo)}<br/>Lote do plantio: <strong>${escapeHtml(String(lotePlantio))}</strong></div>
+                <strong>${formatCurrency(valorTotal)}</strong>
+              </div>
+            </section>
+            <section class="card">
+              <h2>Origem e rastreabilidade</h2>
+              <div class="grid-2">
+                <div>
+                  <div class="kv"><strong>Origem:</strong> ${escapeHtml(origem)}</div>
+                  <div class="kv"><strong>Lote do plantio:</strong> ${escapeHtml(String(lotePlantio))}</div>
+                  <div class="kv"><strong>Lote da colheita:</strong> ${escapeHtml(String(loteColheita))}</div>
+                  <div class="kv"><strong>Codigo de rastreio:</strong> ${escapeHtml(traceabilityToken || codigoVenda)}</div>
+                </div>
+                <div>
+                  <div class="kv"><strong>Cultura:</strong> ${escapeHtml(produtoLabel)}</div>
+                  <div class="kv"><strong>Consulta publica:</strong> ${escapeHtml(traceabilityLinkLabel)}</div>
+                  <div class="kv"><strong>Codigo da venda:</strong> ${escapeHtml(codigoVenda)}</div>
+                  <div class="kv"><strong>Observacao financeira:</strong> ${escapeHtml(pagamentoResumo)}</div>
+                </div>
+              </div>
+              <div class="trace-box" style="margin-top:12px;">
+                <div class="trace-left">
+                  <div class="trace-row"><strong>Conferir origem:</strong> utilize o QR Code para acessar os dados da venda e do lote.</div>
+                  <div class="trace-row"><strong>Consulta:</strong> ${escapeHtml(traceabilityLinkLabel)}</div>
+                  <div class="trace-row muted">Codigo de auditoria: ${escapeHtml(codigoPdf)}</div>
+                </div>
+                ${traceabilityQrUrl ? `<img class="qr-image" src="${escapeHtml(traceabilityQrUrl)}" alt="QR Code de rastreabilidade" />` : '<div class="qr-placeholder">QR indisponivel</div>'}
+              </div>
+            </section>
+            <section class="card">
+              <h2>Observacoes</h2>
+              <div class="notes">${escapeHtml(observacoesVenda || 'Sem observacoes adicionais para esta venda.')}</div>
+            </section>
+            <footer class="footer">
+              <div>Documento gerado automaticamente pelo Sistema de Gestao de Estufas.<br/>${escapeHtml(contatoFazenda || 'Para duvidas, contate a equipe da propriedade.')}</div>
+              <div class="signature-grid">
+                <div class="signature-line">Assinatura do produtor / responsavel</div>
+                <div class="signature-line">Assinatura do cliente / recebedor</div>
+              </div>
+            </footer>
+          </main>
+        </div>
+      </body>
+    </html>
+  `;
+};
+
 export const gerarComprovantePDF = async (input: ComprovantePDFInput) => {
   const logoBase64 = await resolveLogoBase64(
     input.logoAssetModule ?? require('../../assets/icon.png'),
     input.logoBase64
   );
-  const htmlString = buildHtmlTemplate(input, logoBase64);
+  const htmlString = buildHtmlTemplateV2(input, logoBase64);
   const { uri } = await Print.printToFileAsync({ html: htmlString });
   return uri;
 };

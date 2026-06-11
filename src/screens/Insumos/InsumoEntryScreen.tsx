@@ -14,6 +14,7 @@ import { Fornecedor, Insumo } from '../../types/domain';
 import { listFornecedores as listFornecedoresService } from '../../services/fornecedorService'; 
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { queryKeys } from '../../lib/queryClient';
+import { sanitizeDecimalInput } from '../../utils/numericFields';
 
 const InsumoEntryScreen = ({ route, navigation }: any) => {
     const { user, selectedTenantId } = useAuth();
@@ -176,10 +177,10 @@ const InsumoEntryScreen = ({ route, navigation }: any) => {
                     </View>
 
                     <Text style={styles.label}>Quantidade Comprada ({insumoSelecionado?.unidadePadrao || '?'})</Text>
-                    <TextInput style={styles.input} value={quantidadeComprada} onChangeText={setQuantidadeComprada} keyboardType="decimal-pad" placeholder={`Ex: 50 ${insumoSelecionado?.unidadePadrao || ''}`} />
+                    <TextInput style={styles.input} value={quantidadeComprada} onChangeText={(value) => setQuantidadeComprada(sanitizeDecimalInput(value))} keyboardType="decimal-pad" placeholder={`Ex: 50 ${insumoSelecionado?.unidadePadrao || ''}`} />
 
                     <Text style={styles.label}>Custo Unitário da Compra (R$)</Text>
-                    <TextInput style={styles.input} value={custoUnitarioCompra} onChangeText={setCustoUnitarioCompra} keyboardType="decimal-pad" placeholder={`Custo por ${insumoSelecionado?.unidadePadrao || '?'}`} />
+                    <TextInput style={styles.input} value={custoUnitarioCompra} onChangeText={(value) => setCustoUnitarioCompra(sanitizeDecimalInput(value))} keyboardType="decimal-pad" placeholder={`Custo por ${insumoSelecionado?.unidadePadrao || '?'}`} />
 
                     <View style={styles.totalBox}>
                         <Text style={styles.totalLabel}>Valor Total da Nota:</Text>

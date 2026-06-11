@@ -1,10 +1,10 @@
 import {
   enqueueOfflineAction,
-  isOfflineLikeError,
+  isOnlineNow,
   OfflineActionName,
   OfflineWriteOptions,
-  shouldAllowQueue,
 } from './offlineStorage';
+import { isOfflineLikeError, shouldAllowQueue } from './offlineUtils';
 
 export const buildOfflinePlaceholderId = () =>
   `offline-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -25,6 +25,14 @@ export const runOfflineWrite = async <T>({
   write,
 }: RunOfflineWriteParams<T>): Promise<T> => {
   const allowQueue = shouldAllowQueue(options);
+
+  if (allowQueue) {
+    const online = await isOnlineNow();
+    if (!online) {
+      await enqueueOfflineAction(action, payload);
+      return onQueuedValue();
+    }
+  }
 
   try {
     return await write();

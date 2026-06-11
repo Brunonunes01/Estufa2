@@ -8,8 +8,9 @@ import { useAuth } from '../../hooks/useAuth';
 import { useWriteGuard } from '../../hooks/useWriteGuard';
 import { createManejo } from '../../services/manejoService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
-import { Timestamp } from '../../compat/legacyDataApi'; 
+import { Timestamp } from '../../lib/timestamp'; 
 import { useAppSettings } from '../../hooks/useAppSettings';
+import { sanitizeDecimalInput } from '../../utils/numericFields';
 
 const tiposManejo = [
   { id: 'clima', label: 'Clima/Ambiente' },
@@ -146,11 +147,11 @@ const ManejoFormScreen = ({ route, navigation }: any) => {
             <View style={styles.row}>
               <View style={{flex: 1, marginRight: 5}}>
                 <Text style={styles.label}>Temp. (°C)</Text>
-                <TextInput style={styles.input} value={temperatura} onChangeText={setTemperatura} placeholder="Ex: 28.5" keyboardType="numeric" />
+                <TextInput style={styles.input} value={temperatura} onChangeText={(value) => setTemperatura(sanitizeDecimalInput(value))} placeholder="Ex: 28.5" keyboardType="numeric" />
               </View>
               <View style={{flex: 1, marginLeft: 5}}>
                 <Text style={styles.label}>Umidade (%)</Text>
-                <TextInput style={styles.input} value={umidade} onChangeText={setUmidade} placeholder="Ex: 65" keyboardType="numeric" />
+                <TextInput style={styles.input} value={umidade} onChangeText={(value) => setUmidade(sanitizeDecimalInput(value))} placeholder="Ex: 65" keyboardType="numeric" />
               </View>
             </View>
           </View>
@@ -211,3 +212,4 @@ const styles = StyleSheet.create({
 });
 
 export default ManejoFormScreen;
+

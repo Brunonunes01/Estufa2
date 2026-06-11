@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo } from 'react';
+﻿import React, { useCallback, useEffect, useMemo } from 'react';
 import { Alert, FlatList, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { CommonActions, useIsFocused } from '@react-navigation/native';
+import { CommonActions } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -21,15 +21,15 @@ import TodayTasks from '../../components/dashboard/TodayTasks';
 import QuickActions from '../../components/dashboard/QuickActions';
 import { updateTarefaStatus } from '../../services/tarefaAgricolaService';
 import { RootStackParamList } from '../../navigation/types';
+import { formatDateSafe } from '../../utils/date';
 
 type DashboardScreenProps = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
 
 const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
   const theme = useThemeMode();
   const insets = useSafeAreaInsets();
-  const isFocused = useIsFocused();
   const { showError } = useFeedback();
-  const { accessRoleLabel, canManageSharing, canViewFinancialDashboard, canWrite } = useAuth();
+  const { accessRoleLabel, canViewFinancialDashboard, canWrite } = useAuth();
   const { settings } = useAppSettings();
   const isHydroMode = settings.activeProductionMode === 'hidroponia';
   const isCampoMode = settings.activeProductionMode === 'campo';
@@ -52,19 +52,12 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
     isError,
     refetchResumo,
     activePlantioByEstufa,
-    plantiosByEstufa,
     criticalAlerts,
   } = useDashboardMetrics();
 
   useEffect(() => {
-    if (isError) showError('Não foi possível carregar os indicadores do painel.');
+    if (isError) showError('NÃ£o foi possÃ­vel carregar os indicadores do painel.');
   }, [isError, showError]);
-
-  useEffect(() => {
-    if (isFocused) {
-      refetchResumo();
-    }
-  }, [isFocused, refetchResumo]);
 
   const navigateTo = useCallback(
     (screen: keyof RootStackParamList, params?: RootStackParamList[keyof RootStackParamList]) =>
@@ -151,25 +144,25 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
     if (isHydroMode) {
       return [
         {
-          label: 'Motores por Setor',
+          label: 'Motores',
           icon: 'engine-outline',
           color: COLORS.info,
           onPress: openHydroMotorFlow,
         },
         {
-          label: 'Movimentar Bancadas',
+          label: 'Mover bancadas',
           icon: 'swap-horizontal',
           color: COLORS.success,
           onPress: openHydroLayoutFlow,
         },
         {
-          label: 'Iniciar Produção',
+          label: 'Iniciar produ\u00e7\u00e3o',
           icon: 'sprout',
           color: COLORS.primaryDark,
           onPress: () => navigateTo('HidroponiaLoteForm'),
         },
         {
-          label: 'Vender Hidroponia',
+          label: 'Venda hidro',
           icon: 'basket-plus-outline',
           color: COLORS.primary,
           onPress: () => navigateTo('HidroponiaLotes'),
@@ -203,7 +196,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         onPress: openQuickSaleFlow,
       },
       {
-        label: 'Registrar Manejo',
+        label: 'Novo manejo',
         icon: 'notebook-plus-outline',
         color: COLORS.info,
         onPress: openQuickManejoFlow,
@@ -227,7 +220,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         onPress: () => navigateTo('Tarefas'),
       },
       {
-        label: isCampoMode ? 'Talhoes' : 'Estufas',
+        label: isCampoMode ? 'Talh\u00f5es' : 'Estufas',
         icon: isCampoMode ? 'map-marker-radius-outline' : 'greenhouse',
         color: COLORS.secondary,
         onPress: () => (isCampoMode ? navigateTo('TalhoesList') : navigateTo('EstufasList')),
@@ -239,7 +232,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
     if (settings.uiV2Enabled) {
       return [
         {
-          label: 'Início',
+          label: 'Inicio',
           icon: 'view-dashboard-outline',
           color: COLORS.primary,
           onPress: () => navigateTo('MainTabs', { screen: 'InicioTab' }),
@@ -263,19 +256,17 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
           onPress: () => navigateTo('MainTabs', { screen: 'FinanceiroTab' }),
         },
         {
+          label: 'Relat\u00f3rios',
+          icon: 'chart-box-outline',
+          color: COLORS.primary,
+          onPress: () => navigateTo('Relatorios'),
+        },
+        {
           label: 'Clientes',
           icon: 'account-group-outline',
           color: COLORS.info,
           onPress: () => navigateTo('ClientesList'),
         },
-        ...(canManageSharing
-          ? [{
-              label: 'Compartilhar',
-              icon: 'account-multiple-plus',
-              color: COLORS.success,
-              onPress: () => navigateTo('ShareAccount'),
-            }]
-          : []),
         {
           label: 'Perfil',
           icon: 'account-circle-outline',
@@ -292,15 +283,12 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
     }
 
     const base: Array<{ label: string; icon: string; color: string; onPress: () => void }> = [
-      { label: 'Relatórios', icon: 'chart-box-outline', color: COLORS.primary, onPress: () => navigateTo('Relatorios') },
+      { label: 'Relat\u00f3rios', icon: 'chart-box-outline', color: COLORS.primary, onPress: () => navigateTo('Relatorios') },
       { label: 'Vendas', icon: 'basket-outline', color: COLORS.success, onPress: () => navigateTo('VendasList') },
       { label: 'Despesas', icon: 'cash-minus', color: COLORS.modDespesas, onPress: () => navigateTo('DespesasList') },
       { label: 'Insumos', icon: 'flask-outline', color: COLORS.primaryDark, onPress: () => navigateTo('InsumosList') },
       { label: 'Clientes', icon: 'account-group-outline', color: COLORS.info, onPress: () => navigateTo('ClientesList') },
       { label: 'Fornecedores', icon: 'truck-delivery-outline', color: COLORS.orange, onPress: () => navigateTo('FornecedoresList') },
-      ...(canManageSharing
-        ? [{ label: 'Compartilhar', icon: 'account-multiple-plus', color: COLORS.success, onPress: () => navigateTo('ShareAccount') }]
-        : []),
       { label: 'Tarefas', icon: 'calendar-check-outline', color: COLORS.orange, onPress: () => navigateTo('Tarefas') },
       { label: 'Ajustes', icon: 'cog-outline', color: COLORS.secondary, onPress: () => navigateTo('Settings') },
     ];
@@ -315,7 +303,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
     }
 
     return base;
-  }, [canManageSharing, isCampoMode, isHydroMode, navigateTo, settings.uiV2Enabled]);
+  }, [isCampoMode, isHydroMode, navigateTo, settings.uiV2Enabled]);
 
   const uniqueTenants = useMemo(() => {
     const byUid = new Map<string, (typeof availableTenants)[number]>();
@@ -340,7 +328,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         await updateTarefaStatus(taskId, 'concluida', targetId);
         await refetchResumo();
       } catch {
-        showError('Não foi possível concluir a tarefa.');
+        showError('NÃ£o foi possÃ­vel concluir a tarefa.');
       }
     },
     [selectedTenantId, user?.uid, refetchResumo, showError]
@@ -415,8 +403,8 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         <MaterialCommunityIcons name="database-sync-outline" size={16} color={theme.textSecondary} />
         <Text style={[styles.infoBannerText, { color: theme.textSecondary }]}>
           {summarySource === 'summary_doc'
-            ? `Resumo centralizado: ${summaryUpdatedAt?.toDate().toLocaleDateString()}`
-            : 'Resumo em agregação local (fallback).'}
+            ? `Resumo centralizado: ${formatDateSafe(summaryUpdatedAt)}`
+            : 'Resumo em agregacao local (fallback).'}
         </Text>
       </View>
 
@@ -475,7 +463,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
 
   const renderFooter = () => (
     <View style={{ marginTop: SPACING.md, paddingBottom: insets.bottom + 40 }}>
-      <SectionHeading title="Módulos de Gestão" />
+      <SectionHeading title="Modulos de Gestao" />
       <View style={styles.modulesGrid}>
         {modules.map((module) => (
           <ModuleGridItem
@@ -497,7 +485,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <ScreenHeaderCard
           title="Centro de Comando"
-          subtitle={`Olá, ${user?.displayName?.split(' ')[0] || 'Gestor'}`}
+          subtitle={`Ola, ${user?.displayName?.split(' ')[0] || 'Gestor'}`}
           badgeLabel={accessRoleLabel}
           actionLabel={settings.uiV2Enabled ? (isHydroMode ? 'Hidroponia' : isCampoMode ? 'Campo' : 'Estufas') : isCampoMode ? 'Talhoes' : 'Estufas'}
           actionIcon={settings.uiV2Enabled ? (isHydroMode ? 'water-outline' : isCampoMode ? 'tractor-variant' : 'greenhouse') : isCampoMode ? 'map-marker-radius-outline' : 'greenhouse'}

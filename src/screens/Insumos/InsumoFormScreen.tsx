@@ -10,6 +10,7 @@ import { useWriteGuard } from '../../hooks/useWriteGuard';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { queryKeys } from '../../lib/queryClient';
+import { sanitizeDecimalInput } from '../../utils/numericFields';
 
 const InsumoFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
@@ -128,7 +129,7 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
                         <TextInput
                           style={styles.input}
                           value={estoque}
-                          onChangeText={setEstoque}
+                          onChangeText={(value) => setEstoque(sanitizeDecimalInput(value))}
                           keyboardType="decimal-pad"
                           placeholder="0"
                           placeholderTextColor={COLORS.textPlaceholder}
@@ -156,7 +157,7 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
                         <TextInput
                           style={styles.input}
                           value={minimo}
-                          onChangeText={setMinimo}
+                          onChangeText={(value) => setMinimo(sanitizeDecimalInput(value))}
                           keyboardType="decimal-pad"
                           placeholder="Opcional"
                           placeholderTextColor={COLORS.textPlaceholder}
@@ -169,7 +170,7 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
                         <TextInput
                           style={styles.input}
                           value={custo}
-                          onChangeText={setCusto}
+                          onChangeText={(value) => setCusto(sanitizeDecimalInput(value))}
                           keyboardType="decimal-pad"
                           placeholder="Opcional"
                           placeholderTextColor={COLORS.textPlaceholder}

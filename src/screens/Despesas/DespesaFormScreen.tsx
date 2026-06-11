@@ -18,10 +18,11 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createDespesa } from '../../services/despesaService';
 import { useAuth } from '../../hooks/useAuth';
+import { sanitizeDecimalInput } from '../../utils/numericFields';
 import { useWriteGuard } from '../../hooks/useWriteGuard';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
-import { queryClient, queryKeys } from '../../lib/queryClient';
+import { invalidateDespesasQueries } from '../../lib/queryInvalidation';
 import { CaixaPessoa, listCaixaPessoas } from '../../services/caixaPessoaService';
 import {
   ComprovanteUpload,
@@ -66,7 +67,7 @@ const DespesaFormScreen = ({ navigation }: any) => {
 
   const handleSelecionarComprovante = async () => {
     if (!canWrite) return;
-    if (!targetId) return Alert.alert('Atencao', 'Sua sessao expirou. Entre novamente.');
+    if (!targetId) return Alert.alert('Atenção', 'Sua sessão expirou. Entre novamente.');
 
     setUploadingComprovante(true);
     try {
@@ -76,7 +77,7 @@ const DespesaFormScreen = ({ navigation }: any) => {
       setComprovante(uploaded);
       Alert.alert('Comprovante anexado', uploaded.comprovanteNome);
     } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Nao foi possivel anexar o comprovante.');
+      Alert.alert('Erro', error?.message || 'Não foi possível anexar o comprovante.');
     } finally {
       setUploadingComprovante(false);
     }
@@ -84,12 +85,12 @@ const DespesaFormScreen = ({ navigation }: any) => {
 
   const handleSave = async () => {
     if (!canWrite) return;
-    if (!targetId) return Alert.alert('Atencao', 'Sua sessao expirou. Entre novamente.');
-    if (!descricao.trim()) return Alert.alert('Atencao', 'Digite a descricao da despesa.');
+    if (!targetId) return Alert.alert('Atenção', 'Sua sessão expirou. Entre novamente.');
+    if (!descricao.trim()) return Alert.alert('Atenção', 'Digite a descrição da despesa.');
     const valorNum = parseFloat(valor.replace(',', '.')) || 0;
-    if (valorNum <= 0) return Alert.alert('Atencao', 'Digite um valor maior que zero.');
+    if (valorNum <= 0) return Alert.alert('Atenção', 'Digite um valor maior que zero.');
     if (status === 'pago' && !pagamentoPara) {
-      return Alert.alert('Atencao', 'Selecione quem recebeu o valor do caixa.');
+      return Alert.alert('Atenção', 'Selecione quem recebeu o valor do caixa.');
     }
 
     setLoading(true);
@@ -114,8 +115,7 @@ const DespesaFormScreen = ({ navigation }: any) => {
       );
 
       if (targetId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(targetId) });
-        queryClient.invalidateQueries({ queryKey: queryKeys.despesasList(targetId) });
+        await invalidateDespesasQueries(targetId);
       }
 
       Alert.alert(
@@ -124,7 +124,7 @@ const DespesaFormScreen = ({ navigation }: any) => {
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Nao consegui salvar a despesa. Tente novamente.');
+      Alert.alert('Erro', error?.message || 'Não consegui salvar a despesa. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -141,7 +141,7 @@ const DespesaFormScreen = ({ navigation }: any) => {
         <View style={styles.card}>
           <Text style={styles.sectionHeader}>Dados do Pagamento</Text>
 
-          <Text style={styles.label}>Descricao</Text>
+          <Text style={styles.label}>Descrição</Text>
           <View style={styles.inputWrapper}>
             <TextInput
               style={styles.input}
@@ -157,7 +157,7 @@ const DespesaFormScreen = ({ navigation }: any) => {
             <TextInput
               style={styles.input}
               value={valor}
-              onChangeText={setValor}
+              onChangeText={(value) => setValor(sanitizeDecimalInput(value))}
               keyboardType="numeric"
               placeholder="0,00"
               placeholderTextColor={COLORS.textPlaceholder}

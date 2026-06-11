@@ -1,9 +1,7 @@
-import { addDoc, collection, getDocs, query, Timestamp, where } from '../../../compat/legacyDataApi';
-import { db } from '../../../services/removedBackend';
+import { Timestamp } from '../../../lib/timestamp';
 import { assertTenantId } from '../../../services/tenantGuard';
 import { createTraceabilityEventSafely } from '../../../services/traceabilityService';
 import { getEstufaById } from '../../../services/estufaService';
-import { isSupabaseBackend } from '../../../services/backendConfig';
 import { getSupabaseClient } from '../../../services/supabaseClient';
 import { HydroLeitura, HydroLeituraFormData } from '../types';
 
@@ -38,9 +36,7 @@ export const createHydroLeitura = async (data: HydroLeituraFormData, userId: str
     } else if (requestedSetorIds.length > 0) {
       const allowedIds = new Set(setoresDoMotor.map((setor) => setor.id));
       const invalid = requestedSetorIds.find((setorId) => !allowedIds.has(setorId));
-      if (invalid) {
-        throw new Error('Existe setor selecionado que não pertence ao motor escolhido.');
-      }
+      if (invalid) throw new Error('Existe setor selecionado que não pertence ao motor escolhido.');
       setoresAplicadosIds = Array.from(new Set(requestedSetorIds));
     }
   } else if (requestedSetorIds.length > 0) {
@@ -64,8 +60,7 @@ export const createHydroLeitura = async (data: HydroLeituraFormData, userId: str
     estruturaId: data.estruturaId || null,
     loteId: data.loteId || null,
     pH: typeof data.pH === 'number' ? data.pH : null,
-    condutividadeEletrica:
-      typeof data.condutividadeEletrica === 'number' ? data.condutividadeEletrica : null,
+    condutividadeEletrica: typeof data.condutividadeEletrica === 'number' ? data.condutividadeEletrica : null,
     temperaturaSolucao: typeof data.temperaturaSolucao === 'number' ? data.temperaturaSolucao : null,
     temperaturaAmbiente: typeof data.temperaturaAmbiente === 'number' ? data.temperaturaAmbiente : null,
     umidadeAmbiente: typeof data.umidadeAmbiente === 'number' ? data.umidadeAmbiente : null,
@@ -79,40 +74,34 @@ export const createHydroLeitura = async (data: HydroLeituraFormData, userId: str
     updatedAt: now,
   };
 
-  let leituraId = '';
-  if (isSupabaseBackend()) {
-    const supabase = getSupabaseClient();
-    const { data: inserted, error } = await supabase
-      .from('hidro_leituras')
-      .insert({
-        tenant_id: tenantId,
-        estufa_id: payload.estufaId,
-        motor_id: payload.motorId || null,
-        setores_aplicados_ids: payload.setoresAplicadosIds || [],
-        aplicar_em_todos_setores_do_motor: !!payload.aplicarEmTodosSetoresDoMotor,
-        reservatorio_id: payload.reservatorioId || null,
-        estrutura_id: payload.estruturaId || null,
-        lote_id: payload.loteId || null,
-        ph: payload.pH,
-        condutividade_eletrica: payload.condutividadeEletrica,
-        temperatura_solucao: payload.temperaturaSolucao,
-        temperatura_ambiente: payload.temperaturaAmbiente,
-        umidade_ambiente: payload.umidadeAmbiente,
-        volume_litros: payload.volumeLitros,
-        acao: payload.acao,
-        insumos_adicionados: payload.insumosAdicionados || [],
-        observacoes: payload.observacoes || null,
-        responsavel: payload.responsavel || null,
-        measured_at: payload.measuredAt.toDate().toISOString(),
-      })
-      .select('id')
-      .single();
-    if (error || !inserted?.id) throw new Error(`Erro ao registrar leitura hidropônica. ${error?.message || ''}`.trim());
-    leituraId = inserted.id as string;
-  } else {
-    const ref = await addDoc(collection(db, 'hidroponia_leituras'), payload);
-    leituraId = ref.id;
-  }
+  const supabase = getSupabaseClient();
+  const { data: inserted, error } = await supabase
+    .from('hidro_leituras')
+    .insert({
+      tenant_id: tenantId,
+      estufa_id: payload.estufaId,
+      motor_id: payload.motorId || null,
+      setores_aplicados_ids: payload.setoresAplicadosIds || [],
+      aplicar_em_todos_setores_do_motor: !!payload.aplicarEmTodosSetoresDoMotor,
+      reservatorio_id: payload.reservatorioId || null,
+      estrutura_id: payload.estruturaId || null,
+      lote_id: payload.loteId || null,
+      ph: payload.pH,
+      condutividade_eletrica: payload.condutividadeEletrica,
+      temperatura_solucao: payload.temperaturaSolucao,
+      temperatura_ambiente: payload.temperaturaAmbiente,
+      umidade_ambiente: payload.umidadeAmbiente,
+      volume_litros: payload.volumeLitros,
+      acao: payload.acao,
+      insumos_adicionados: payload.insumosAdicionados || [],
+      observacoes: payload.observacoes || null,
+      responsavel: payload.responsavel || null,
+      measured_at: payload.measuredAt.toDate().toISOString(),
+    })
+    .select('id')
+    .single();
+  if (error || !inserted?.id) throw new Error(`Erro ao registrar leitura hidropônica. ${error?.message || ''}`.trim());
+  const leituraId = inserted.id as string;
 
   const isNutriente = data.acao === 'adicionar_nutriente';
   const descricao = isNutriente
@@ -154,46 +143,36 @@ export const listHydroLeituras = async (
   filters: { loteId?: string | null; estufaId?: string | null } = {}
 ): Promise<HydroLeitura[]> => {
   const tenantId = assertTenantId(userId);
-  if (isSupabaseBackend()) {
-    const supabase = getSupabaseClient();
-    let req = supabase.from('hidro_leituras').select('*').eq('tenant_id', tenantId);
-    if (filters.loteId) req = req.eq('lote_id', filters.loteId);
-    if (filters.estufaId) req = req.eq('estufa_id', filters.estufaId);
-    const { data, error } = await req.order('measured_at', { ascending: false });
-    if (error) throw new Error(`Erro ao listar leituras hidropônicas. ${error.message}`);
-    return (data || []).map((row: any) => ({
-      id: row.id,
-      tenantId: row.tenant_id,
-      userId: row.created_by || row.tenant_id,
-      estufaId: row.estufa_id,
-      motorId: row.motor_id || null,
-      setoresAplicadosIds: Array.isArray(row.setores_aplicados_ids) ? row.setores_aplicados_ids : [],
-      aplicarEmTodosSetoresDoMotor: !!row.aplicar_em_todos_setores_do_motor,
-      reservatorioId: row.reservatorio_id || null,
-      estruturaId: row.estrutura_id || null,
-      loteId: row.lote_id || null,
-      pH: row.ph != null ? Number(row.ph) : null,
-      condutividadeEletrica: row.condutividade_eletrica != null ? Number(row.condutividade_eletrica) : null,
-      temperaturaSolucao: row.temperatura_solucao != null ? Number(row.temperatura_solucao) : null,
-      temperaturaAmbiente: row.temperatura_ambiente != null ? Number(row.temperatura_ambiente) : null,
-      umidadeAmbiente: row.umidade_ambiente != null ? Number(row.umidade_ambiente) : null,
-      volumeLitros: row.volume_litros != null ? Number(row.volume_litros) : null,
-      acao: row.acao,
-      insumosAdicionados: Array.isArray(row.insumos_adicionados) ? row.insumos_adicionados : [],
-      observacoes: row.observacoes || null,
-      responsavel: row.responsavel || null,
-      measuredAt: Timestamp.fromDate(new Date(row.measured_at)),
-      createdAt: Timestamp.fromDate(new Date(row.created_at)),
-      updatedAt: Timestamp.fromDate(new Date(row.updated_at)),
-    } as HydroLeitura));
-  }
-
-  const constraints = [where('tenantId', '==', tenantId)];
-  if (filters.loteId) constraints.push(where('loteId', '==', filters.loteId));
-  if (filters.estufaId) constraints.push(where('estufaId', '==', filters.estufaId));
-
-  const snap = await getDocs(query(collection(db, 'hidroponia_leituras'), ...constraints));
-  return snap.docs
-    .map((item) => ({ ...(item.data() as HydroLeitura), id: item.id }))
-    .sort((a, b) => (b.measuredAt?.toMillis?.() || 0) - (a.measuredAt?.toMillis?.() || 0));
+  const supabase = getSupabaseClient();
+  let req = supabase.from('hidro_leituras').select('*').eq('tenant_id', tenantId);
+  if (filters.loteId) req = req.eq('lote_id', filters.loteId);
+  if (filters.estufaId) req = req.eq('estufa_id', filters.estufaId);
+  const { data, error } = await req.order('measured_at', { ascending: false });
+  if (error) throw new Error(`Erro ao listar leituras hidropônicas. ${error.message}`);
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    tenantId: row.tenant_id,
+    userId: row.created_by || row.tenant_id,
+    estufaId: row.estufa_id,
+    motorId: row.motor_id || null,
+    setoresAplicadosIds: Array.isArray(row.setores_aplicados_ids) ? row.setores_aplicados_ids : [],
+    aplicarEmTodosSetoresDoMotor: !!row.aplicar_em_todos_setores_do_motor,
+    reservatorioId: row.reservatorio_id || null,
+    estruturaId: row.estrutura_id || null,
+    loteId: row.lote_id || null,
+    pH: row.ph != null ? Number(row.ph) : null,
+    condutividadeEletrica: row.condutividade_eletrica != null ? Number(row.condutividade_eletrica) : null,
+    temperaturaSolucao: row.temperatura_solucao != null ? Number(row.temperatura_solucao) : null,
+    temperaturaAmbiente: row.temperatura_ambiente != null ? Number(row.temperatura_ambiente) : null,
+    umidadeAmbiente: row.umidade_ambiente != null ? Number(row.umidade_ambiente) : null,
+    volumeLitros: row.volume_litros != null ? Number(row.volume_litros) : null,
+    acao: row.acao,
+    insumosAdicionados: Array.isArray(row.insumos_adicionados) ? row.insumos_adicionados : [],
+    observacoes: row.observacoes || null,
+    responsavel: row.responsavel || null,
+    measuredAt: Timestamp.fromDate(new Date(row.measured_at)),
+    createdAt: Timestamp.fromDate(new Date(row.created_at)),
+    updatedAt: Timestamp.fromDate(new Date(row.updated_at)),
+  } as HydroLeitura));
 };
+

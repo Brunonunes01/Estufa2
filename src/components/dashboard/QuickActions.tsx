@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SHADOWS, SPACING } from '../../constants/theme';
@@ -21,7 +21,7 @@ const QuickActions = ({ actions }: QuickActionsProps) => {
 
   return (
     <>
-      <SectionHeading title="Ações Rápidas" />
+      <SectionHeading title={'A\u00e7\u00f5es r\u00e1pidas'} />
       <View style={styles.grid}>
         {actions.map((action) => (
           <TouchableOpacity
@@ -60,7 +60,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  label: { marginTop: 8, fontSize: 13, fontWeight: '800' },
+  label: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
 });
 
 export default React.memo(QuickActions);

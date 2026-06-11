@@ -21,7 +21,7 @@ const ClientesListScreen = ({ navigation }: any) => {
   const targetId = selectedTenantId || user?.uid;
 
   useEffect(() => {
-    if (isError) showError('Nao foi possivel carregar os clientes.');
+    if (isError) showError('Não foi possível carregar os clientes.');
   }, [isError, showError]);
 
   const toDate = (value: any): Date | null => {
@@ -48,7 +48,7 @@ const ClientesListScreen = ({ navigation }: any) => {
 
   const handleExportClientReport = async (cliente: any) => {
     if (!targetId) {
-      Alert.alert('Erro', 'Sessao invalida para gerar relatorio.');
+      Alert.alert('Erro', 'Sessão inválida para gerar relatório.');
       return;
     }
     try {
@@ -56,7 +56,7 @@ const ClientesListScreen = ({ navigation }: any) => {
       const vendasCliente = vendasRaw.filter((v) => v.clienteId === cliente.id);
       const vendas = vendasCliente.filter((venda) => normalizeStatus(venda) !== 'CANCELADO');
       if (vendas.length === 0) {
-        Alert.alert('Sem contas', 'Este cliente ainda nao possui contas pagas ou pendentes.');
+        Alert.alert('Sem contas', 'Este cliente ainda não possui contas pagas ou pendentes.');
         return;
       }
 
@@ -95,7 +95,7 @@ const ClientesListScreen = ({ navigation }: any) => {
         nomeEstufa: cliente.nome,
         tituloRelatorio: `Contas do Cliente - ${cliente.nome}`,
         periodo,
-        observacoes: `Relatorio consolidado de contas pagas e pendentes do cliente ${cliente.nome}.`,
+        observacoes: `Relatório consolidado de contas pagas e pendentes do cliente ${cliente.nome}.`,
         totais: {
           totalReceber,
           totalPagar: 0,
@@ -109,7 +109,7 @@ const ClientesListScreen = ({ navigation }: any) => {
           codigo: venda.id,
           data: toDate(venda.dataVenda)?.toLocaleDateString('pt-BR') || '-',
           cliente: cliente.nome,
-          estufa: estufasMap[venda.estufaId || ''] || 'Estufa nao identificada',
+          estufa: estufasMap[venda.estufaId || ''] || 'Estufa não identificada',
           metodoPagamento: String(venda.metodoPagamento || venda.formaPagamento || 'N/A').toUpperCase(),
           status: normalizeStatus(venda),
           valor: getVendaTotal(venda),
@@ -117,12 +117,12 @@ const ClientesListScreen = ({ navigation }: any) => {
         })),
       });
     } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Nao foi possivel gerar o relatorio do cliente.');
+      Alert.alert('Erro', error?.message || 'Não foi possível gerar o relatório do cliente.');
     }
   };
 
-  return (
-    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}>
+  const renderListHeader = () => (
+    <>
       <ScreenHeaderCard
         title="Clientes"
         subtitle="Gerencie carteira, contatos e tipo de relacionamento."
@@ -152,19 +152,24 @@ const ClientesListScreen = ({ navigation }: any) => {
           <SkeletonBlock style={styles.skeletonCard} />
         </View>
       ) : null}
+    </>
+  );
 
+  return (
+    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}>
       <FlatList
         data={clientes}
         keyExtractor={(item) => item.id}
         refreshing={refreshing && !loading}
         onRefresh={refetch}
+        ListHeaderComponent={renderListHeader}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           !loading ? (
             <EmptyState
               icon="account-group-outline"
               title="Nenhum cliente cadastrado"
-              description="Cadastre clientes para associar vendas e acompanhar historico."
+              description="Cadastre clientes para associar vendas e acompanhar histórico."
               actionLabel="Adicionar cliente"
               onAction={canWrite ? () => navigation.navigate('ClienteForm') : undefined}
             />

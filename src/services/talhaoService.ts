@@ -1,8 +1,5 @@
-import { Timestamp, addDoc, collection, getDocs, query, where } from '../compat/legacyDataApi';
 import { Talhao } from '../types/domain';
-import { db } from './removedBackend';
 import { assertTenantId } from './tenantGuard';
-import { isSupabaseBackend } from './backendConfig';
 import { getSupabaseClient } from './supabaseClient';
 
 const mapSupabaseTalhaoToDomain = (row: any): Talhao => ({
@@ -31,15 +28,9 @@ const listTalhoesSupabase = async (tenantId: string): Promise<Talhao[]> => {
   return (data || []).map(mapSupabaseTalhaoToDomain);
 };
 
-const listTalhoesLegacy = async (tenantId: string): Promise<Talhao[]> => {
-  const snap = await getDocs(query(collection(db, 'talhoes'), where('tenantId', '==', tenantId)));
-  return snap.docs.map((docItem) => ({ ...(docItem.data() as Talhao), id: docItem.id }));
-};
-
 export const listTalhoes = async (userId: string): Promise<Talhao[]> => {
   const tenantId = assertTenantId(userId);
-  if (isSupabaseBackend()) return listTalhoesSupabase(tenantId);
-  return listTalhoesLegacy(tenantId);
+  return listTalhoesSupabase(tenantId);
 };
 
 const createTalhaoSupabase = async (tenantId: string, data: Partial<Talhao>) => {
@@ -62,71 +53,39 @@ const createTalhaoSupabase = async (tenantId: string, data: Partial<Talhao>) => 
   return inserted.id as string;
 };
 
-const createTalhaoLegacy = async (tenantId: string, data: Partial<Talhao>) => {
-  const docRef = await addDoc(collection(db, 'talhoes'), {
-    tenantId,
-    userId: tenantId,
-    createdBy: tenantId,
-    nome: data.nome,
-    codigo: data.codigo || null,
-    culturaPrincipal: data.culturaPrincipal || null,
-    areaHectares: data.areaHectares ?? null,
-    areaCalculadaHectares: data.areaCalculadaHectares ?? null,
-    boundaryPoints: data.boundaryPoints ?? null,
-    tipoSolo: data.tipoSolo || null,
-    cidade: data.cidade || null,
-    observacoes: data.observacoes || null,
-    status: data.status || 'ativo',
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
-  });
-  return docRef.id;
-};
-
 export const createTalhao = async (data: Partial<Talhao>, userId: string) => {
   const tenantId = assertTenantId(userId);
   if (!String(data.nome || '').trim()) throw new Error('Nome do talhao e obrigatorio.');
-  if (isSupabaseBackend()) return createTalhaoSupabase(tenantId, data);
-  return createTalhaoLegacy(tenantId, data);
+  return createTalhaoSupabase(tenantId, data);
 };
 
 export const updateTalhao = async (talhaoId: string, data: Partial<Talhao>, userId: string) => {
   const tenantId = assertTenantId(userId);
   if (!talhaoId) throw new Error('Talhao invalido.');
 
-  if (isSupabaseBackend()) {
-    const supabase = getSupabaseClient();
-    const payload = {
-      nome: data.nome,
-      codigo: data.codigo ?? null,
-      cultura_principal: data.culturaPrincipal ?? null,
-      area_hectares: data.areaHectares ?? null,
-      area_calculada_hectares: data.areaCalculadaHectares ?? null,
-      boundary_points: data.boundaryPoints ?? null,
-      tipo_solo: data.tipoSolo ?? null,
-      cidade: data.cidade ?? null,
-      observacoes: data.observacoes ?? null,
-      status: data.status ?? 'ativo',
-      updated_at: new Date().toISOString(),
-    };
-    const { error } = await supabase.from('talhoes').update(payload).eq('id', talhaoId).eq('tenant_id', tenantId);
-    if (error) throw new Error(`Erro ao atualizar talhao. ${error.message}`);
-    return;
-  }
-
-  throw new Error('Atualizacao de talhao no backend legado ainda nao implementada.');
+  const supabase = getSupabaseClient();
+  const payload = {
+    nome: data.nome,
+    codigo: data.codigo ?? null,
+    cultura_principal: data.culturaPrincipal ?? null,
+    area_hectares: data.areaHectares ?? null,
+    area_calculada_hectares: data.areaCalculadaHectares ?? null,
+    boundary_points: data.boundaryPoints ?? null,
+    tipo_solo: data.tipoSolo ?? null,
+    cidade: data.cidade ?? null,
+    observacoes: data.observacoes ?? null,
+    status: data.status ?? 'ativo',
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabase.from('talhoes').update(payload).eq('id', talhaoId).eq('tenant_id', tenantId);
+  if (error) throw new Error(`Erro ao atualizar talhao. ${error.message}`);
 };
 
 export const deleteTalhao = async (talhaoId: string, userId: string) => {
   const tenantId = assertTenantId(userId);
   if (!talhaoId) throw new Error('Talhao invalido.');
 
-  if (isSupabaseBackend()) {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.from('talhoes').delete().eq('id', talhaoId).eq('tenant_id', tenantId);
-    if (error) throw new Error(`Erro ao excluir talhao. ${error.message}`);
-    return;
-  }
-
-  throw new Error('Exclusao de talhao no backend legado ainda nao implementada.');
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.from('talhoes').delete().eq('id', talhaoId).eq('tenant_id', tenantId);
+  if (error) throw new Error(`Erro ao excluir talhao. ${error.message}`);
 };

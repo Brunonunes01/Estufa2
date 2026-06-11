@@ -11,6 +11,7 @@ import { listManejosByPlantio } from '../../services/manejoService';
 import { listTraceabilityEventsByPlantio } from '../../services/traceabilityService';
 import { Aplicacao, Plantio, RastreabilidadeEvento, RegistroManejo, Venda } from '../../types/domain';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { formatDateSafe, formatDateTimeSafe } from '../../utils/date';
 
 const PlantioHistoryScreen = ({ route }: any) => {
   const { user, selectedTenantId } = useAuth();
@@ -66,15 +67,7 @@ const PlantioHistoryScreen = ({ route }: any) => {
   const getVendaQuantidade = (venda: Venda) => Number((venda as any).quantidade || venda.itens?.[0]?.quantidade || 0);
   const getVendaUnidade = (venda: Venda) => String((venda as any).unidade || (venda.itens?.[0] as any)?.unidade || 'un');
 
-  const formatDate = (timestamp: any) => {
-    if (!timestamp) return '-';
-    const d = timestamp.toDate
-      ? timestamp.toDate()
-      : typeof timestamp.seconds === 'number'
-      ? new Date(timestamp.seconds * 1000)
-      : new Date(timestamp);
-    return d.toLocaleDateString('pt-BR');
-  };
+  const formatDate = (timestamp: any) => formatDateSafe(timestamp);
 
   const receitaTotal = useMemo(
     () => vendas.reduce((acc, item) => acc + getVendaTotal(item), 0),
@@ -211,7 +204,7 @@ const PlantioHistoryScreen = ({ route }: any) => {
             <MaterialCommunityIcons name="flask-outline" size={20} color={COLORS.info} />
             <View style={styles.itemBody}>
               <Text style={styles.itemTitle}>{item.tipoAplicacao || 'Aplicação'}</Text>
-              <Text style={styles.itemSub}>{item.dataAplicacao.toDate().toLocaleDateString('pt-BR')}</Text>
+              <Text style={styles.itemSub}>{formatDateSafe(item.dataAplicacao)}</Text>
             </View>
           </View>
         ))
@@ -228,7 +221,7 @@ const PlantioHistoryScreen = ({ route }: any) => {
             <MaterialCommunityIcons name="notebook-outline" size={20} color={COLORS.orange} />
             <View style={styles.itemBody}>
               <Text style={styles.itemTitle}>{item.tipoManejo}</Text>
-              <Text style={styles.itemSub}>{item.dataRegistro.toDate().toLocaleDateString('pt-BR')}</Text>
+              <Text style={styles.itemSub}>{formatDateSafe(item.dataRegistro)}</Text>
             </View>
           </View>
         ))
@@ -240,28 +233,29 @@ const PlantioHistoryScreen = ({ route }: any) => {
           <Text style={styles.emptyText}>Nenhum evento de rastreabilidade registrado.</Text>
         </View>
       ) : (
-        rastreabilidade.map((item) => (
-          <View key={item.id} style={styles.itemCard}>
-            <MaterialCommunityIcons name="timeline-clock-outline" size={20} color={COLORS.warning} />
-            <View style={styles.itemBody}>
-              <Text style={styles.itemTitle}>{formatEventLabel(item)}</Text>
-              <Text style={styles.itemSub}>
-                {item.eventAt?.toDate ? item.eventAt.toDate().toLocaleString('pt-BR') : 'Data indisponível'}
-              </Text>
-              <Text style={styles.traceDescription}>{item.descricao}</Text>
-              <Text style={styles.traceMeta}>ID: {item.entidadeId}</Text>
-              {item.actorName || item.actorUid ? (
-                <Text style={styles.traceMeta}>Responsável: {item.actorName || item.actorUid}</Text>
-              ) : null}
-              {getMetadataLines(item).map((line) => (
-                <Text key={`${item.id}-${line}`} style={styles.traceMeta}>
-                  {line}
-                </Text>
-              ))}
-              {item.motivo ? <Text style={styles.traceReason}>Motivo: {item.motivo}</Text> : null}
+        rastreabilidade.map((item) => {
+          const eventDate = formatDateTimeSafe(item.eventAt);
+          return (
+            <View key={item.id} style={styles.itemCard}>
+              <MaterialCommunityIcons name="timeline-clock-outline" size={20} color={COLORS.warning} />
+              <View style={styles.itemBody}>
+                <Text style={styles.itemTitle}>{formatEventLabel(item)}</Text>
+                <Text style={styles.itemSub}>{eventDate === '-' ? 'Data indisponível' : eventDate}</Text>
+                <Text style={styles.traceDescription}>{item.descricao}</Text>
+                <Text style={styles.traceMeta}>ID: {item.entidadeId}</Text>
+                {item.actorName || item.actorUid ? (
+                  <Text style={styles.traceMeta}>Responsável: {item.actorName || item.actorUid}</Text>
+                ) : null}
+                {getMetadataLines(item).map((line) => (
+                  <Text key={`${item.id}-${line}`} style={styles.traceMeta}>
+                    {line}
+                  </Text>
+                ))}
+                {item.motivo ? <Text style={styles.traceReason}>Motivo: {item.motivo}</Text> : null}
+              </View>
             </View>
-          </View>
-        ))
+          );
+        })
       )}
     </ScrollView>
   );

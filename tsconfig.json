@@ -1,6 +1,10 @@
 {
   "extends": "expo/tsconfig.base.json",
   "compilerOptions": {
-    "strict": false
-  }
+    "strict": false,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowImportingTsExtensions": true
+  },
+  "exclude": ["Telas", "node_modules", "android"]
 }

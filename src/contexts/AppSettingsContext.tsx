@@ -7,6 +7,7 @@ export interface AppSettings {
   notifyDailySummary: boolean;
   activeProductionMode: 'ciclo_longo' | 'campo' | 'hidroponia';
   uiV2Enabled: boolean;
+  useCycleBoxWeightProfiles: boolean;
 }
 
 interface AppSettingsContextData {
@@ -23,6 +24,7 @@ const defaultSettings: AppSettings = {
   notifyDailySummary: true,
   activeProductionMode: 'ciclo_longo',
   uiV2Enabled: true,
+  useCycleBoxWeightProfiles: false,
 };
 
 export const AppSettingsContext = createContext<AppSettingsContextData>({} as AppSettingsContextData);

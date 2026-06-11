@@ -6,6 +6,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useEstufaDetailData } from '../../hooks/queries/useEstufaDetailData';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { Plantio } from '../../types/domain';
+import { formatDateSafe } from '../../utils/date';
 
 const EstufaHistoryScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
@@ -58,7 +59,7 @@ const EstufaHistoryScreen = ({ route, navigation }: any) => {
             <View style={{ flex: 1 }}>
               <Text style={styles.plantioName}>{plantio.cultura}</Text>
               <Text style={styles.plantioDetail}>
-                {plantio.quantidadePlantada} {plantio.unidadeQuantidade} • {plantio.dataPlantio.toDate().toLocaleDateString('pt-BR')}
+                {plantio.quantidadePlantada} {plantio.unidadeQuantidade} • {formatDateSafe(plantio.dataPlantio)}
               </Text>
             </View>
             <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.textSecondary} />

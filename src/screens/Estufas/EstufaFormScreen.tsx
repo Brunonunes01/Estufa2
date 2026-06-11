@@ -11,13 +11,15 @@ import MapView, { Marker, Region } from '../../components/MapViewCompat';
 import { useAuth } from '../../hooks/useAuth';
 import { createEstufa, updateEstufa, getEstufaById, deleteEstufa } from '../../services/estufaService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
-import { Timestamp } from '../../compat/legacyDataApi'; 
+import { Timestamp } from '../../lib/timestamp'; 
 import { verifyCurrentUserPassword } from '../../services/securityService';
 import { HydroponicSystemType, ProductionMode } from '../../types/domain';
 import { HYDRO_SYSTEM_OPTIONS } from '../../modules/hidroponia/constants';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../lib/queryClient';
+import { sanitizeDecimalInput } from '../../utils/numericFields';
+import { toDateSafe } from '../../utils/date';
 
 type MapCoordinate = { latitude: number; longitude: number };
 
@@ -112,8 +114,9 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
         setAltura(data.alturaM?.toString() || '');
         setTipoCobertura(data.tipoCobertura || '');
         setObservacoes(data.observacoes || '');
-        if (data.dataInicioOperacao && typeof (data.dataInicioOperacao as any).toDate === 'function') {
-          setDataConstrucao((data.dataInicioOperacao as any).toDate());
+        const parsedStartDate = toDateSafe(data.dataInicioOperacao);
+        if (parsedStartDate) {
+          setDataConstrucao(parsedStartDate);
         }
         // Carrega o status (se não existir, cai no padrão 'ativa')
         setStatus(data.status || 'ativa');
@@ -451,7 +454,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
             <TextInput 
               style={styles.input} 
               value={comprimento} 
-              onChangeText={setComprimento} 
+              onChangeText={(value) => setComprimento(sanitizeDecimalInput(value))} 
               placeholder="Ex: 50" 
               placeholderTextColor={COLORS.textPlaceholder} 
               keyboardType="numeric" 
@@ -462,7 +465,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
             <TextInput 
               style={styles.input} 
               value={largura} 
-              onChangeText={setLargura} 
+              onChangeText={(value) => setLargura(sanitizeDecimalInput(value))} 
               placeholder="Ex: 8" 
               placeholderTextColor={COLORS.textPlaceholder} 
               keyboardType="numeric" 
@@ -473,7 +476,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
             <TextInput 
               style={styles.input} 
               value={altura} 
-              onChangeText={setAltura} 
+              onChangeText={(value) => setAltura(sanitizeDecimalInput(value))} 
               placeholder="Ex: 3" 
               placeholderTextColor={COLORS.textPlaceholder} 
               keyboardType="numeric" 
@@ -516,7 +519,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
             <TextInput 
               style={styles.input} 
               value={latitude} 
-              onChangeText={setLatitude} 
+              onChangeText={(value) => setLatitude(sanitizeDecimalInput(value))} 
               placeholder="-20.26" 
               placeholderTextColor={COLORS.textPlaceholder} 
               keyboardType="numeric" 
@@ -527,7 +530,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
             <TextInput 
               style={styles.input} 
               value={longitude} 
-              onChangeText={setLongitude} 
+              onChangeText={(value) => setLongitude(sanitizeDecimalInput(value))} 
               placeholder="-50.54" 
               placeholderTextColor={COLORS.textPlaceholder} 
               keyboardType="numeric" 
@@ -735,3 +738,4 @@ const styles = StyleSheet.create({
 });
 
 export default EstufaFormScreen;
+

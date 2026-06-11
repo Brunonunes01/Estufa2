@@ -5,7 +5,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useIsFocused } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Timestamp } from '../../compat/legacyDataApi';
+import { Timestamp } from '../../lib/timestamp';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';
 import { listAllPlantios } from '../../services/plantioService';
@@ -21,6 +21,7 @@ import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/th
 import EmptyState from '../../components/ui/EmptyState';
 import { queryKeys } from '../../lib/queryClient';
 import { RootStackParamList } from '../../navigation/types';
+import { formatDateSafe } from '../../utils/date';
 
 const tipoOptions: { label: string; value: TarefaAgricola['tipoTarefa'] }[] = [
   { label: 'Irrigação', value: 'irrigacao' },
@@ -121,12 +122,7 @@ const TarefasScreen = ({ navigation }: TarefasScreenProps) => {
     [plantios, plantioId]
   );
 
-  const formatDate = (value: Timestamp) =>
-    value.toDate().toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
+  const formatDate = (value: Timestamp) => formatDateSafe(value);
 
   const getTaskTimeMs = (task: TarefaAgricola) => {
     const value = task.dataPrevista as any;
@@ -756,3 +752,4 @@ const styles = StyleSheet.create({
 });
 
 export default TarefasScreen;
+

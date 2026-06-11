@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Picker } from '@react-native-picker/picker';
 
@@ -10,6 +10,7 @@ import { getEstufaById } from '../../services/estufaService';
 import { Plantio, Venda, Estufa } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { exportOperationalCycleExcel, shareOperationalCyclePdf } from '../../services/receiptService';
 
 const toDate = (value: any): Date | null => {
   if (!value) return null;
@@ -35,6 +36,14 @@ const getVendaTotal = (venda: Venda) => {
   return Number(venda.valorTotal || fallbackTotal || 0);
 };
 
+const getVendaPrecoUnitario = (venda: Venda) =>
+  Number((venda as any).precoUnitario || venda.itens?.[0]?.valorUnitario || 0);
+
+const getVendaProduto = (venda: Venda, plantio?: Plantio | null) =>
+  String((venda as any).cultura || plantio?.cultura || venda.itens?.[0]?.descricao || 'Produto nao informado').trim();
+
+const getVendaUnidade = (venda: Venda) => String((venda as any).unidade || venda.itens?.[0]?.unidade || 'un');
+
 const fetchCycleAnalysisData = async (plantio: Plantio, tenantId: string) => {
   if (!plantio.estufaId) {
     throw new Error('Este plantio não está associado a uma estufa.');
@@ -47,7 +56,7 @@ const fetchCycleAnalysisData = async (plantio: Plantio, tenantId: string) => {
 };
 
 const RelatorioOperacionalScreen = () => {
-  const { user, selectedTenantId } = useAuth();
+  const { user, selectedTenantId, availableTenants } = useAuth();
   const tenantId = selectedTenantId || user?.uid;
 
   const [selectedPlantioId, setSelectedPlantioId] = useState<string | null>(null);
@@ -77,6 +86,10 @@ const RelatorioOperacionalScreen = () => {
     const custoMuda = Number(selectedPlantio.custoEstimadoInicial || 0);
     const custoAcumulado = Math.max(0, Number(selectedPlantio.custoAcumulado || 0) - custoMuda);
     const estufaArea = estufa.area || 0;
+    const unidadePredominante =
+      vendas
+        .map((v) => getVendaUnidade(v))
+        .find((value) => String(value || '').trim()) || 'un';
 
     const totalVolumeVendido = vendas.reduce((acc, v) => acc + getVendaQuantidade(v), 0);
     const receitaTotal = vendas.reduce((acc, v) => {
@@ -100,8 +113,86 @@ const RelatorioOperacionalScreen = () => {
     
     const lucro = receitaTotal - custoAcumulado;
 
-    return { totalVolumeVendido, receitaTotal, custoPorUnidade, produtividadeUnM2, cicloDias, lucro, custoAcumulado };
+    return { totalVolumeVendido, unidadePredominante, receitaTotal, custoPorUnidade, produtividadeUnM2, cicloDias, lucro, custoAcumulado };
   }, [selectedPlantio, analysisData]);
+
+  const empresa = useMemo(
+    () => availableTenants.find((item) => item.uid === tenantId)?.name || user?.name || 'Produtor',
+    [availableTenants, tenantId, user?.name]
+  );
+
+  const exportData = useMemo(() => {
+    if (!selectedPlantio || !analysisData?.estufa || !calculatedMetrics) return null;
+
+    const inicio = toDate(selectedPlantio.dataPlantio || selectedPlantio.dataInicio);
+    const datasVenda = (analysisData.vendas || [])
+      .map((venda) => toDate(venda.dataVenda))
+      .filter((value): value is Date => !!value);
+    const fim = datasVenda.length > 0 ? new Date(Math.max(...datasVenda.map((item) => item.getTime()))) : new Date();
+
+    return {
+      empresa,
+      periodo: `${inicio ? inicio.toLocaleDateString('pt-BR') : '-'} a ${fim.toLocaleDateString('pt-BR')}`,
+      ciclo: selectedPlantio.cultura || 'Ciclo sem nome',
+      cicloDescricao: `${selectedPlantio.cultura || 'Ciclo sem nome'}${selectedPlantio.codigoLote ? ` • Lote ${selectedPlantio.codigoLote}` : ''}`,
+      lote: selectedPlantio.codigoLote || 'Sem lote',
+      estufa: analysisData.estufa.nome || 'Estufa',
+      status: selectedPlantio.status,
+      inicio: inicio ? inicio.toLocaleDateString('pt-BR') : '-',
+      fim: fim.toLocaleDateString('pt-BR'),
+      totalVolumeVendido: calculatedMetrics.totalVolumeVendido,
+      unidadeVolume: calculatedMetrics.unidadePredominante,
+      receitaTotal: calculatedMetrics.receitaTotal,
+      custoAcumulado: calculatedMetrics.custoAcumulado,
+      custoPorUnidade: calculatedMetrics.custoPorUnidade,
+      produtividadeUnM2: calculatedMetrics.produtividadeUnM2,
+      cicloDias: calculatedMetrics.cicloDias,
+      lucro: calculatedMetrics.lucro,
+      vendas: (analysisData.vendas || []).map((venda) => ({
+        codigo: String(venda.id || '-'),
+        data: toDate(venda.dataVenda)?.toLocaleDateString('pt-BR') || '-',
+        cliente: String((venda as any).clienteNome || venda.clienteId || 'Cliente avulso'),
+        documentoCliente: String((venda as any).clienteDocumento || ''),
+        origem: (venda as any).originType === 'hydro_lote' || (venda as any).hydroLoteId ? 'Hidroponia' : (venda as any).talhaoId ? 'Campo' : 'Estufa',
+        estufa: analysisData.estufa.nome || 'Estufa',
+        lote: String((venda as any).loteColheita || selectedPlantio.codigoLote || '-'),
+        produto: getVendaProduto(venda, selectedPlantio),
+        quantidade: `${getVendaQuantidade(venda)} ${getVendaUnidade(venda)}`,
+        quantidadeValor: getVendaQuantidade(venda),
+        quantidadeUnidade: getVendaUnidade(venda),
+        precoUnitario: getVendaPrecoUnitario(venda),
+        valorTotal: getVendaTotal(venda),
+        metodoPagamento: String((venda as any).metodoPagamento || (venda as any).formaPagamento || 'N/A').toUpperCase(),
+        status: String(venda.statusPagamento || 'PAGO').toUpperCase(),
+        recebidoPor: String((venda as any).pagamentoParaNome || ''),
+        observacoes: String(venda.observacoes || ''),
+      })),
+    };
+  }, [analysisData, calculatedMetrics, empresa, selectedPlantio]);
+
+  const handleExportPdf = async () => {
+    if (!exportData) {
+      Alert.alert('Atencao', 'Selecione um ciclo para exportar o relatorio.');
+      return;
+    }
+    try {
+      await shareOperationalCyclePdf(exportData);
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel exportar o PDF.');
+    }
+  };
+
+  const handleExportExcel = async () => {
+    if (!exportData) {
+      Alert.alert('Atencao', 'Selecione um ciclo para exportar o relatorio.');
+      return;
+    }
+    try {
+      await exportOperationalCycleExcel(exportData);
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel exportar o Excel.');
+    }
+  };
 
   const renderPicker = () => (
     <View style={styles.pickerWrapper}>
@@ -182,6 +273,16 @@ const RelatorioOperacionalScreen = () => {
       ) : (
         renderPicker()
       )}
+      <View style={styles.actionsRow}>
+        <TouchableOpacity style={[styles.actionButton, { backgroundColor: COLORS.info }]} onPress={handleExportPdf}>
+          <MaterialCommunityIcons name="file-pdf-box" size={18} color={COLORS.textLight} />
+          <Text style={styles.actionButtonText}>Exportar PDF</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.actionButton, { backgroundColor: COLORS.primary }]} onPress={handleExportExcel}>
+          <MaterialCommunityIcons name="microsoft-excel" size={18} color={COLORS.textLight} />
+          <Text style={styles.actionButtonText}>Excel (.xlsx)</Text>
+        </TouchableOpacity>
+      </View>
       {renderAnalysis()}
     </ScrollView>
   );
@@ -201,6 +302,17 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xl,
   },
   picker: { color: COLORS.textDark },
+  actionsRow: { flexDirection: 'row', gap: SPACING.md, marginBottom: SPACING.lg },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: RADIUS.md,
+  },
+  actionButtonText: { color: COLORS.textLight, fontSize: 13, fontWeight: '800' },
   emptyText: { textAlign: 'center', color: COLORS.textSecondary, marginTop: 40, fontStyle: 'italic' },
   cardsRow: { flexDirection: 'row', gap: SPACING.md, marginBottom: SPACING.md },
   metricCard: {

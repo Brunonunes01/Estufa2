@@ -82,7 +82,7 @@ const InsumosListScreen = ({ navigation }: any) => {
             />
           </View>
           <Text style={[styles.minimumText, { color: theme.textSecondary }]}>
-            Mínimo recomendado: {minimo} {item.unidadePadrao}
+            Minimo recomendado: {minimo} {item.unidadePadrao}
           </Text>
         </View>
 
@@ -104,11 +104,11 @@ const InsumosListScreen = ({ navigation }: any) => {
     );
   };
 
-  return (
-    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}>
+  const renderListHeader = () => (
+    <>
       <ScreenHeaderCard
         title="Insumos e Estoque"
-        subtitle="Acompanhe níveis críticos e faça reposição com agilidade."
+        subtitle="Acompanhe niveis criticos e faca reposicao com agilidade."
         badgeLabel="Estoque"
         actionLabel="Novo Item"
         actionIcon="plus"
@@ -123,10 +123,12 @@ const InsumosListScreen = ({ navigation }: any) => {
             <Text style={styles.headerStatValue}>{lowStockCount}</Text>
             <Text style={styles.headerStatLabel}>Estoque baixo</Text>
           </View>
-          {canWrite ? <TouchableOpacity style={styles.entryChip} onPress={() => navigation.navigate('InsumoEntry')}>
-            <MaterialCommunityIcons name="arrow-down-bold-box" size={16} color={COLORS.textLight} />
-            <Text style={styles.entryChipText}>Entrada</Text>
-          </TouchableOpacity> : null}
+          {canWrite ? (
+            <TouchableOpacity style={styles.entryChip} onPress={() => navigation.navigate('InsumoEntry')}>
+              <MaterialCommunityIcons name="arrow-down-bold-box" size={16} color={COLORS.textLight} />
+              <Text style={styles.entryChipText}>Entrada</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </ScreenHeaderCard>
 
@@ -137,10 +139,15 @@ const InsumosListScreen = ({ navigation }: any) => {
           <SkeletonBlock style={styles.skeletonCard} />
         </View>
       ) : null}
+    </>
+  );
 
+  return (
+    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}>
       <FlatList
         data={insumos}
         keyExtractor={(item) => item.id}
+        ListHeaderComponent={renderListHeader}
         contentContainerStyle={[styles.listContent, { paddingBottom: (settings.uiV2Enabled ? 170 : 120) + insets.bottom }]}
         refreshing={refreshing && !loading}
         onRefresh={refetch}
@@ -149,7 +156,7 @@ const InsumosListScreen = ({ navigation }: any) => {
             <EmptyState
               icon="flask-outline"
               title="Nenhum insumo cadastrado"
-              description="Cadastre seus insumos para controlar estoque e custo médio."
+              description="Cadastre seus insumos para controlar estoque e custo medio."
               actionLabel="Adicionar insumo"
               onAction={canWrite ? () => navigation.navigate('InsumoForm') : undefined}
             />

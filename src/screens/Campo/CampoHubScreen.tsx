@@ -177,7 +177,7 @@ const CampoHubScreen = ({ navigation }: any) => {
           <EmptyState
             icon="filter-off-outline"
             title="Sem ciclos neste filtro"
-            description="O talhao selecionado nao possui ciclos ativos no momento."
+            description="O talhão selecionado não possui ciclos ativos no momento."
             actionLabel="Ver todos"
             onAction={() => setSelectedTalhaoId('all')}
           />

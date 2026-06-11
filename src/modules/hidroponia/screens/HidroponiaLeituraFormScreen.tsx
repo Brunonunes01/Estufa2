@@ -12,6 +12,7 @@ import { createHydroLeitura } from '../services/hidroponiaLeituraService';
 import { HydroLeituraAcao } from '../types';
 import { toNumber } from '../utils';
 import { useAppSettings } from '../../../hooks/useAppSettings';
+import { sanitizeDecimalInput, sanitizeIntegerInput } from '../../../utils/numericFields';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'HidroponiaLeituraForm'>;
 
@@ -248,22 +249,22 @@ const HidroponiaLeituraFormScreen = ({ navigation, route }: Props) => {
 
       <Text style={styles.sectionTitle}>Medições</Text>
       <Text style={styles.label}>pH</Text>
-      <TextInput style={styles.input} value={pH} onChangeText={setPH} keyboardType="numeric" placeholder="Ex: 6,0" placeholderTextColor={COLORS.textPlaceholder} />
+      <TextInput style={styles.input} value={pH} onChangeText={(value) => setPH(sanitizeDecimalInput(value))} keyboardType="numeric" placeholder="Ex: 6,0" placeholderTextColor={COLORS.textPlaceholder} />
 
       <Text style={styles.label}>Condutividade elétrica (CE)</Text>
-      <TextInput style={styles.input} value={ce} onChangeText={setCe} keyboardType="numeric" placeholder="Ex: 1,8" placeholderTextColor={COLORS.textPlaceholder} />
+      <TextInput style={styles.input} value={ce} onChangeText={(value) => setCe(sanitizeDecimalInput(value))} keyboardType="numeric" placeholder="Ex: 1,8" placeholderTextColor={COLORS.textPlaceholder} />
 
       <Text style={styles.label}>Temperatura da solução (°C)</Text>
-      <TextInput style={styles.input} value={temperaturaSolucao} onChangeText={setTemperaturaSolucao} keyboardType="numeric" placeholder="Ex: 22" placeholderTextColor={COLORS.textPlaceholder} />
+      <TextInput style={styles.input} value={temperaturaSolucao} onChangeText={(value) => setTemperaturaSolucao(sanitizeDecimalInput(value))} keyboardType="numeric" placeholder="Ex: 22" placeholderTextColor={COLORS.textPlaceholder} />
 
       <Text style={styles.label}>Temperatura ambiente (°C)</Text>
-      <TextInput style={styles.input} value={temperaturaAmbiente} onChangeText={setTemperaturaAmbiente} keyboardType="numeric" placeholder="Ex: 28" placeholderTextColor={COLORS.textPlaceholder} />
+      <TextInput style={styles.input} value={temperaturaAmbiente} onChangeText={(value) => setTemperaturaAmbiente(sanitizeDecimalInput(value))} keyboardType="numeric" placeholder="Ex: 28" placeholderTextColor={COLORS.textPlaceholder} />
 
       <Text style={styles.label}>Umidade ambiente (%)</Text>
-      <TextInput style={styles.input} value={umidadeAmbiente} onChangeText={setUmidadeAmbiente} keyboardType="numeric" placeholder="Ex: 70" placeholderTextColor={COLORS.textPlaceholder} />
+      <TextInput style={styles.input} value={umidadeAmbiente} onChangeText={(value) => setUmidadeAmbiente(sanitizeDecimalInput(value))} keyboardType="numeric" placeholder="Ex: 70" placeholderTextColor={COLORS.textPlaceholder} />
 
       <Text style={styles.label}>Volume do reservatório (L)</Text>
-      <TextInput style={styles.input} value={volumeLitros} onChangeText={setVolumeLitros} keyboardType="numeric" placeholder="Ex: 500" placeholderTextColor={COLORS.textPlaceholder} />
+      <TextInput style={styles.input} value={volumeLitros} onChangeText={(value) => setVolumeLitros(sanitizeIntegerInput(value))} keyboardType="numeric" placeholder="Ex: 500" placeholderTextColor={COLORS.textPlaceholder} />
 
       <Text style={styles.label}>Responsável</Text>
       <TextInput style={styles.input} value={responsavel} onChangeText={setResponsavel} placeholder="Nome do responsável" placeholderTextColor={COLORS.textPlaceholder} />

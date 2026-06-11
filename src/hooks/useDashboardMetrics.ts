@@ -4,6 +4,7 @@ import { useAppSettings } from './useAppSettings';
 import { useDashboardSummary } from './queries/useDashboardSummary';
 import { evaluateEstufaHealth } from '../utils/estufaHealth';
 import { Plantio } from '../types/domain';
+import { selectPrimaryPlantioByEstufa } from './dashboardMetricsUtils';
 
 export const useDashboardMetrics = () => {
   const { user, selectedTenantId, changeTenant, availableTenants } = useAuth();
@@ -21,39 +22,10 @@ export const useDashboardMetrics = () => {
    * 2. Em seguida, prioriza pelo updatedAt mais recente.
    */
   const activePlantioByEstufa = useMemo(() => {
-    const map: Record<string, Plantio | null> = {};
-
-    // Agrupa plantios ativos por estufa
-    const byEstufa: Record<string, Plantio[]> = {};
-    for (const plantio of plantios) {
-      if (!byEstufa[plantio.estufaId]) byEstufa[plantio.estufaId] = [];
-      byEstufa[plantio.estufaId].push(plantio);
-    }
-
-    // Para cada estufa, escolhe o mais relevante
-    for (const estufa of estufas) {
-      const candidates = byEstufa[estufa.id] || [];
-      if (candidates.length === 0) {
-        map[estufa.id] = null;
-        continue;
-      }
-
-      const sorted = [...candidates].sort((a, b) => {
-        const priority = (s: string) => (s === 'colheita_iniciada' || s === 'em_colheita' ? 2 : 1);
-        const pA = priority(a.status);
-        const pB = priority(b.status);
-
-        if (pA !== pB) return pB - pA; // Prioridade por status
-
-        const timeA = a.updatedAt instanceof Date ? a.updatedAt.getTime() : (a.updatedAt as any)?.seconds || 0;
-        const timeB = b.updatedAt instanceof Date ? b.updatedAt.getTime() : (b.updatedAt as any)?.seconds || 0;
-        return timeB - timeA; // Mais recente primeiro
-      });
-
-      map[estufa.id] = sorted[0];
-    }
-
-    return map;
+    return selectPrimaryPlantioByEstufa(
+      estufas.map((estufa) => estufa.id),
+      plantios
+    );
   }, [estufas, plantios]);
 
   const plantiosByEstufa = useMemo(() => {

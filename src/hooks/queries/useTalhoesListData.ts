@@ -7,7 +7,7 @@ export const useTalhoesListData = (tenantId?: string) =>
     queryKey: queryKeys.talhoesList(tenantId || 'none'),
     enabled: !!tenantId,
     staleTime: 1000 * 60 * 2,
-    refetchOnMount: true,
+    refetchOnMount: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     queryFn: async () => listTalhoes(tenantId as string),

@@ -9,12 +9,14 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { createPlantio, updatePlantio, getPlantioById, deletePlantioSafely } from '../../services/plantioService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
-import { Timestamp } from '../../compat/legacyDataApi'; 
-import { queryClient, queryKeys } from '../../lib/queryClient';
+import { Timestamp } from '../../lib/timestamp'; 
+import { invalidatePlantioQueries } from '../../lib/queryInvalidation';
 import { verifyCurrentUserPassword } from '../../services/securityService';
 import { useMutation } from '@tanstack/react-query';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { useTalhoesListData } from '../../hooks/queries/useTalhoesListData';
+import { sanitizeDecimalInput, sanitizeIntegerInput } from '../../utils/numericFields';
+import { PlantioCaixaPerfil } from '../../types/domain';
 
 type UnidadeQuantidadePlantio = 'Mudas' | 'Sementes' | 'Bandejas' | 'Gramas' | 'Kg';
 
@@ -58,21 +60,19 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
   
   const [cicloDias, setCicloDias] = useState('');
   const [observacoes, setObservacoes] = useState('');
+  const [caixaPerfis, setCaixaPerfis] = useState<PlantioCaixaPerfil[]>([]);
+  const [caixaPerfilNome, setCaixaPerfilNome] = useState('');
+  const [caixaPerfilPesoBruto, setCaixaPerfilPesoBruto] = useState('');
+  const [caixaPerfilPesoLiquido, setCaixaPerfilPesoLiquido] = useState('');
+  const [editingCaixaPerfilId, setEditingCaixaPerfilId] = useState<string | null>(null);
   
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
   const [deleting, setDeleting] = useState(false);
 
-  const invalidateQueries = () => {
-    if (targetId) {
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(targetId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.estufasList(targetId) });
-      if (resolvedEstufaId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.estufaDetail(resolvedEstufaId, targetId) });
-      }
-      queryClient.invalidateQueries({ queryKey: ['plantios-list', targetId] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.despesasList(targetId) });
-    }
+  const invalidateQueries = async () => {
+    if (!targetId) return;
+    await invalidatePlantioQueries(targetId, resolvedEstufaId);
   };
 
   const mutation = useMutation({
@@ -86,8 +86,8 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
         await createPlantio(plantioData, targetId);
       }
     },
-    onSuccess: (data, variables) => {
-      invalidateQueries();
+    onSuccess: async (_data, variables) => {
+      await invalidateQueries();
       const custoEstimadoValue = variables.custoEstimadoInicial || 0;
       Alert.alert(
         isEditMode ? "Ciclo atualizado" : "Ciclo criado",
@@ -146,6 +146,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
         setPrecoUnidade(data.precoEstimadoUnidade?.toString() || '');
         setCicloDias(data.cicloDias?.toString() || '');
         setObservacoes(data.observacoes || '');
+        setCaixaPerfis(data.caixaPerfis || []);
       }
     } catch (error) {
       console.error(error);
@@ -157,7 +158,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
     if (!targetId || !editingId) return;
     try {
       await updatePlantio(editingId as string, { status: 'cancelado' }, targetId);
-      invalidateQueries();
+      await invalidateQueries();
       navigation.goBack();
     } catch (e) {
       Alert.alert("Erro", "Falha ao cancelar o lote.");
@@ -222,7 +223,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
       await deletePlantioSafely(editingId, targetId);
       setDeleteModalVisible(false);
       setAdminPassword('');
-      invalidateQueries();
+      await invalidateQueries();
       navigation.goBack();
     } catch (e: any) {
       Alert.alert('Exclusão bloqueada', e?.message || 'Não foi possível excluir o ciclo.');
@@ -253,6 +254,59 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
     const qtd = parseFloat(quantidadePlantada.replace(',', '.')) || 0;
     return qtd * preco;
   }, [precoUnidade, unidadeQuantidade, quantidadeBandejas, quantidadePlantada]);
+
+  const resetCaixaPerfilForm = () => {
+    setCaixaPerfilNome('');
+    setCaixaPerfilPesoBruto('');
+    setCaixaPerfilPesoLiquido('');
+    setEditingCaixaPerfilId(null);
+  };
+
+  const handleSaveCaixaPerfil = () => {
+    const nome = caixaPerfilNome.trim();
+    const pesoBruto = parseFloat(caixaPerfilPesoBruto.replace(',', '.')) || 0;
+    const pesoLiquido = parseFloat(caixaPerfilPesoLiquido.replace(',', '.')) || 0;
+
+    if (!nome) {
+      Alert.alert('Atenção', 'Informe o nome do tipo de caixa.');
+      return;
+    }
+    if (pesoBruto <= 0 || pesoLiquido <= 0) {
+      Alert.alert('Atenção', 'Informe pesos válidos para bruto e líquido.');
+      return;
+    }
+    if (pesoLiquido > pesoBruto) {
+      Alert.alert('Atenção', 'O peso líquido não pode ser maior que o peso bruto.');
+      return;
+    }
+
+    const nextPerfil: PlantioCaixaPerfil = {
+      id: editingCaixaPerfilId || `cx_${Date.now()}`,
+      nome,
+      pesoBruto,
+      pesoLiquido,
+    };
+
+    setCaixaPerfis((current) => {
+      const filtered = current.filter((item) => item.id !== nextPerfil.id);
+      return [...filtered, nextPerfil].sort((a, b) => a.nome.localeCompare(b.nome));
+    });
+    resetCaixaPerfilForm();
+  };
+
+  const handleEditCaixaPerfil = (perfil: PlantioCaixaPerfil) => {
+    setEditingCaixaPerfilId(perfil.id);
+    setCaixaPerfilNome(perfil.nome);
+    setCaixaPerfilPesoBruto(String(perfil.pesoBruto));
+    setCaixaPerfilPesoLiquido(String(perfil.pesoLiquido));
+  };
+
+  const handleDeleteCaixaPerfil = (perfilId: string) => {
+    setCaixaPerfis((current) => current.filter((item) => item.id !== perfilId));
+    if (editingCaixaPerfilId === perfilId) {
+      resetCaixaPerfilForm();
+    }
+  };
 
   const handleSave = () => {
     if (!targetId) return Alert.alert("Atenção", "Sua sessão expirou. Entre novamente.");
@@ -302,6 +356,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
       custoEstimadoInicial: precoUnidadeNum > 0 ? custoEstimado : null,
       cicloDias: cicloNum > 0 ? cicloNum : null,
       observacoes,
+      caixaPerfis,
       ...(!isEditMode && { 
         dataPlantio: dataPlantioTimestamp,
         dataInicio: dataPlantioTimestamp,
@@ -399,7 +454,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
             <TextInput 
               style={styles.input} 
               value={quantidadePlantada} 
-              onChangeText={setQuantidadePlantada} 
+              onChangeText={(value) => setQuantidadePlantada(sanitizeIntegerInput(value))} 
               placeholder="Ex: 500" 
               placeholderTextColor={COLORS.textPlaceholder} 
               keyboardType="numeric"
@@ -430,7 +485,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
                 <TextInput
                   style={styles.input}
                   value={quantidadeBandejas}
-                  onChangeText={setQuantidadeBandejas}
+                  onChangeText={(value) => setQuantidadeBandejas(sanitizeIntegerInput(value))}
                   placeholder="Ex: 10 bandejas"
                   placeholderTextColor={COLORS.textPlaceholder}
                   keyboardType="numeric"
@@ -441,7 +496,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
                 <TextInput
                   style={styles.input}
                   value={mudasPorBandeja}
-                  onChangeText={setMudasPorBandeja}
+                  onChangeText={(value) => setMudasPorBandeja(sanitizeIntegerInput(value))}
                   placeholder="Ex: 128"
                   placeholderTextColor={COLORS.textPlaceholder}
                   keyboardType="numeric"
@@ -472,7 +527,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
             <TextInput
               style={styles.input}
               value={precoUnidade}
-              onChangeText={setPrecoUnidade}
+              onChangeText={(value) => setPrecoUnidade(sanitizeDecimalInput(value))}
               placeholder="Ex: 1,50"
               placeholderTextColor={COLORS.textPlaceholder}
               keyboardType="numeric"
@@ -487,7 +542,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
             <TextInput 
               style={styles.input} 
               value={cicloDias} 
-              onChangeText={setCicloDias} 
+              onChangeText={(value) => setCicloDias(sanitizeIntegerInput(value))} 
               placeholder="Ex: 90" 
               placeholderTextColor={COLORS.textPlaceholder} 
               keyboardType="numeric" 
@@ -496,6 +551,91 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
         </View>
         <Text style={styles.hint}>Além deste custo inicial de mudas/bandejas, os demais custos do ciclo vêm de aplicações e despesas vinculadas.</Text>
         </View>
+
+        {settings.useCycleBoxWeightProfiles ? (
+          <View style={styles.formCard}>
+            <Text style={styles.sectionTitle}>Perfis de Caixa do Ciclo</Text>
+            <Text style={styles.hint}>
+              Cadastre um ou mais tipos de caixa com peso bruto e líquido por caixa. Na venda, o vendedor escolhe o perfil e o app calcula os pesos automaticamente.
+            </Text>
+
+            <Text style={styles.label}>Nome do tipo de caixa</Text>
+            <TextInput
+              style={styles.input}
+              value={caixaPerfilNome}
+              onChangeText={setCaixaPerfilNome}
+              placeholder="Ex: Caixa 22 kg"
+              placeholderTextColor={COLORS.textPlaceholder}
+            />
+
+            <View style={styles.row}>
+              <View style={{flex: 1, marginRight: 5}}>
+                <Text style={styles.label}>Peso Bruto por Caixa (kg)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={caixaPerfilPesoBruto}
+                  onChangeText={(value) => setCaixaPerfilPesoBruto(sanitizeDecimalInput(value))}
+                  placeholder="Ex: 23,5"
+                  placeholderTextColor={COLORS.textPlaceholder}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={{flex: 1, marginLeft: 5}}>
+                <Text style={styles.label}>Peso Líquido por Caixa (kg)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={caixaPerfilPesoLiquido}
+                  onChangeText={(value) => setCaixaPerfilPesoLiquido(sanitizeDecimalInput(value))}
+                  placeholder="Ex: 22"
+                  placeholderTextColor={COLORS.textPlaceholder}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
+            <View style={styles.profileActionsRow}>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={handleSaveCaixaPerfil}>
+                <MaterialCommunityIcons
+                  name={editingCaixaPerfilId ? 'content-save-edit-outline' : 'plus-circle-outline'}
+                  size={18}
+                  color={COLORS.primary}
+                />
+                <Text style={styles.secondaryBtnText}>{editingCaixaPerfilId ? 'Atualizar Perfil' : 'Adicionar Perfil'}</Text>
+              </TouchableOpacity>
+              {editingCaixaPerfilId ? (
+                <TouchableOpacity style={styles.secondaryBtn} onPress={resetCaixaPerfilForm}>
+                  <MaterialCommunityIcons name="close-circle-outline" size={18} color={COLORS.primary} />
+                  <Text style={styles.secondaryBtnText}>Cancelar Edicao</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {caixaPerfis.length > 0 ? (
+              <View style={styles.profileList}>
+                {caixaPerfis.map((perfil) => (
+                  <View key={perfil.id} style={styles.profileCard}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.profileTitle}>{perfil.nome}</Text>
+                      <Text style={styles.profileMeta}>
+                        Bruto: {perfil.pesoBruto.toFixed(2)} kg • Líquido: {perfil.pesoLiquido.toFixed(2)} kg
+                      </Text>
+                    </View>
+                    <View style={styles.profileActionButtons}>
+                      <TouchableOpacity onPress={() => handleEditCaixaPerfil(perfil)}>
+                        <MaterialCommunityIcons name="pencil-outline" size={20} color={COLORS.primary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleDeleteCaixaPerfil(perfil.id)}>
+                        <MaterialCommunityIcons name="trash-can-outline" size={20} color={COLORS.danger} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.hint}>Nenhum perfil de caixa cadastrado neste ciclo.</Text>
+            )}
+          </View>
+        ) : null}
 
         <View style={styles.formCard}>
         <Text style={styles.sectionTitle}>Outros</Text>
@@ -615,6 +755,34 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   hint: { fontSize: 12, color: COLORS.textPrimary, marginTop: -10, marginBottom: 15, fontStyle: 'italic' },
   costText: { fontSize: 13, color: COLORS.success, fontWeight: '700', marginTop: -8, marginBottom: 15 },
+  secondaryBtn: {
+    minHeight: 44,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+  secondaryBtnText: { color: COLORS.textPrimary, fontSize: 13, fontWeight: '800' },
+  profileActionsRow: { gap: 10 },
+  profileList: { marginTop: 12, gap: 8 },
+  profileCard: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surfaceMuted,
+    borderRadius: RADIUS.md,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  profileTitle: { color: COLORS.textPrimary, fontWeight: '800', fontSize: 13 },
+  profileMeta: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
+  profileActionButtons: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   
   btn: { backgroundColor: COLORS.primary, height: 58, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginTop: 8, marginBottom: 20, ...SHADOWS.card },
   btnText: { color: COLORS.textLight, fontWeight: '800', fontSize: 17 },
@@ -644,3 +812,4 @@ const styles = StyleSheet.create({
 });
 
 export default PlantioFormScreen;
+

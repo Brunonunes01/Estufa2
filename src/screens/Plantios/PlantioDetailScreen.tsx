@@ -101,7 +101,7 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
     <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} />}>
       <View style={styles.pulseStrip}>
         <MaterialCommunityIcons name="leaf-circle-outline" size={18} color={COLORS.textLight} />
-        <Text style={styles.pulseStripText}>Centro do ciclo: operacao, venda e rastreabilidade</Text>
+        <Text style={styles.pulseStripText}>Centro do ciclo: operação, venda e rastreabilidade</Text>
       </View>
       
       {/* HEADER E SELO DE RASTREABILIDADE */}

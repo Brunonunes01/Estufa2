@@ -11,7 +11,6 @@ import {
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../hooks/useAuth';
 import { Estufa, Plantio } from '../../types/domain';
@@ -55,14 +54,6 @@ const EstufasListScreen = ({ navigation, route }: any) => {
   useEffect(() => {
     if (isError) showError('Não foi possível carregar a lista de estufas.');
   }, [isError, showError]);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (targetId) {
-        refetch();
-      }
-    }, [targetId, refetch])
-  );
 
   const activePlantioByEstufa = useMemo(() => {
     const map: Record<string, Plantio | null> = {};

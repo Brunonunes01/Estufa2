@@ -7,6 +7,9 @@ import { useAuth } from '../../hooks/useAuth';
 import { useWriteGuard } from '../../hooks/useWriteGuard';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { hasLengthBetween, limitDigits, onlyDigits } from '../../utils/numericFields';
+
+const TELEFONE_MAX_LENGTH = 15;
 
 const FornecedorFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
@@ -24,7 +27,7 @@ const FornecedorFormScreen = ({ route, navigation }: any) => {
     const targetId = selectedTenantId || user?.uid;
     if (isEditMode && fornecedorId && targetId) {
         getFornecedorById(fornecedorId, targetId).then(f => {
-          if (f) { setNome(f.nome); setContato(f.contato || ''); setTelefone(f.telefone || ''); setEmail(f.email || ''); }
+          if (f) { setNome(f.nome); setContato(f.contato || ''); setTelefone(limitDigits(f.telefone || '', TELEFONE_MAX_LENGTH)); setEmail(f.email || ''); }
         });
     }
   }, [fornecedorId, selectedTenantId]);
@@ -33,9 +36,19 @@ const FornecedorFormScreen = ({ route, navigation }: any) => {
     if (!canWrite) return;
     const targetId = selectedTenantId || user?.uid;
     if (!targetId || !nome) return Alert.alert('Erro', 'Nome obrigatório.');
+    if (telefone && !hasLengthBetween(telefone, 10, TELEFONE_MAX_LENGTH)) {
+      return Alert.alert('Atenção', 'Telefone deve conter entre 10 e 15 números.');
+    }
     setLoading(true);
     try {
-      const formData: FornecedorFormData = { nome, contato: contato || null, telefone: telefone || null, email: email || null, endereco: null, observacoes: null };
+      const formData: FornecedorFormData = {
+        nome,
+        contato: contato || null,
+        telefone: onlyDigits(telefone) || null,
+        email: email || null,
+        endereco: null,
+        observacoes: null,
+      };
       if (isEditMode) await updateFornecedor(fornecedorId, formData, targetId); else await createFornecedor(formData, targetId);
       navigation.goBack();
     } catch { Alert.alert('Erro', 'Falha ao salvar.'); } finally { setLoading(false); }
@@ -59,7 +72,8 @@ const FornecedorFormScreen = ({ route, navigation }: any) => {
           <View style={styles.inputWrapper}><TextInput style={styles.input} value={contato} onChangeText={setContato} placeholder="Sr. João" placeholderTextColor={COLORS.textPlaceholder} /></View>
 
           <Text style={styles.label}>Telefone</Text>
-          <View style={styles.inputWrapper}><TextInput style={styles.input} value={telefone} onChangeText={setTelefone} keyboardType="phone-pad" placeholder="(00) 00000-0000" placeholderTextColor={COLORS.textPlaceholder} /></View>
+          <View style={styles.inputWrapper}><TextInput style={styles.input} value={telefone} onChangeText={(value) => setTelefone(limitDigits(value, TELEFONE_MAX_LENGTH))} keyboardType="phone-pad" maxLength={TELEFONE_MAX_LENGTH} placeholder="(00) 00000-0000" placeholderTextColor={COLORS.textPlaceholder} /></View>
+          <Text style={styles.helperText}>Apenas números. Informe de 10 a 15 dígitos.</Text>
 
           <Text style={styles.label}>E-mail</Text>
           <View style={styles.inputWrapper}><TextInput style={styles.input} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="vendas@empresa.com" placeholderTextColor={COLORS.textPlaceholder} /></View>
@@ -81,6 +95,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 },
   inputWrapper: { backgroundColor: COLORS.surfaceMuted, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: COLORS.border, marginBottom: SPACING.md, height: 56, justifyContent: 'center' },
   input: { paddingHorizontal: 15, fontSize: TYPOGRAPHY.body, color: COLORS.textDark, height: '100%', fontWeight: '700' },
+  helperText: { color: COLORS.textSecondary, fontSize: 12, marginTop: -8, marginBottom: SPACING.md },
   saveBtn: { backgroundColor: COLORS.primary, height: 56, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', ...SHADOWS.card },
   saveText: { color: COLORS.textLight, fontWeight: '800', fontSize: TYPOGRAPHY.title },
 });

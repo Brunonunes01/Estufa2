@@ -1,4 +1,4 @@
-import { Timestamp } from '../../compat/legacyDataApi';
+import { Timestamp } from '../../lib/timestamp';
 
 export const toNumber = (value: string | number | null | undefined) => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -22,3 +22,4 @@ export const createHydroLotCode = (_label: string, date = new Date()) => {
 
   return `HYD-${y}${m}${d}-${h}${min}${s}-${suffix}`;
 };
+

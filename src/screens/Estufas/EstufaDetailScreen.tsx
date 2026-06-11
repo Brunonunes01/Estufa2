@@ -29,6 +29,7 @@ import { verifyCurrentUserPassword } from '../../services/securityService';
 import { useEstufaDetailData } from '../../hooks/queries/useEstufaDetailData';
 import { useFeedback } from '../../hooks/useFeedback';
 import { queryKeys } from '../../lib/queryClient';
+import { formatDateSafe } from '../../utils/date';
 
 const EstufaDetailScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId, canDeleteEstufa } = useAuth();
@@ -351,7 +352,7 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
             <Text style={styles.activeCycleTitle}>{plantioAtivo.cultura}</Text>
             <Text style={styles.activeCycleSub}>Lote: {plantioAtivo.codigoLote || 'Não informado'}</Text>
             <Text style={styles.activeCycleSub}>
-              Plantado em: {plantioAtivo.dataPlantio.toDate().toLocaleDateString('pt-BR')}
+              Plantado em: {formatDateSafe(plantioAtivo.dataPlantio)}
             </Text>
           </View>
         ) : (

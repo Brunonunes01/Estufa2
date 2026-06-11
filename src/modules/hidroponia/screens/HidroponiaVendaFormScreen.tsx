@@ -22,7 +22,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { RootStackParamList } from '../../../navigation/types';
 import { COLORS } from '../../../constants/theme';
 import { Cliente } from '../../../types/domain';
-import { queryClient, queryKeys } from '../../../lib/queryClient';
+import { invalidateClientesQuery, invalidateVendasQueries } from '../../../lib/queryInvalidation';
 import { listClientes, createCliente } from '../../../services/clienteService';
 import { createCaixaPessoa, listCaixaPessoas, CaixaPessoa } from '../../../services/caixaPessoaService';
 import { getVendaById, updateVenda, deleteVenda } from '../../../services/vendaService';
@@ -269,11 +269,9 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
     void carregarSnapshotLote(targetId, selectedLoteId);
   }, [selectedLoteId, targetId]);
 
-  const invalidateQueries = () => {
+  const invalidateQueries = async () => {
     if (!targetId) return;
-    queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(targetId) });
-    queryClient.invalidateQueries({ queryKey: ['vendas-list', targetId] });
-    queryClient.invalidateQueries({ queryKey: ['hidroponia-lotes', targetId] });
+    await invalidateVendasQueries(targetId, [['hidroponia-lotes', targetId]]);
   };
 
   async function handleDelete() {
@@ -286,7 +284,7 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
         onPress: async () => {
           try {
             await deleteVenda(params.vendaId!, targetId);
-            invalidateQueries();
+            await invalidateQueries();
             navigation.goBack();
           } catch (error: any) {
             Alert.alert('Erro', error?.message || 'Não foi possível excluir a venda.');
@@ -310,7 +308,7 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
       setSelectedClienteId(clienteId);
       setNovoClienteNome('');
       setModalClienteVisible(false);
-      queryClient.invalidateQueries({ queryKey: queryKeys.clientesList(targetId) });
+      await invalidateClientesQuery(targetId);
     } catch {
       Alert.alert('Erro', 'Não foi possível cadastrar o cliente.');
     } finally {
@@ -339,16 +337,7 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
     }
   };
 
-  const handleSave = async () => {
-    if (isEditMode && !isEditAuthorized) {
-      if (!hasEditChanges) {
-        Alert.alert('Sem alteracoes', 'Altere algum campo para salvar a venda.');
-        return;
-      }
-      setEditPassword('');
-      setEditAuthModalVisible(true);
-      return;
-    }
+  const continueSave = async () => {
     if (!targetId) {
       Alert.alert('Sessão expirada', 'Entre novamente para continuar.');
       return;
@@ -386,6 +375,20 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
     }
 
     await persistSale(qtd, preco);
+  };
+
+  const handleSave = async () => {
+    if (isEditMode && !isEditAuthorized) {
+      if (!hasEditChanges) {
+        Alert.alert('Sem alteracoes', 'Altere algum campo para salvar a venda.');
+        return;
+      }
+      setEditPassword('');
+      setEditAuthModalVisible(true);
+      return;
+    }
+
+    await continueSave();
   };
 
   const persistSale = async (qtd: number, preco: number) => {
@@ -435,7 +438,7 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
         );
       }
 
-      invalidateQueries();
+      await invalidateQueries();
       Alert.alert(
         isEditMode ? 'Venda atualizada' : 'Venda registrada',
         `${qtd} ${unidade} • R$ ${(qtd * preco).toFixed(2)}`,
@@ -723,7 +726,7 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
                     }
                     setIsEditAuthorized(true);
                     setEditAuthModalVisible(false);
-                    await handleSave();
+                    await continueSave();
                   } finally {
                     setEditAuthorizing(false);
                   }

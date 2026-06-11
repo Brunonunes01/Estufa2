@@ -1,4 +1,4 @@
-import { Timestamp } from '../compat/legacyDataApi';
+import { Timestamp } from '../lib/timestamp';
 
 export type UserRole = 'admin' | 'operator' | 'guest';
 
@@ -191,6 +191,13 @@ export interface Talhao extends BaseDoc {
   status: 'ativo' | 'preparo' | 'pousio' | 'inativo';
 }
 
+export interface PlantioCaixaPerfil {
+  id: string;
+  nome: string;
+  pesoBruto: number;
+  pesoLiquido: number;
+}
+
 export interface Plantio extends BaseDoc {
   safraId?: string;
   estufaId?: string;
@@ -232,6 +239,7 @@ export interface Plantio extends BaseDoc {
   custoEstimadoInicial?: number | null;
   unidadeQuantidade?: string;
   observacoes?: string;
+  caixaPerfis?: PlantioCaixaPerfil[];
 }
 
 export type UnidadeInsumo = 'kg' | 'L' | 'un' | 'g' | 'ml' | 'l';
@@ -453,4 +461,5 @@ export interface DashboardSummary extends BaseDoc {
   irrigacoesPendentes?: number;
   manejosPendentes?: number;
 }
+
 

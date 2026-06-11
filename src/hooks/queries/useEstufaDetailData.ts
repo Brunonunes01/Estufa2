@@ -3,6 +3,15 @@ import { getEstufaById } from '../../services/estufaService';
 import { listPlantiosByEstufa } from '../../services/plantioService';
 import { queryKeys } from '../../lib/queryClient';
 
+const getPlantioSortSeconds = (value?: { seconds?: number; toDate?: () => Date } | null) => {
+  if (!value) return 0;
+  if (typeof value.seconds === 'number') return value.seconds;
+  if (typeof value.toDate === 'function') {
+    return Math.floor(value.toDate().getTime() / 1000);
+  }
+  return 0;
+};
+
 export const useEstufaDetailData = (estufaId?: string, tenantId?: string) =>
   useQuery({
     queryKey: queryKeys.estufaDetail(estufaId || 'none', tenantId || 'none'),
@@ -22,7 +31,7 @@ export const useEstufaDetailData = (estufaId?: string, tenantId?: string) =>
         const bInactive = b.status === 'finalizado' || b.status === 'cancelado';
         if (aInactive && !bInactive) return 1;
         if (!aInactive && bInactive) return -1;
-        return b.dataPlantio.seconds - a.dataPlantio.seconds;
+        return getPlantioSortSeconds(b.dataPlantio) - getPlantioSortSeconds(a.dataPlantio);
       });
 
       return { estufa, plantios };

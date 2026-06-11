@@ -59,10 +59,10 @@ const sharedRoleDefaults: Record<SharedTenantRole, Required<TenantPermissions>> 
 };
 
 export const getRoleLabel = (role: AccessRole) => {
-  if (role === 'owner') return 'Proprietario';
+  if (role === 'owner') return 'Proprietário';
   if (role === 'manager') return 'Gerente';
   if (role === 'operator') return 'Operador';
-  return 'Relatorios';
+  return 'Consulta';
 };
 
 export const getAccessSnapshot = (tenant: TenantContext): AccessSnapshot => {
@@ -88,7 +88,7 @@ export const getAccessSnapshot = (tenant: TenantContext): AccessSnapshot => {
   const isOperator = accessRole === 'operator';
   const isReadOnly = accessRole === 'viewer';
   const canViewCash = isOwner || isManager;
-  const canViewFinancialDashboard = isOwner || isManager || isReadOnly;
+  const canViewFinancialDashboard = canRead;
 
   return {
     accessRole,

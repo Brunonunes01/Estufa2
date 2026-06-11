@@ -1,24 +1,9 @@
-import {
-  collection,
-  addDoc,
-  query,
-  where,
-  getDocs,
-  deleteDoc,
-  doc,
-  Timestamp,
-  updateDoc,
-  getDoc,
-  getAggregateFromServer,
-  sum,
-} from '../compat/legacyDataApi';
-import { db } from './removedBackend';
+import { Timestamp } from '../lib/timestamp';
 import { Despesa } from '../types/domain';
-import { assertTenantId } from './tenantGuard';
 import { OfflineWriteOptions } from './offline/offlineStorage';
 import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWrite';
-import { isSupabaseBackend } from './backendConfig';
 import { getSupabaseClient } from './supabaseClient';
+import { assertTenantId } from './tenantGuard';
 
 export type DespesaFormData = {
   descricao: string;
@@ -82,23 +67,6 @@ const buildSupabaseDespesaPayload = (data: DespesaFormData, tenantId: string) =>
   comprovante_bytes: data.comprovanteBytes || null,
 });
 
-const createDespesaLegacy = async (data: DespesaFormData, tenantId: string) => {
-  const now = Timestamp.now();
-  const novaDespesa = {
-    ...data,
-    tenantId,
-    userId: tenantId, // Compatibilidade
-    dataDespesa: Timestamp.fromDate(data.dataDespesa),
-    dataVencimento: data.dataVencimento ? Timestamp.fromDate(data.dataVencimento) : null,
-    createdAt: now,
-    updatedAt: now,
-    status: data.statusPagamento,
-    pagamentoPara: data.pagamentoPara || null,
-  };
-  const docRef = await addDoc(collection(db, 'despesas'), novaDespesa);
-  return docRef.id;
-};
-
 const createDespesaSupabase = async (data: DespesaFormData, tenantId: string) => {
   const supabase = getSupabaseClient();
   const { data: inserted, error } = await supabase
@@ -112,19 +80,6 @@ const createDespesaSupabase = async (data: DespesaFormData, tenantId: string) =>
   return inserted.id as string;
 };
 
-const sortDespesasByDateDesc = (despesas: Despesa[]) =>
-  despesas.sort((a, b) => {
-    const dateA = a.dataDespesa instanceof Timestamp ? a.dataDespesa.seconds : 0;
-    const dateB = b.dataDespesa instanceof Timestamp ? b.dataDespesa.seconds : 0;
-    return dateB - dateA;
-  });
-
-const listDespesasLegacy = async (tenantId: string): Promise<Despesa[]> => {
-  const q = query(collection(db, 'despesas'), where('tenantId', '==', tenantId));
-  const querySnapshot = await getDocs(q);
-  return sortDespesasByDateDesc(querySnapshot.docs.map((item) => ({ ...item.data(), id: item.id } as Despesa)));
-};
-
 const listDespesasSupabase = async (tenantId: string): Promise<Despesa[]> => {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
@@ -133,22 +88,10 @@ const listDespesasSupabase = async (tenantId: string): Promise<Despesa[]> => {
     .eq('tenant_id', tenantId)
     .order('data_despesa', { ascending: false });
 
-  if (error) throw new Error(`Não foi possível buscar despesas. ${error.message}`);
-  return (data || []).map(mapSupabaseDespesaToDomain);
-};
-
-const getDespesaByIdLegacy = async (id: string, tenantId: string): Promise<Despesa | null> => {
-  const docRef = doc(db, 'despesas', id);
-  const docSnap = await getDoc(docRef);
-
-  if (docSnap.exists()) {
-    const data = docSnap.data() as Despesa;
-    if (data.tenantId !== tenantId && data.userId !== tenantId) {
-      throw new Error('Acesso negado.');
-    }
-    return { ...data, id: docSnap.id };
+  if (error) {
+    throw new Error(`Não foi possível buscar despesas. ${error.message}`);
   }
-  return null;
+  return (data || []).map(mapSupabaseDespesaToDomain);
 };
 
 const getDespesaByIdSupabase = async (id: string, tenantId: string): Promise<Despesa | null> => {
@@ -159,37 +102,36 @@ const getDespesaByIdSupabase = async (id: string, tenantId: string): Promise<Des
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .maybeSingle();
-  if (error) throw new Error(`Erro ao buscar despesa. ${error.message}`);
+  if (error) {
+    throw new Error(`Erro ao buscar despesa. ${error.message}`);
+  }
   return data ? mapSupabaseDespesaToDomain(data) : null;
 };
 
-const updateDespesaStatusLegacy = async (id: string, novoStatus: 'pago' | 'pendente', tenantId: string) => {
-  const despesa = await getDespesaByIdLegacy(id, tenantId);
-  if (!despesa) throw new Error('Despesa não encontrada.');
-  await updateDoc(doc(db, 'despesas', id), {
-    statusPagamento: novoStatus,
-    status: novoStatus,
-    updatedAt: Timestamp.now(),
-  });
-};
-
-const updateDespesaStatusSupabase = async (id: string, novoStatus: 'pago' | 'pendente', tenantId: string) => {
+const updateDespesaStatusSupabase = async (
+  id: string,
+  novoStatus: 'pago' | 'pendente',
+  tenantId: string,
+  pagamentoPara?: string | null
+) => {
   const supabase = getSupabaseClient();
+  const updatePayload: any = {
+    status_pagamento: novoStatus,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (novoStatus === 'pago' && pagamentoPara) {
+    updatePayload.pagamento_para = pagamentoPara;
+  }
+
   const { error } = await supabase
     .from('despesas')
-    .update({
-      status_pagamento: novoStatus,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq('id', id)
     .eq('tenant_id', tenantId);
-  if (error) throw new Error(`Erro ao atualizar despesa. ${error.message}`);
-};
-
-const deleteDespesaLegacy = async (despesaId: string, tenantId: string) => {
-  const despesa = await getDespesaByIdLegacy(despesaId, tenantId);
-  if (!despesa) throw new Error('Despesa não encontrada.');
-  await deleteDoc(doc(db, 'despesas', despesaId));
+  if (error) {
+    throw new Error(`Erro ao atualizar despesa. ${error.message}`);
+  }
 };
 
 const deleteDespesaSupabase = async (despesaId: string, tenantId: string) => {
@@ -199,7 +141,9 @@ const deleteDespesaSupabase = async (despesaId: string, tenantId: string) => {
     .delete()
     .eq('id', despesaId)
     .eq('tenant_id', tenantId);
-  if (error) throw new Error(`Erro ao excluir despesa. ${error.message}`);
+  if (error) {
+    throw new Error(`Erro ao excluir despesa. ${error.message}`);
+  }
 };
 
 export const createDespesa = async (data: DespesaFormData, userId: string, options?: OfflineWriteOptions) => {
@@ -209,56 +153,38 @@ export const createDespesa = async (data: DespesaFormData, userId: string, optio
     payload: { data, userId: tenantId },
     options,
     onQueuedValue: () => buildOfflinePlaceholderId(),
-    write: async () => {
-      if (isSupabaseBackend()) return createDespesaSupabase(data, tenantId);
-      return createDespesaLegacy(data, tenantId);
-    },
+    write: async () => createDespesaSupabase(data, tenantId),
   });
 };
 
 export const listDespesas = async (userId: string): Promise<Despesa[]> => {
   const tenantId = assertTenantId(userId);
-  if (isSupabaseBackend()) return listDespesasSupabase(tenantId);
-  return listDespesasLegacy(tenantId);
+  return listDespesasSupabase(tenantId);
 };
 
 export const listDespesasByMonth = async (userId: string, year: number, month: number): Promise<Despesa[]> => {
   const tenantId = assertTenantId(userId);
-  
-  // O mês no JS Date é 0-indexed (0 = Janeiro, 11 = Dezembro)
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0, 23, 59, 59);
 
-  if (isSupabaseBackend()) {
-    const supabase = getSupabaseClient();
-    const { data, error } = await supabase
-      .from('despesas')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .gte('data_despesa', startDate.toISOString())
-      .lte('data_despesa', endDate.toISOString())
-      .order('data_despesa', { ascending: false });
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('despesas')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .gte('data_despesa', startDate.toISOString())
+    .lte('data_despesa', endDate.toISOString())
+    .order('data_despesa', { ascending: false });
 
-    if (error) throw new Error(`Não foi possível buscar despesas do mês. ${error.message}`);
-    return (data || []).map(mapSupabaseDespesaToDomain);
+  if (error) {
+    throw new Error(`Não foi possível buscar despesas do mês. ${error.message}`);
   }
-
-  const startTimestamp = Timestamp.fromDate(startDate);
-  const endTimestamp = Timestamp.fromDate(endDate);
-  const q = query(
-    collection(db, 'despesas'),
-    where('tenantId', '==', tenantId),
-    where('dataDespesa', '>=', startTimestamp),
-    where('dataDespesa', '<=', endTimestamp)
-  );
-  const querySnapshot = await getDocs(q);
-  return sortDespesasByDateDesc(querySnapshot.docs.map((item) => ({ ...item.data(), id: item.id } as Despesa)));
+  return (data || []).map(mapSupabaseDespesaToDomain);
 };
 
 export const getDespesaById = async (id: string, userId: string): Promise<Despesa | null> => {
   const tenantId = assertTenantId(userId);
-  if (isSupabaseBackend()) return getDespesaByIdSupabase(id, tenantId);
-  return getDespesaByIdLegacy(id, tenantId);
+  return getDespesaByIdSupabase(id, tenantId);
 };
 
 export const updateDespesaStatus = async (
@@ -274,11 +200,7 @@ export const updateDespesaStatus = async (
     options,
     onQueuedValue: () => undefined,
     write: async () => {
-      if (isSupabaseBackend()) {
-        await updateDespesaStatusSupabase(id, novoStatus, tenantId);
-        return;
-      }
-      await updateDespesaStatusLegacy(id, novoStatus, tenantId);
+      await updateDespesaStatusSupabase(id, novoStatus, tenantId);
     },
   });
 };
@@ -291,47 +213,25 @@ export const deleteDespesa = async (despesaId: string, userId: string, options?:
     options,
     onQueuedValue: () => undefined,
     write: async () => {
-      if (isSupabaseBackend()) {
-        await deleteDespesaSupabase(despesaId, tenantId);
-        return;
-      }
-      await deleteDespesaLegacy(despesaId, tenantId);
+      await deleteDespesaSupabase(despesaId, tenantId);
     },
   });
 };
 
 export const getTotalDespesasPendentes = async (userId: string): Promise<number> => {
   const tenantId = assertTenantId(userId);
-  if (isSupabaseBackend()) {
-    const supabase = getSupabaseClient();
-    const { data, error } = await supabase
-      .from('despesas')
-      .select('valor, tipo_gasto')
-      .eq('tenant_id', tenantId)
-      .eq('status_pagamento', 'pendente');
-    if (error) throw new Error(`Não foi possível calcular despesas pendentes. ${error.message}`);
-    
-    // Filtrar fora investimento_inicial (mudas) conforme solicitado
-    return (data || [])
-      .filter((item: any) => item.tipo_gasto !== 'investimento_inicial')
-      .reduce((acc, item: any) => acc + Number(item.valor || 0), 0);
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('despesas')
+    .select('valor, tipo_gasto')
+    .eq('tenant_id', tenantId)
+    .eq('status_pagamento', 'pendente');
+  if (error) {
+    throw new Error(`Não foi possível calcular despesas pendentes. ${error.message}`);
   }
 
-  const q = query(
-    collection(db, 'despesas'),
-    where('tenantId', '==', tenantId),
-    where('statusPagamento', '==', 'pendente')
-  );
-
-  try {
-    const snap = await getDocs(q);
-    return snap.docs.reduce((acc, item) => {
-      const despesa = item.data() as Partial<Despesa>;
-      // Compatibilidade legada para tipoGasto
-      if (despesa.tipoGasto === 'investimento_inicial') return acc;
-      return acc + Number(despesa.valor || 0);
-    }, 0);
-  } catch (error: any) {
-    throw error;
-  }
+  return (data || [])
+    .filter((item: any) => item.tipo_gasto !== 'investimento_inicial')
+    .reduce((acc, item: any) => acc + Number(item.valor || 0), 0);
 };
+

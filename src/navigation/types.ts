@@ -44,6 +44,7 @@ export type RootStackParamList = {
   DespesaForm: { despesaId?: string } | undefined;
   Relatorios: undefined;
   RelatorioOperacional: undefined;
+  CaixasPesoCiclo: undefined;
   Tarefas: undefined;
   TalhoesList: undefined;
   HidroponiaEstufaLayout: { estufaId: string };

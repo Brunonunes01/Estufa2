@@ -10,7 +10,7 @@ import { COLORS } from '../../constants/theme';
 import { getSupabaseClient } from '../../services/supabaseClient';
 
 export default function PerfilScreen({ navigation }: any) {
-  const { user } = useAuth();
+  const { user, canManageSharing, accessRoleLabel } = useAuth();
   
   const [nomeProdutor, setNomeProdutor] = useState(user?.name || '');
   const [nomePropriedade, setNomePropriedade] = useState('');
@@ -142,6 +142,46 @@ export default function PerfilScreen({ navigation }: any) {
         </View>
 
         <View style={styles.card}>
+            <View style={styles.actionHeader}>
+                <View style={{flex: 1}}>
+                    <Text style={styles.sectionHeader}>Conta e Acessos</Text>
+                    <Text style={styles.actionSubtitle}>Gerencie configuracoes da conta atual e o compartilhamento de acesso.</Text>
+                </View>
+                <View style={styles.roleBadge}>
+                    <Text style={styles.roleBadgeText}>{accessRoleLabel}</Text>
+                </View>
+            </View>
+
+            <TouchableOpacity style={styles.actionRow} onPress={() => navigation.navigate('Settings')}>
+                <View style={styles.actionRowLeft}>
+                    <View style={[styles.actionIconBox, {backgroundColor: COLORS.primaryLight}]}>
+                        <MaterialCommunityIcons name="cog-outline" size={18} color={COLORS.primary} />
+                    </View>
+                    <View style={{flex: 1}}>
+                        <Text style={styles.actionTitle}>Configurações</Text>
+                        <Text style={styles.actionText}>Preferencias, modo de producao e ajustes do aplicativo.</Text>
+                    </View>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+
+            {canManageSharing ? (
+                <TouchableOpacity style={styles.actionRow} onPress={() => navigation.navigate('ShareAccount')}>
+                    <View style={styles.actionRowLeft}>
+                        <View style={[styles.actionIconBox, {backgroundColor: COLORS.successSoft}]}>
+                            <MaterialCommunityIcons name="account-multiple-plus-outline" size={18} color={COLORS.success} />
+                        </View>
+                        <View style={{flex: 1}}>
+                            <Text style={styles.actionTitle}>Compartilhar acesso</Text>
+                            <Text style={styles.actionText}>Convide parceiros e revise quem acessa sua conta.</Text>
+                        </View>
+                    </View>
+                    <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+            ) : null}
+        </View>
+
+        <View style={styles.card}>
             <Text style={styles.label}>Responsável</Text>
             <View style={styles.inputWrapper}>
                 <TextInput style={styles.input} value={nomeProdutor} onChangeText={setNomeProdutor} placeholder="O seu nome" placeholderTextColor={COLORS.textPlaceholder} selectionColor={COLORS.primary} />
@@ -243,6 +283,41 @@ const styles = StyleSheet.create({
   userIdLabel: { fontSize: 11, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 2 },
   userIdValue: { fontSize: 12, fontWeight: '700', color: COLORS.textPrimary },
   card: { backgroundColor: COLORS.surface, borderRadius: 20, padding: 20, marginBottom: 20, elevation: 2, borderWidth: 1, borderColor: COLORS.border },
+  actionHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 },
+  actionSubtitle: { fontSize: 12, color: COLORS.textSecondary, lineHeight: 17, marginTop: 2 },
+  roleBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.borderDark,
+    backgroundColor: COLORS.background,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  roleBadgeText: { fontSize: 11, fontWeight: '800', color: COLORS.textPrimary },
+  actionRow: {
+    minHeight: 64,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surfaceMuted,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 12,
+  },
+  actionRowLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  actionIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionTitle: { fontSize: 14, fontWeight: '800', color: COLORS.textPrimary },
+  actionText: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2, lineHeight: 17 },
   sectionHeader: { fontSize: 16, fontWeight: '800', color: COLORS.primary, marginBottom: 15, textTransform: 'uppercase' },
   label: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 },
   inputWrapper: { backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.borderDark, marginBottom: 15, height: 50, justifyContent: 'center' },

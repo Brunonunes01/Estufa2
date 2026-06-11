@@ -1,17 +1,13 @@
 import { getPlantioById } from './plantioService';
 import { listVendasByPlantio } from './vendaService';
-import { collection, getDocs, query, where } from '../compat/legacyDataApi';
-import { db } from './removedBackend';
-import { Despesa } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
-import { isSupabaseBackend } from './backendConfig';
 import { getSupabaseClient } from './supabaseClient';
 
 export interface RentabilidadeResult {
   receitaTotal: number;
   custoInsumos: number;
   custoDespesas: number;
-  custoMuda: number; // Novo campo para informar o valor das mudas
+  custoMuda: number;
   custoTotal: number;
   lucroBruto: number;
   areaM2: number;
@@ -34,29 +30,18 @@ export const calculateRentabilidadeByPlantio = async (
     getPlantioById(plantioId, tenantId),
     listVendasByPlantio(tenantId, plantioId),
     (async () => {
-      if (isSupabaseBackend()) {
-        const supabase = getSupabaseClient();
-        const { data, error } = await supabase
-          .from('despesas')
-          .select('valor,tipo_gasto,status_pagamento')
-          .eq('tenant_id', tenantId)
-          .eq('plantio_id', plantioId);
-        if (error) throw new Error(`Erro ao buscar despesas do plantio. ${error.message}`);
-        return (data || []).map((row: any) => ({
-          valor: Number(row.valor || 0),
-          tipo_gasto: row.tipo_gasto || null,
-          status_pagamento: row.status_pagamento || null,
-        }));
-      }
-
-      const despesasSnap = await getDocs(
-        query(
-          collection(db, 'despesas'),
-          where('tenantId', '==', tenantId),
-          where('plantioId', '==', plantioId)
-        )
-      );
-      return despesasSnap.docs.map((d) => d.data() as Despesa);
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase
+        .from('despesas')
+        .select('valor,tipo_gasto,status_pagamento')
+        .eq('tenant_id', tenantId)
+        .eq('plantio_id', plantioId);
+      if (error) throw new Error(`Erro ao buscar despesas do plantio. ${error.message}`);
+      return (data || []).map((row: any) => ({
+        valor: Number(row.valor || 0),
+        tipo_gasto: row.tipo_gasto || null,
+        status_pagamento: row.status_pagamento || null,
+      }));
     })(),
   ]);
 
@@ -70,21 +55,17 @@ export const calculateRentabilidadeByPlantio = async (
     const fallbackTotal = Number(item?.quantidade || 0) * Number(item?.valorUnitario || 0);
     return total + Number(venda.valorTotal || fallbackTotal || 0);
   }, 0);
-  
+
   const custoMuda = Number(plantio.custoEstimadoInicial || 0);
-  // O custoAcumulado ja inclui o custo inicial. Subtraimos para ter apenas insumos/aplicacoes
   const custoInsumos = Math.max(0, Number(plantio.custoAcumulado || 0) - custoMuda);
-  
-  // Despesas operacionais do ciclo (excluindo investimento inicial que sao as mudas)
+
   const custoDespesas = despesas
-    .filter((d: any) => !isInitialInvestmentExpense(d))
-    .reduce((total, d: any) => total + Number(d.valor || 0), 0);
-  
-  // Custo Total agora EXCLUI as mudas conforme solicitado para o financeiro
+    .filter((despesa: any) => !isInitialInvestmentExpense(despesa))
+    .reduce((total, despesa: any) => total + Number(despesa.valor || 0), 0);
+
   const custoTotal = custoInsumos + custoDespesas;
   const lucroBruto = receitaTotal - custoTotal;
 
-  // Se o plantio tiver ocupacaoEstimada, usa a área proporcional para o rendimento/m2
   const areaProporcional = estufaAreaM2 * (Number(plantio.ocupacaoEstimada || 100) / 100);
   const rendimentoM2 = areaProporcional > 0 ? receitaTotal / areaProporcional : 0;
 

@@ -1,11 +1,11 @@
-import { Timestamp } from '../compat/legacyDataApi';
+import { Timestamp } from '../lib/timestamp';
 import { listEstufas } from './estufaService';
 import { getVendasFinancialSummary } from './vendaService';
 import { getTotalDespesasPendentes } from './despesaService';
 import { listActivePlantiosByUser } from './plantioService';
 import { Estufa, Plantio, TarefaAgricola } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
-import { listTarefasPendentes } from './tarefaAgricolaService';
+import { listTodayPendingTasks } from './tarefaAgricolaService';
 import { getSupabaseClient } from './supabaseClient';
 
 export interface DashboardSummary {
@@ -48,50 +48,18 @@ const getFinancialSummaryFromDoc = async (tenantId: string) => {
 export const getDashboardSummary = async (userId: string): Promise<DashboardSummary> => {
   const tenantId = assertTenantId(userId);
 
-  const [estufasRes, activePlantiosRes, pendingTasksRes, summaryDocRes, vendasTotalsRes, totalPagarRes] =
-    await Promise.allSettled([
+  const [estufasRes, activePlantiosRes, todayTasksRes, summaryDocRes] = await Promise.allSettled([
     listEstufas(tenantId),
     listActivePlantiosByUser(tenantId),
-    listTarefasPendentes(tenantId),
+    listTodayPendingTasks(tenantId),
     getFinancialSummaryFromDoc(tenantId),
-    getVendasFinancialSummary(tenantId),
-    getTotalDespesasPendentes(tenantId),
   ]);
 
   const estufas = estufasRes.status === 'fulfilled' ? estufasRes.value : [];
   const activePlantios = activePlantiosRes.status === 'fulfilled' ? activePlantiosRes.value : [];
   const estufaIds = new Set(estufas.map((item) => item.id));
   const activePlantiosValidos = activePlantios.filter((item) => !!item.estufaId && estufaIds.has(item.estufaId));
-  const pendingTasks = pendingTasksRes.status === 'fulfilled' ? pendingTasksRes.value : [];
-  const vendasTotals =
-    vendasTotalsRes.status === 'fulfilled'
-      ? vendasTotalsRes.value
-      : {
-          totalReceber: summaryDocRes.status === 'fulfilled' ? summaryDocRes.value?.totalReceber || 0 : 0,
-          totalRecebido: summaryDocRes.status === 'fulfilled' ? summaryDocRes.value?.totalRecebido || 0 : 0,
-        };
-  const totalPagar =
-    totalPagarRes.status === 'fulfilled'
-      ? totalPagarRes.value
-      : summaryDocRes.status === 'fulfilled'
-      ? summaryDocRes.value?.totalPagar || 0
-      : 0;
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-  const startMs = start.getTime();
-  const endMs = end.getTime();
-  const todayTasks = pendingTasks.filter((task) => {
-    const value = task.dataPrevista as any;
-    const ms =
-      typeof value?.toMillis === 'function'
-        ? value.toMillis()
-        : typeof value?.seconds === 'number'
-        ? value.seconds * 1000
-        : NaN;
-    return Number.isFinite(ms) && ms >= startMs && ms <= endMs;
-  });
+  const todayTasks = todayTasksRes.status === 'fulfilled' ? todayTasksRes.value : [];
   const summaryDoc = summaryDocRes.status === 'fulfilled' ? summaryDocRes.value : null;
 
   if (summaryDoc) {
@@ -99,14 +67,28 @@ export const getDashboardSummary = async (userId: string): Promise<DashboardSumm
       estufas,
       activePlantios: activePlantiosValidos,
       todayTasks,
-      totalReceber: vendasTotals.totalReceber,
-      totalRecebido: vendasTotals.totalRecebido,
-      totalPagar,
+      totalReceber: summaryDoc.totalReceber,
+      totalRecebido: summaryDoc.totalRecebido ?? 0,
+      totalPagar: summaryDoc.totalPagar,
       tarefasHojePendentes: summaryDoc.tarefasHojePendentes ?? todayTasks.length,
       summarySource: summaryDoc.source,
       summaryUpdatedAt: summaryDoc.updatedAt,
     };
   }
+
+  const [vendasTotalsRes, totalPagarRes] = await Promise.allSettled([
+    getVendasFinancialSummary(tenantId),
+    getTotalDespesasPendentes(tenantId),
+  ]);
+
+  const vendasTotals =
+    vendasTotalsRes.status === 'fulfilled'
+      ? vendasTotalsRes.value
+      : {
+          totalReceber: 0,
+          totalRecebido: 0,
+        };
+  const totalPagar = totalPagarRes.status === 'fulfilled' ? totalPagarRes.value : 0;
 
   return {
     estufas,
@@ -120,3 +102,4 @@ export const getDashboardSummary = async (userId: string): Promise<DashboardSumm
     summaryUpdatedAt: null,
   };
 };
+

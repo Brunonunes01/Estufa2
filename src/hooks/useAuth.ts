@@ -1,5 +1,5 @@
 // src/hooks/useAuth.ts
-import { useContext } from 'react';
+import { useContext, useMemo } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import { getAccessSnapshot } from '../lib/accessControl';
 
@@ -10,12 +10,14 @@ export const useAuth = () => {
     throw new Error('useAuth deve ser usado dentro de um AuthProvider');
   }
 
-  const selectedTenant = context.availableTenants.find((tenant) => tenant.uid === context.selectedTenantId);
-  const access = getAccessSnapshot(selectedTenant);
+  return useMemo(() => {
+    const selectedTenant = context.availableTenants.find((tenant) => tenant.uid === context.selectedTenantId);
+    const access = getAccessSnapshot(selectedTenant);
 
-  return {
-    ...context,
-    selectedTenant,
-    ...access,
-  };
+    return {
+      ...context,
+      selectedTenant,
+      ...access,
+    };
+  }, [context]);
 };

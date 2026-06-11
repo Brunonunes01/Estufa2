@@ -1,23 +1,8 @@
-import {
-  collection,
-  addDoc,
-  query,
-  where,
-  getDocs,
-  Timestamp,
-  doc,
-  getDoc,
-  updateDoc,
-  deleteDoc,
-  runTransaction,
-} from '../compat/legacyDataApi';
-import { db } from './removedBackend';
 import { Insumo } from '../types/domain';
-import { assertTenantId } from './tenantGuard';
 import { OfflineWriteOptions } from './offline/offlineStorage';
 import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWrite';
-import { isSupabaseBackend } from './backendConfig';
 import { getSupabaseClient } from './supabaseClient';
+import { assertTenantId } from './tenantGuard';
 
 export type InsumoFormData = {
   nome: string;
@@ -65,31 +50,14 @@ const buildSupabaseInsumoPayload = (data: Partial<InsumoFormData>, tenantId: str
   observacoes: data.observacoes ?? null,
 });
 
-const createInsumoLegacy = async (data: InsumoFormData, tenantId: string) => {
-  const now = Timestamp.now();
-  const novoInsumo = {
-    ...data,
-    tenantId,
-    userId: tenantId,
-    createdAt: now,
-    updatedAt: now,
-  };
-  const docRef = await addDoc(collection(db, 'insumos'), novoInsumo);
-  return docRef.id;
-};
-
 const createInsumoSupabase = async (data: InsumoFormData, tenantId: string) => {
   const supabase = getSupabaseClient();
   const payload = buildSupabaseInsumoPayload(data, tenantId);
   const { data: inserted, error } = await supabase.from('insumos').insert(payload).select('id').single();
-  if (error || !inserted?.id) throw new Error(`Não foi possível criar insumo. ${error?.message || ''}`.trim());
+  if (error || !inserted?.id) {
+    throw new Error(`Não foi possível criar insumo. ${error?.message || ''}`.trim());
+  }
   return inserted.id as string;
-};
-
-const updateInsumoLegacy = async (insumoId: string, data: Partial<InsumoFormData>, tenantId: string) => {
-  const insumo = await getInsumoById(insumoId, tenantId);
-  if (!insumo) throw new Error('Insumo não encontrado.');
-  await updateDoc(doc(db, 'insumos', insumoId), { ...data, updatedAt: Timestamp.now() });
 };
 
 const updateInsumoSupabase = async (insumoId: string, data: Partial<InsumoFormData>, tenantId: string) => {
@@ -99,34 +67,18 @@ const updateInsumoSupabase = async (insumoId: string, data: Partial<InsumoFormDa
     updated_at: new Date().toISOString(),
   };
   const { error } = await supabase.from('insumos').update(payload).eq('id', insumoId).eq('tenant_id', tenantId);
-  if (error) throw new Error(`Erro ao atualizar insumo. ${error.message}`);
-};
-
-const listInsumosLegacy = async (tenantId: string): Promise<Insumo[]> => {
-  const q = query(collection(db, 'insumos'), where('tenantId', '==', tenantId));
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map((item) => ({ ...item.data(), id: item.id } as Insumo));
+  if (error) {
+    throw new Error(`Erro ao atualizar insumo. ${error.message}`);
+  }
 };
 
 const listInsumosSupabase = async (tenantId: string): Promise<Insumo[]> => {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.from('insumos').select('*').eq('tenant_id', tenantId).order('nome');
-  if (error) throw new Error(`Não foi possível listar insumos. ${error.message}`);
-  return (data || []).map(mapSupabaseInsumoToDomain);
-};
-
-const getInsumoByIdLegacy = async (insumoId: string, tenantId: string): Promise<Insumo | null> => {
-  const docRef = doc(db, 'insumos', insumoId);
-  const docSnap = await getDoc(docRef);
-
-  if (docSnap.exists()) {
-    const data = docSnap.data() as Insumo;
-    if (data.tenantId !== tenantId && data.userId !== tenantId) {
-      throw new Error('Acesso negado.');
-    }
-    return { ...data, id: docSnap.id };
+  if (error) {
+    throw new Error(`Não foi possível listar insumos. ${error.message}`);
   }
-  return null;
+  return (data || []).map(mapSupabaseInsumoToDomain);
 };
 
 const getInsumoByIdSupabase = async (insumoId: string, tenantId: string): Promise<Insumo | null> => {
@@ -137,20 +89,18 @@ const getInsumoByIdSupabase = async (insumoId: string, tenantId: string): Promis
     .eq('id', insumoId)
     .eq('tenant_id', tenantId)
     .maybeSingle();
-  if (error) throw new Error(`Erro ao buscar insumo. ${error.message}`);
+  if (error) {
+    throw new Error(`Erro ao buscar insumo. ${error.message}`);
+  }
   return data ? mapSupabaseInsumoToDomain(data) : null;
-};
-
-const deleteInsumoLegacy = async (insumoId: string, tenantId: string) => {
-  const insumo = await getInsumoById(insumoId, tenantId);
-  if (!insumo) throw new Error('Insumo não encontrado.');
-  await deleteDoc(doc(db, 'insumos', insumoId));
 };
 
 const deleteInsumoSupabase = async (insumoId: string, tenantId: string) => {
   const supabase = getSupabaseClient();
   const { error } = await supabase.from('insumos').delete().eq('id', insumoId).eq('tenant_id', tenantId);
-  if (error) throw new Error(`Erro ao excluir insumo. ${error.message}`);
+  if (error) {
+    throw new Error(`Erro ao excluir insumo. ${error.message}`);
+  }
 };
 
 export const createInsumo = async (data: InsumoFormData, userId: string, options?: OfflineWriteOptions) => {
@@ -160,10 +110,7 @@ export const createInsumo = async (data: InsumoFormData, userId: string, options
     payload: { data, userId: tenantId },
     options,
     onQueuedValue: () => buildOfflinePlaceholderId(),
-    write: async () => {
-      if (isSupabaseBackend()) return createInsumoSupabase(data, tenantId);
-      return createInsumoLegacy(data, tenantId);
-    },
+    write: async () => createInsumoSupabase(data, tenantId),
   });
 };
 
@@ -180,37 +127,38 @@ export const updateInsumo = async (
     options,
     onQueuedValue: () => undefined,
     write: async () => {
-      if (isSupabaseBackend()) {
-        await updateInsumoSupabase(insumoId, data, tenantId);
-        return;
-      }
-      await updateInsumoLegacy(insumoId, data, tenantId);
+      await updateInsumoSupabase(insumoId, data, tenantId);
     },
   });
 };
 
 export const listInsumos = async (userId: string): Promise<Insumo[]> => {
   const tenantId = assertTenantId(userId);
-  if (isSupabaseBackend()) return listInsumosSupabase(tenantId);
-  return listInsumosLegacy(tenantId);
+  return listInsumosSupabase(tenantId);
 };
 
 export const listInsumosEmAlerta = async (userId: string): Promise<Insumo[]> => {
   const tenantId = assertTenantId(userId);
-  const insumos = await listInsumos(tenantId);
+  const insumos = await listInsumosSupabase(tenantId);
   return insumos.filter((item) => item.estoqueMinimo && item.estoqueAtual <= item.estoqueMinimo);
 };
 
 export const getInsumoById = async (insumoId: string, userId: string): Promise<Insumo | null> => {
   const tenantId = assertTenantId(userId);
-  if (isSupabaseBackend()) return getInsumoByIdSupabase(insumoId, tenantId);
-  return getInsumoByIdLegacy(insumoId, tenantId);
+  return getInsumoByIdSupabase(insumoId, tenantId);
 };
 
-export const deleteInsumo = async (insumoId: string, userId: string) => {
+export const deleteInsumo = async (insumoId: string, userId: string, options?: OfflineWriteOptions) => {
   const tenantId = assertTenantId(userId);
-  if (isSupabaseBackend()) return deleteInsumoSupabase(insumoId, tenantId);
-  return deleteInsumoLegacy(insumoId, tenantId);
+  return runOfflineWrite({
+    action: 'deleteInsumo',
+    payload: { id: insumoId, userId: tenantId },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () => {
+      await deleteInsumoSupabase(insumoId, tenantId);
+    },
+  });
 };
 
 export const addEstoqueToInsumo = async (
@@ -236,81 +184,44 @@ export const addEstoqueToInsumo = async (
     options,
     onQueuedValue: () => undefined,
     write: async () => {
-      if (isSupabaseBackend()) {
-        const supabase = getSupabaseClient();
-        const current = await getInsumoByIdSupabase(insumoId, tenantId);
-        if (!current) throw new Error('Insumo não encontrado.');
-
-        const estoqueAntigo = Number(current.estoqueAtual || 0);
-        const custoAntigo = Number(current.custoUnitario || 0);
-        const novoEstoque = estoqueAntigo + quantidadeComprada;
-        const valorEstoqueAntigo = estoqueAntigo * custoAntigo;
-        const valorNovaCompra = quantidadeComprada * custoUnitarioCompra;
-        const novoCusto = novoEstoque > 0 ? (valorEstoqueAntigo + valorNovaCompra) / novoEstoque : custoAntigo;
-
-        const { error: updateError } = await supabase
-          .from('insumos')
-          .update({
-            estoque_atual: novoEstoque,
-            custo_unitario: novoCusto,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', insumoId)
-          .eq('tenant_id', tenantId);
-        if (updateError) throw new Error(`Erro ao atualizar estoque do insumo. ${updateError.message}`);
-
-        const { error: entryError } = await supabase.from('insumo_entradas').insert({
-          tenant_id: tenantId,
-          insumo_id: insumoId,
-          fornecedor_id: entryData.fornecedorId || null,
-          quantidade_comprada: quantidadeComprada,
-          custo_unitario_compra: custoUnitarioCompra,
-          observacoes: entryData.observacoes || null,
-          data_entrada: new Date().toISOString(),
-        });
-        if (entryError) throw new Error(`Erro ao registrar entrada de insumo. ${entryError.message}`);
-        return;
+      const supabase = getSupabaseClient();
+      const current = await getInsumoByIdSupabase(insumoId, tenantId);
+      if (!current) {
+        throw new Error('Insumo não encontrado.');
       }
 
-      return runTransaction(db, async (transaction) => {
-        const insumoRef = doc(db, 'insumos', insumoId);
-        const insumoSnap = await transaction.get(insumoRef);
+      const estoqueAntigo = Number(current.estoqueAtual || 0);
+      const custoAntigo = Number(current.custoUnitario || 0);
+      const novoEstoque = estoqueAntigo + quantidadeComprada;
+      const valorEstoqueAntigo = estoqueAntigo * custoAntigo;
+      const valorNovaCompra = quantidadeComprada * custoUnitarioCompra;
+      const novoCusto = novoEstoque > 0 ? (valorEstoqueAntigo + valorNovaCompra) / novoEstoque : custoAntigo;
 
-        if (!insumoSnap.exists()) throw new Error('Insumo não encontrado.');
-        const insumo = insumoSnap.data() as Insumo;
-        if (insumo.tenantId !== tenantId && insumo.userId !== tenantId) {
-          throw new Error('Acesso negado ao insumo selecionado.');
-        }
+      const { error: updateError } = await supabase
+        .from('insumos')
+        .update({
+          estoque_atual: novoEstoque,
+          custo_unitario: novoCusto,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', insumoId)
+        .eq('tenant_id', tenantId);
+      if (updateError) {
+        throw new Error(`Erro ao atualizar estoque do insumo. ${updateError.message}`);
+      }
 
-        const estoqueAntigo = Number(insumo.estoqueAtual || 0);
-        const custoAntigo = Number(insumo.custoUnitario || 0);
-
-        const novoEstoque = estoqueAntigo + quantidadeComprada;
-        let novoCusto = custoAntigo;
-        if (novoEstoque > 0) {
-          const valorEstoqueAntigo = estoqueAntigo * custoAntigo;
-          const valorNovaCompra = quantidadeComprada * custoUnitarioCompra;
-          novoCusto = (valorEstoqueAntigo + valorNovaCompra) / novoEstoque;
-        }
-
-        transaction.update(insumoRef, {
-          estoqueAtual: novoEstoque,
-          custoUnitario: novoCusto,
-          updatedAt: Timestamp.now(),
-        });
-
-        const entradaRef = doc(collection(db, 'insumo_entradas'));
-        transaction.set(entradaRef, {
-          insumoId,
-          nomeInsumo: insumo.nome,
-          tenantId,
-          userId: tenantId,
-          ...entryData,
-          quantidadeComprada,
-          custoUnitarioCompra,
-          dataEntrada: Timestamp.now(),
-        });
+      const { error: entryError } = await supabase.from('insumo_entradas').insert({
+        tenant_id: tenantId,
+        insumo_id: insumoId,
+        fornecedor_id: entryData.fornecedorId || null,
+        quantidade_comprada: quantidadeComprada,
+        custo_unitario_compra: custoUnitarioCompra,
+        observacoes: entryData.observacoes || null,
+        data_entrada: new Date().toISOString(),
       });
+      if (entryError) {
+        throw new Error(`Erro ao registrar entrada de insumo. ${entryError.message}`);
+      }
     },
   });
 };

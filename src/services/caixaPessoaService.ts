@@ -1,14 +1,4 @@
-import {
-  Timestamp,
-  addDoc,
-  collection,
-  getDocs,
-  query,
-  where,
-} from '../compat/legacyDataApi';
-import { db } from './removedBackend';
 import { assertTenantId } from './tenantGuard';
-import { isSupabaseBackend } from './backendConfig';
 import { getSupabaseClient } from './supabaseClient';
 
 export interface CaixaPessoa {
@@ -37,31 +27,18 @@ const mapSupabaseCaixaPessoa = (row: any): CaixaPessoa => ({
 
 export const listCaixaPessoas = async (userId: string): Promise<CaixaPessoa[]> => {
   const tenantId = assertTenantId(userId);
-  if (isSupabaseBackend()) {
-    const supabase: any = getSupabaseClient();
-    const { data, error } = await supabase
-      .from('caixa_pessoas')
-      .select('id, nome, ativo')
-      .eq('tenant_id', tenantId)
-      .eq('ativo', true)
-      .order('nome', { ascending: true });
-    if (error) {
-      if (isCaixaPessoasTableMissing(error)) return [];
-      throw new Error(`Erro ao listar pessoas do caixa. ${error.message}`);
-    }
-    return (data || []).map(mapSupabaseCaixaPessoa);
+  const supabase: any = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('caixa_pessoas')
+    .select('id, nome, ativo')
+    .eq('tenant_id', tenantId)
+    .eq('ativo', true)
+    .order('nome', { ascending: true });
+  if (error) {
+    if (isCaixaPessoasTableMissing(error)) return [];
+    throw new Error(`Erro ao listar pessoas do caixa. ${error.message}`);
   }
-
-  const snap = await getDocs(
-    query(collection(db, 'caixa_pessoas'), where('tenantId', '==', tenantId), where('ativo', '==', true))
-  );
-  return snap.docs
-    .map((doc) => ({
-      id: doc.id,
-      nome: String((doc.data() as any).nome || ''),
-      ativo: (doc.data() as any).ativo !== false,
-    }))
-    .sort((a, b) => a.nome.localeCompare(b.nome));
+  return (data || []).map(mapSupabaseCaixaPessoa);
 };
 
 export const createCaixaPessoa = async (data: { nome: string }, userId: string): Promise<string> => {
@@ -69,37 +46,23 @@ export const createCaixaPessoa = async (data: { nome: string }, userId: string):
   const nome = data.nome.trim();
   if (!nome) throw new Error('Informe o nome da pessoa do caixa.');
 
-  if (isSupabaseBackend()) {
-    const supabase: any = getSupabaseClient();
-    const { data: inserted, error } = await supabase
-      .from('caixa_pessoas')
-      .insert({
-        tenant_id: tenantId,
-        nome,
-        ativo: true,
-      })
-      .select('id')
-      .single();
-    if (error || !inserted?.id) {
-      if (isCaixaPessoasTableMissing(error)) {
-        throw new Error(
-          'Estrutura do banco desatualizada: tabela caixa_pessoas nao existe. Rode a migration no Supabase (npm run supabase:db:push).'
-        );
-      }
-      throw new Error(`Erro ao cadastrar pessoa do caixa. ${error?.message || ''}`.trim());
+  const supabase: any = getSupabaseClient();
+  const { data: inserted, error } = await supabase
+    .from('caixa_pessoas')
+    .insert({
+      tenant_id: tenantId,
+      nome,
+      ativo: true,
+    })
+    .select('id')
+    .single();
+  if (error || !inserted?.id) {
+    if (isCaixaPessoasTableMissing(error)) {
+      throw new Error(
+        'Estrutura do banco desatualizada: tabela caixa_pessoas nao existe. Rode a migration no Supabase (npm run supabase:db:push).'
+      );
     }
-    return inserted.id as string;
+    throw new Error(`Erro ao cadastrar pessoa do caixa. ${error?.message || ''}`.trim());
   }
-
-  const now = Timestamp.now();
-  const ref = await addDoc(collection(db, 'caixa_pessoas'), {
-    tenantId,
-    userId: tenantId,
-    createdBy: tenantId,
-    nome,
-    ativo: true,
-    createdAt: now,
-    updatedAt: now,
-  });
-  return ref.id;
+  return inserted.id as string;
 };

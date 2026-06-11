@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
+import { isOfflineLikeError, shouldAllowQueue } from './offlineUtils';
 
 const OFFLINE_QUEUE_KEY = '@sge/offline_queue_v1';
 
@@ -15,6 +16,7 @@ export type OfflineActionName =
   | 'updatePlantioStatus'
   | 'createInsumo'
   | 'updateInsumo'
+  | 'deleteInsumo'
   | 'addEstoqueToInsumo'
   | 'createDespesa'
   | 'updateDespesaStatus'
@@ -118,22 +120,6 @@ export const isOnlineNow = async () => {
     return true;
   }
 };
-
-export const isOfflineLikeError = (error: any) => {
-  const code = String(error?.code || '').toLowerCase();
-  const message = String(error?.message || '').toLowerCase();
-  return (
-    code.includes('unavailable') ||
-    code.includes('deadline-exceeded') ||
-    code.includes('network-request-failed') ||
-    message.includes('network request failed') ||
-    message.includes('offline') ||
-    message.includes('failed to fetch')
-  );
-};
-
-export const shouldAllowQueue = (options?: OfflineWriteOptions) =>
-  (options?.syncMode || 'allow_queue') !== 'online_only';
 
 export const enqueueOfflineAction = async (
   action: OfflineActionName,

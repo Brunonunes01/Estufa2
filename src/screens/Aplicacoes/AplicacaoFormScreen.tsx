@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../constants/theme';
 import { queryClient, queryKeys } from '../../lib/queryClient';
 import { useAppSettings } from '../../hooks/useAppSettings';
+import { sanitizeDecimalInput, sanitizeIntegerInput } from '../../utils/numericFields';
 
 const AplicacaoFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
@@ -192,13 +193,13 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
                 <View style={[styles.inputGroup, {flex: 1, marginRight: 15}]}>
                     <Text style={styles.label}>Nº Tanques (Bomba)</Text>
                     <View style={styles.inputWrapper}>
-                        <TextInput style={styles.input} value={numTanques} onChangeText={setNumTanques} keyboardType="numeric" placeholder="Ex: 1" placeholderTextColor={COLORS.textPlaceholder} selectionColor={COLORS.info} />
+                        <TextInput style={styles.input} value={numTanques} onChangeText={(value) => setNumTanques(sanitizeIntegerInput(value))} keyboardType="numeric" placeholder="Ex: 1" placeholderTextColor={COLORS.textPlaceholder} selectionColor={COLORS.info} />
                     </View>
                 </View>
                 <View style={[styles.inputGroup, {flex: 1}]}>
                     <Text style={styles.label}>Volume (Litros)</Text>
                     <View style={styles.inputWrapper}>
-                        <TextInput style={styles.input} value={volumeTanque} onChangeText={setVolumeTanque} keyboardType="numeric" placeholder="Opcional" placeholderTextColor={COLORS.textPlaceholder} selectionColor={COLORS.info} />
+                        <TextInput style={styles.input} value={volumeTanque} onChangeText={(value) => setVolumeTanque(sanitizeDecimalInput(value))} keyboardType="numeric" placeholder="Opcional" placeholderTextColor={COLORS.textPlaceholder} selectionColor={COLORS.info} />
                     </View>
                 </View>
             </View>
@@ -229,7 +230,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
                             <TextInput 
                                 style={[styles.input, {flex: 1, borderRightWidth: 0}]} 
                                 value={tempDose} 
-                                onChangeText={setTempDose} 
+                                onChangeText={(value) => setTempDose(sanitizeDecimalInput(value))} 
                                 keyboardType="numeric" 
                                 placeholder="0.00" 
                                 placeholderTextColor={COLORS.textPlaceholder} 

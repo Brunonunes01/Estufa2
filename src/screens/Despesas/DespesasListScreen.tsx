@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect } from 'react';
-import { Alert, FlatList, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, FlatList, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,7 +14,9 @@ import EmptyState from '../../components/ui/EmptyState';
 import SkeletonBlock from '../../components/ui/SkeletonBlock';
 import LoadingButton from '../../components/ui/LoadingButton';
 import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
+import MetricCard from '../../components/ui/MetricCard';
 import { listCaixaPessoas } from '../../services/caixaPessoaService';
+import { formatDateSafe } from '../../utils/date';
 
 const DespesasListScreen = ({ navigation }: any) => {
   const { isOwner, canWrite, user, selectedTenantId } = useAuth();
@@ -35,7 +37,8 @@ const DespesasListScreen = ({ navigation }: any) => {
     deletingId,
     payingId,
   } = useDespesasList();
-  const [caixaPessoasMap, setCaixaPessoasMap] = React.useState<Record<string, string>>({});
+  const [caixaPessoasMap, setCaixaPessoasMap] = useState<Record<string, string>>({});
+  const [searchText, setSearchText] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -65,6 +68,16 @@ const DespesasListScreen = ({ navigation }: any) => {
     }, [refetch])
   );
 
+  const filteredDespesas = useMemo(() => {
+    const search = searchText.trim().toLowerCase();
+    if (!search) return despesas;
+
+    return despesas.filter((item) => {
+      const destino = caixaPessoasMap[item.pagamentoPara || ''] || 'não informado';
+      return `${item.descricao} ${item.categoria} ${destino}`.toLowerCase().includes(search);
+    });
+  }, [despesas, caixaPessoasMap, searchText]);
+
   const handleDelete = useCallback(
     (item: Despesa) => {
       Alert.alert('Excluir', 'Remover esta despesa?', [
@@ -75,7 +88,7 @@ const DespesasListScreen = ({ navigation }: any) => {
           onPress: async () => {
             try {
               await deleteDespesa(item.id);
-              showSuccess('Despesa excluída.');
+              showSuccess('Despesa excluida.');
             } catch {
               showError('Não foi possível excluir a despesa.');
             }
@@ -111,7 +124,7 @@ const DespesasListScreen = ({ navigation }: any) => {
     try {
       const canOpen = await Linking.canOpenURL(url);
       if (!canOpen) {
-        Alert.alert('Comprovante', 'Nao foi possivel abrir o comprovante neste dispositivo.');
+        Alert.alert('Comprovante', 'Não foi possível abrir o comprovante neste dispositivo.');
         return;
       }
       await Linking.openURL(url);
@@ -137,11 +150,11 @@ const DespesasListScreen = ({ navigation }: any) => {
     }
   };
 
-  return (
-    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}>
+  const renderListHeader = () => (
+    <>
       <ScreenHeaderCard
-        title="Financeiro de Saída"
-        subtitle="Gerencie vencimentos, pagamentos e custos operacionais."
+        title="Financeiro de Saida"
+        subtitle="Gerencie vencimentos e pagamentos com foco no que precisa de baixa."
         badgeLabel="Despesas"
         actionLabel="Nova Despesa"
         actionIcon="plus"
@@ -150,7 +163,7 @@ const DespesasListScreen = ({ navigation }: any) => {
         <View style={styles.headerStats}>
           <View style={styles.headerStatChip}>
             <Text style={styles.headerStatValue}>R$ {totalGasto.toFixed(0)}</Text>
-            <Text style={styles.headerStatLabel}>Total do período</Text>
+            <Text style={styles.headerStatLabel}>Total do periodo</Text>
           </View>
           <View style={styles.headerStatChip}>
             <Text style={styles.headerStatValue}>R$ {totalPendente.toFixed(0)}</Text>
@@ -159,6 +172,65 @@ const DespesasListScreen = ({ navigation }: any) => {
         </View>
       </ScreenHeaderCard>
 
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.financeLinksRow}>
+        <TouchableOpacity
+          style={[styles.financeLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
+          onPress={() => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' })}
+        >
+          <MaterialCommunityIcons name="cash-multiple" size={16} color={theme.textSecondary} />
+          <Text style={[styles.financeLinkText, { color: theme.textSecondary }]}>Vendas</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.financeLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
+          onPress={() => navigation.navigate('ContasReceber')}
+        >
+          <MaterialCommunityIcons name="cash-clock" size={16} color={theme.textSecondary} />
+          <Text style={[styles.financeLinkText, { color: theme.textSecondary }]}>Contas</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.financeLink, styles.financeLinkActive, { borderColor: COLORS.modDespesas }]}>
+          <MaterialCommunityIcons name="cash-minus" size={16} color={COLORS.modDespesas} />
+          <Text style={[styles.financeLinkText, { color: COLORS.modDespesas }]}>Despesas</Text>
+        </TouchableOpacity>
+      </ScrollView>
+
+      <View style={[styles.overviewCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
+        <View style={styles.overviewTopRow}>
+          <View>
+            <Text style={[styles.overviewLabel, { color: theme.textSecondary }]}>Saidas no periodo</Text>
+            <Text style={[styles.overviewValue, { color: theme.textPrimary }]}>R$ {totalGasto.toFixed(2)}</Text>
+            <Text style={[styles.overviewCaption, { color: theme.textSecondary }]}>
+              {filteredDespesas.length} despesa(s) na visao atual
+            </Text>
+          </View>
+          <View style={[styles.overviewBadge, { backgroundColor: theme.dangerBackground, borderColor: COLORS.danger }]}>
+            <Text style={[styles.overviewBadgeText, { color: COLORS.danger }]}>Saida</Text>
+          </View>
+        </View>
+
+        <View style={styles.metricsGrid}>
+          <MetricCard label="Total gasto" value={`R$ ${totalGasto.toFixed(2)}`} icon="cash-minus" tone="danger" />
+          <MetricCard label="A pagar" value={`R$ ${totalPendente.toFixed(2)}`} icon="cash-clock" tone="warning" />
+        </View>
+      </View>
+
+      <View style={[styles.toolbarCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
+        <View style={[styles.searchBox, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
+          <MaterialCommunityIcons name="magnify" size={18} color={theme.textSecondary} />
+          <TextInput
+            style={[styles.searchInput, { color: theme.textPrimary }]}
+            placeholder="Buscar por descrição, categoria ou destino"
+            placeholderTextColor={theme.textSecondary}
+            value={searchText}
+            onChangeText={setSearchText}
+          />
+          {searchText ? (
+            <TouchableOpacity onPress={() => setSearchText('')}>
+              <MaterialCommunityIcons name="close-circle" size={16} color={theme.textSecondary} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+
       {loading ? (
         <View style={styles.skeletonWrapper}>
           <SkeletonBlock style={styles.skeletonCard} />
@@ -166,29 +238,16 @@ const DespesasListScreen = ({ navigation }: any) => {
           <SkeletonBlock style={styles.skeletonCard} />
         </View>
       ) : null}
+    </>
+  );
 
-      <View style={styles.financeLinksRow}>
-        <TouchableOpacity
-          style={[styles.financeLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
-          onPress={() => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' })}
-        >
-          <Text style={[styles.financeLinkText, { color: theme.textSecondary }]}>Vendas</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.financeLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
-          onPress={() => navigation.navigate('ContasReceber')}
-        >
-          <Text style={[styles.financeLinkText, { color: theme.textSecondary }]}>Contas</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.financeLink, styles.financeLinkActive, { borderColor: COLORS.modDespesas }]}>
-          <Text style={[styles.financeLinkText, { color: COLORS.modDespesas }]}>Despesas</Text>
-        </TouchableOpacity>
-      </View>
-
+  return (
+    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}>
       <FlatList
-        data={despesas}
+        data={filteredDespesas}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[styles.listContent, { paddingBottom: (settings.uiV2Enabled ? 138 : 96) + insets.bottom }]}
+        ListHeaderComponent={renderListHeader}
         refreshing={refreshing && !loading}
         onRefresh={refetch}
         ListEmptyComponent={
@@ -215,8 +274,9 @@ const DespesasListScreen = ({ navigation }: any) => {
                 </View>
                 <View style={styles.cardTitleArea}>
                   <Text style={[styles.title, { color: theme.textPrimary }]}>{item.descricao}</Text>
+                  <Text style={[styles.categoryText, { color: theme.textSecondary }]}>{item.categoria.replace(/_/g, ' ')}</Text>
                   <Text style={[styles.date, { color: theme.textSecondary }]}>
-                    {item.dataDespesa.toDate().toLocaleDateString()}
+                    {formatDateSafe(item.dataDespesa)}
                   </Text>
                 </View>
                 <View style={[styles.statusPill, { backgroundColor: isPendente ? theme.warningBackground : theme.successBackground }]}>
@@ -226,19 +286,31 @@ const DespesasListScreen = ({ navigation }: any) => {
                 </View>
               </View>
 
-              <View style={[styles.moneyPanel, { backgroundColor: theme.surfaceMuted }]}>
-                <Text style={[styles.moneyLabel, { color: theme.textSecondary }]}>Valor</Text>
-                <Text style={[styles.moneyValue, { color: COLORS.danger }]}>R$ {item.valor.toFixed(2)}</Text>
-                {isPendente && item.dataVencimento ? (
-                  <Text style={[styles.dueText, { color: theme.textSecondary }]}>
-                    Vencimento: {item.dataVencimento.toDate().toLocaleDateString()}
+              <View style={styles.infoGrid}>
+                <View style={[styles.infoCard, { backgroundColor: theme.surfaceMuted }]}>
+                  <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Valor</Text>
+                  <Text style={[styles.infoValueStrong, { color: COLORS.danger }]}>R$ {item.valor.toFixed(2)}</Text>
+                </View>
+                <View style={[styles.infoCard, { backgroundColor: theme.surfaceMuted }]}>
+                  <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Destino</Text>
+                  <Text style={[styles.infoValue, { color: theme.textPrimary }]} numberOfLines={1}>
+                    {caixaPessoasMap[item.pagamentoPara || ''] || 'Não informado'}
                   </Text>
-                ) : null}
-                <Text style={[styles.dueText, { color: theme.textSecondary }]}>Saida para: {caixaPessoasMap[item.pagamentoPara || ''] || 'Nao informado'}</Text>
+                </View>
+              </View>
+
+              <View style={[styles.metaPanel, { backgroundColor: theme.surfaceMuted }]}>
+                {isPendente && item.dataVencimento ? (
+                  <Text style={[styles.metaText, { color: theme.textSecondary }]}>
+                    Vencimento: {formatDateSafe(item.dataVencimento)}
+                  </Text>
+                ) : (
+                  <Text style={[styles.metaText, { color: theme.textSecondary }]}>Pagamento ja registrado</Text>
+                )}
                 {item.comprovanteUrl ? (
                   <TouchableOpacity style={styles.comprovanteRow} onPress={() => void handleOpenComprovante(item.comprovanteUrl)}>
                     <MaterialCommunityIcons name="eye-outline" size={15} color={theme.info} />
-                    <Text style={[styles.dueText, { color: theme.info }]}>Ver comprovante</Text>
+                    <Text style={[styles.metaText, { color: theme.info }]}>Ver comprovante</Text>
                   </TouchableOpacity>
                 ) : null}
               </View>
@@ -299,19 +371,23 @@ const styles = StyleSheet.create({
 
   skeletonWrapper: { paddingHorizontal: SPACING.lg, marginTop: SPACING.md, marginBottom: 6, gap: 10 },
   skeletonCard: { width: '100%', height: 150, borderRadius: RADIUS.lg },
+
   financeLinksRow: {
-    flexDirection: 'row',
     gap: 8,
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.xs,
+    paddingTop: SPACING.md,
   },
   financeLink: {
-    flex: 1,
     borderWidth: 1,
     borderRadius: RADIUS.pill,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    minWidth: 96,
   },
   financeLinkActive: {
     backgroundColor: `${COLORS.modDespesas}1A`,
@@ -319,6 +395,59 @@ const styles = StyleSheet.create({
   financeLinkText: {
     fontSize: 12,
     fontWeight: '800',
+  },
+
+  overviewCard: {
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.md,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    padding: SPACING.md,
+    ...SHADOWS.card,
+  },
+  overviewTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  overviewLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+  overviewValue: { fontSize: 28, fontWeight: '900', marginTop: 4 },
+  overviewCaption: { fontSize: 12, fontWeight: '600', marginTop: 4 },
+  overviewBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: RADIUS.pill,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  overviewBadgeText: { fontSize: 11, fontWeight: '800' },
+  metricsGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: SPACING.md,
+  },
+
+  toolbarCard: {
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.md,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    padding: SPACING.md,
+    ...SHADOWS.card,
+  },
+  searchBox: {
+    borderWidth: 1,
+    borderRadius: RADIUS.md,
+    minHeight: 46,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 14,
+    paddingVertical: 8,
   },
 
   card: {
@@ -339,21 +468,26 @@ const styles = StyleSheet.create({
   },
   cardTitleArea: { flex: 1 },
   title: { fontSize: 15, fontWeight: '900' },
+  categoryText: { marginTop: 2, fontSize: 12, fontWeight: '700', textTransform: 'capitalize' },
   date: { marginTop: 2, fontSize: 12, fontWeight: '600' },
   statusPill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   statusPillText: { fontSize: 10, fontWeight: '800' },
 
-  moneyPanel: {
-    marginTop: 12,
+  infoGrid: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  infoCard: { flex: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  infoLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+  infoValue: { marginTop: 4, fontSize: 12, fontWeight: '700' },
+  infoValueStrong: { marginTop: 4, fontSize: 22, fontWeight: '900' },
+
+  metaPanel: {
+    marginTop: 10,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  moneyLabel: { fontSize: 11, fontWeight: '700' },
-  moneyValue: { marginTop: 3, fontSize: 22, fontWeight: '900' },
-  dueText: { marginTop: 4, fontSize: 11, fontWeight: '600' },
+  metaText: { fontSize: 11, fontWeight: '600' },
   comprovanteRow: {
-    marginTop: 4,
+    marginTop: 6,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,

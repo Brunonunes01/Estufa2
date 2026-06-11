@@ -10,6 +10,11 @@ import { useAuth } from '../../hooks/useAuth';
 import { useWriteGuard } from '../../hooks/useWriteGuard';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { hasExactLength, hasLengthBetween, limitDigits, onlyDigits } from '../../utils/numericFields';
+
+const DOCUMENTO_MAX_LENGTH = 14;
+const TELEFONE_MAX_LENGTH = 15;
+const CEP_LENGTH = 8;
 
 const ClienteFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
@@ -45,11 +50,11 @@ const ClienteFormScreen = ({ route, navigation }: any) => {
         const data = await getClienteById(clienteId, targetId);
         if (!isMounted || !data) return;
         setNome(data.nome);
-        setDocumento(data.documento || '');
+        setDocumento(limitDigits(data.documento || '', DOCUMENTO_MAX_LENGTH));
         setContatoResponsavel(data.contatoResponsavel || '');
-        setTelefone(data.telefone || '');
+        setTelefone(limitDigits(data.telefone || '', TELEFONE_MAX_LENGTH));
         setEmail(data.email || '');
-        setCep(data.cep || '');
+        setCep(limitDigits(data.cep || '', CEP_LENGTH));
         setEndereco(data.endereco || '');
         setNumero(data.numero || '');
         setBairro(data.bairro || '');
@@ -75,10 +80,7 @@ const ClienteFormScreen = ({ route, navigation }: any) => {
   const normalizePhone = (value?: string | null) => {
     const raw = String(value || '').trim();
     if (!raw) return '';
-    const hasPlusPrefix = raw.startsWith('+');
-    const digits = raw.replace(/\D/g, '');
-    if (!digits) return '';
-    return hasPlusPrefix ? `+${digits}` : digits;
+    return limitDigits(raw, TELEFONE_MAX_LENGTH);
   };
 
   const handleImportContact = async () => {
@@ -132,15 +134,24 @@ const ClienteFormScreen = ({ route, navigation }: any) => {
     if (email.trim() && !isValidEmail(email)) {
       return Alert.alert('Atenção', 'Informe um e-mail válido.');
     }
+    if (documento && ![11, DOCUMENTO_MAX_LENGTH].includes(onlyDigits(documento).length)) {
+      return Alert.alert('Atenção', 'CPF/CNPJ deve conter 11 ou 14 números.');
+    }
+    if (telefone && !hasLengthBetween(telefone, 10, TELEFONE_MAX_LENGTH)) {
+      return Alert.alert('Atenção', 'Telefone deve conter entre 10 e 15 números.');
+    }
+    if (cep && !hasExactLength(cep, CEP_LENGTH)) {
+      return Alert.alert('Atenção', 'CEP deve conter 8 números.');
+    }
     setLoading(true);
     try {
       const formData: ClienteFormData = {
         nome: nome.trim(),
-        documento: clean(documento),
+        documento: clean(onlyDigits(documento)),
         contatoResponsavel: clean(contatoResponsavel),
-        telefone: clean(telefone),
+        telefone: clean(onlyDigits(telefone)),
         email: clean(email),
-        cep: clean(cep),
+        cep: clean(onlyDigits(cep)),
         endereco: clean(endereco),
         numero: clean(numero),
         bairro: clean(bairro),
@@ -170,7 +181,8 @@ const ClienteFormScreen = ({ route, navigation }: any) => {
           <View style={styles.inputWrapper}><TextInput style={styles.input} value={nome} onChangeText={setNome} placeholder="Ex: Mercado Central" placeholderTextColor={COLORS.textPlaceholder} /></View>
 
           <Text style={styles.label}>CPF / CNPJ</Text>
-          <View style={styles.inputWrapper}><TextInput style={styles.input} value={documento} onChangeText={setDocumento} keyboardType="numbers-and-punctuation" placeholder="Documento fiscal" placeholderTextColor={COLORS.textPlaceholder} /></View>
+          <View style={styles.inputWrapper}><TextInput style={styles.input} value={documento} onChangeText={(value) => setDocumento(limitDigits(value, DOCUMENTO_MAX_LENGTH))} keyboardType="number-pad" maxLength={DOCUMENTO_MAX_LENGTH} placeholder="Documento fiscal" placeholderTextColor={COLORS.textPlaceholder} /></View>
+          <Text style={styles.helperText}>Apenas números. 11 para CPF ou 14 para CNPJ.</Text>
 
           <Text style={styles.label}>Contato Responsável</Text>
           <View style={styles.inputWrapper}><TextInput style={styles.input} value={contatoResponsavel} onChangeText={setContatoResponsavel} placeholder="Ex: João Compras" placeholderTextColor={COLORS.textPlaceholder} /></View>
@@ -195,7 +207,8 @@ const ClienteFormScreen = ({ route, navigation }: any) => {
           </TouchableOpacity>
 
           <Text style={styles.label}>Telefone / WhatsApp</Text>
-          <View style={styles.inputWrapper}><TextInput style={styles.input} value={telefone} onChangeText={setTelefone} keyboardType="phone-pad" placeholder="(00) 00000-0000" placeholderTextColor={COLORS.textPlaceholder} /></View>
+          <View style={styles.inputWrapper}><TextInput style={styles.input} value={telefone} onChangeText={(value) => setTelefone(limitDigits(value, TELEFONE_MAX_LENGTH))} keyboardType="phone-pad" maxLength={TELEFONE_MAX_LENGTH} placeholder="(00) 00000-0000" placeholderTextColor={COLORS.textPlaceholder} /></View>
+          <Text style={styles.helperText}>Apenas números. Informe de 10 a 15 dígitos.</Text>
 
           <Text style={styles.label}>E-mail</Text>
           <View style={styles.inputWrapper}><TextInput style={styles.input} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="cliente@email.com" placeholderTextColor={COLORS.textPlaceholder} /></View>
@@ -205,7 +218,8 @@ const ClienteFormScreen = ({ route, navigation }: any) => {
           <Text style={styles.sectionHeader}>Endereço</Text>
 
           <Text style={styles.label}>CEP</Text>
-          <View style={styles.inputWrapper}><TextInput style={styles.input} value={cep} onChangeText={setCep} keyboardType="numbers-and-punctuation" placeholder="00000-000" placeholderTextColor={COLORS.textPlaceholder} /></View>
+          <View style={styles.inputWrapper}><TextInput style={styles.input} value={cep} onChangeText={(value) => setCep(limitDigits(value, CEP_LENGTH))} keyboardType="number-pad" maxLength={CEP_LENGTH} placeholder="00000-000" placeholderTextColor={COLORS.textPlaceholder} /></View>
+          <Text style={styles.helperText}>Apenas números. O CEP deve ter 8 dígitos.</Text>
 
           <Text style={styles.label}>Endereço</Text>
           <View style={styles.inputWrapper}><TextInput style={styles.input} value={endereco} onChangeText={setEndereco} placeholder="Rua, avenida, estrada..." placeholderTextColor={COLORS.textPlaceholder} /></View>
@@ -264,6 +278,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 },
   inputWrapper: { backgroundColor: COLORS.surfaceMuted, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: COLORS.border, marginBottom: SPACING.md, height: 56, justifyContent: 'center' },
   input: { paddingHorizontal: 15, fontSize: TYPOGRAPHY.body, color: COLORS.textDark, height: '100%', fontWeight: '700' },
+  helperText: { color: COLORS.textSecondary, fontSize: 12, marginTop: -8, marginBottom: SPACING.md },
   row: { flexDirection: 'row', gap: SPACING.md },
   rowMain: { flex: 1 },
   rowSide: { width: 104 },

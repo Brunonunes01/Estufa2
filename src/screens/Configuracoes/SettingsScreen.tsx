@@ -320,6 +320,22 @@ const SettingsScreen = ({ navigation }: any) => {
       </View>
 
       <View style={styles.card}>
+        <SectionHeading title="Fluxo de Vendas" subtitle="Controle como o peso das caixas é preenchido" />
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Usar perfis de peso cadastrados no ciclo</Text>
+          <Switch
+            value={settings.useCycleBoxWeightProfiles}
+            onValueChange={(value) => updateSettings({ useCycleBoxWeightProfiles: value })}
+            trackColor={{ false: COLORS.borderDark, true: COLORS.primaryLight }}
+            thumbColor={settings.useCycleBoxWeightProfiles ? COLORS.primary : COLORS.textMuted}
+          />
+        </View>
+        <Text style={styles.helpText}>
+          Quando ativo, o vendedor escolhe um tipo de caixa do ciclo e o app calcula peso bruto e líquido automaticamente pela quantidade.
+        </Text>
+      </View>
+
+      <View style={styles.card}>
         <SectionHeading title="Aparência" subtitle="Personalize o visual do aplicativo" />
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Modo escuro (experimental)</Text>

@@ -20,8 +20,8 @@ const FornecedoresListScreen = ({ navigation }: any) => {
     if (isError) showError('Não foi possível carregar os fornecedores.');
   }, [isError, showError]);
 
-  return (
-    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}>
+  const renderListHeader = () => (
+    <>
       <ScreenHeaderCard
         title="Fornecedores"
         subtitle="Organize parceiros de compra e contatos operacionais."
@@ -51,12 +51,17 @@ const FornecedoresListScreen = ({ navigation }: any) => {
           <SkeletonBlock style={styles.skeletonCard} />
         </View>
       ) : null}
+    </>
+  );
 
+  return (
+    <View style={[styles.container, { backgroundColor: theme.pageBackground }]}>
       <FlatList
         data={fornecedores}
         keyExtractor={(item) => item.id}
         refreshing={refreshing && !loading}
         onRefresh={refetch}
+        ListHeaderComponent={renderListHeader}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           !loading ? (

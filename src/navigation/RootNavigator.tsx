@@ -1,386 +1,16 @@
-// src/navigation/RootNavigator.tsx
-import React, { useEffect, useRef, useState } from 'react';
-import { NavigationContainer, useNavigation } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import {
-  createNativeStackNavigator,
-  NativeStackNavigationOptions,
-  NativeStackNavigationProp,
-} from '@react-navigation/native-stack';
-import {
-  View,
-  ActivityIndicator,
-  Text,
-  StatusBar,
-  TouchableOpacity,
-  Modal,
-  Pressable,
-  Platform,
-  Dimensions,
-  StyleSheet,
-} from 'react-native';
+import React, { useEffect } from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { ActivityIndicator, Dimensions, Platform, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNetInfo } from '@react-native-community/netinfo';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../hooks/useAuth';
 import { useAppSettings } from '../hooks/useAppSettings';
 import { useThemeMode } from '../hooks/useThemeMode';
 import { COLORS, RADIUS } from '../constants/theme';
-
-import LoginScreen from '../screens/Auth/LoginScreen';
-import RegisterScreen from '../screens/Auth/RegisterScreen';
-import ShareAccountScreen from '../screens/Auth/ShareAccountScreen';
-import DashboardScreen from '../screens/Dashboard/DashboardScreen';
-import CampoHubScreen from '../screens/Campo/CampoHubScreen';
-import TalhoesListScreen from '../screens/Campo/TalhoesListScreen';
-import PerfilScreen from '../screens/Perfil/PerfilScreen';
-import SettingsScreen from '../screens/Configuracoes/SettingsScreen';
-import EstufasListScreen from '../screens/Estufas/EstufasListScreen';
-import EstufaFormScreen from '../screens/Estufas/EstufaFormScreen';
-import EstufaDetailScreen from '../screens/Estufas/EstufaDetailScreen';
-import EstufaHistoryScreen from '../screens/Estufas/EstufaHistoryScreen';
-import PlantioFormScreen from '../screens/Plantios/PlantioFormScreen';
-import PlantioDetailScreen from '../screens/Plantios/PlantioDetailScreen';
-import PlantioHistoryScreen from '../screens/Plantios/PlantioHistoryScreen';
-import ColheitaFormScreen from '../screens/Colheitas/ColheitaFormScreen';
-import VendasListScreen from '../screens/Vendas/VendasListScreen';
-import ContasReceberScreen from '../screens/Financeiro/ContasReceberScreen';
-import InsumosListScreen from '../screens/Insumos/InsumosListScreen';
-import InsumoFormScreen from '../screens/Insumos/InsumoFormScreen';
-import InsumoEntryScreen from '../screens/Insumos/InsumoEntryScreen';
-import FornecedoresListScreen from '../screens/Fornecedores/FornecedoresListScreen';
-import FornecedorFormScreen from '../screens/Fornecedores/FornecedorFormScreen';
-import AplicacaoFormScreen from '../screens/Aplicacoes/AplicacaoFormScreen';
-import AplicacoesHistoryScreen from '../screens/Aplicacoes/AplicacoesHistoryScreen';
-import ClientesListScreen from '../screens/Clientes/ClientesListScreen';
-import ClienteFormScreen from '../screens/Clientes/ClienteFormScreen';
-import DespesasListScreen from '../screens/Despesas/DespesasListScreen';
-import DespesaFormScreen from '../screens/Despesas/DespesaFormScreen';
-import CaixaResumoScreen from '../screens/Caixa/CaixaResumoScreen';
-import CaixaExtratoScreen from '../screens/Caixa/CaixaExtratoScreen';
-import ManejoFormScreen from '../screens/Manejos/ManejoFormScreen';
-import ManejosHistoryScreen from '../screens/Manejos/ManejosHistoryScreen';
-import RelatoriosScreen from '../screens/Financeiro/RelatoriosScreen';
-import RelatorioOperacionalScreen from '../screens/Financeiro/RelatorioOperacionalScreen';
-import TarefasScreen from '../screens/Tarefas/TarefasScreen';
-import WizardSelectPlantioScreen from '../screens/Wizards/WizardSelectPlantioScreen';
-import WizardSelectActivityScreen from '../screens/Wizards/WizardSelectActivityScreen';
-import HidroponiaLotesScreen from '../modules/hidroponia/screens/HidroponiaLotesScreen';
-import HidroponiaEstufaLayoutScreen from '../modules/hidroponia/screens/HidroponiaEstufaLayoutScreen';
-import HidroponiaMotoresScreen from '../modules/hidroponia/screens/HidroponiaMotoresScreen';
-import HidroponiaLoteFormScreen from '../modules/hidroponia/screens/HidroponiaLoteFormScreen';
-import HidroponiaLoteDetailScreen from '../modules/hidroponia/screens/HidroponiaLoteDetailScreen';
-import HidroponiaMovimentarLoteScreen from '../modules/hidroponia/screens/HidroponiaMovimentarLoteScreen';
-import HidroponiaLeituraFormScreen from '../modules/hidroponia/screens/HidroponiaLeituraFormScreen';
-import HidroponiaVendaFormScreen from '../modules/hidroponia/screens/HidroponiaVendaFormScreen';
-import HidroponiaColheitaFormScreen from '../modules/hidroponia/screens/HidroponiaColheitaFormScreen';
-import HidroponiaVerdurasScreen from '../modules/hidroponia/screens/HidroponiaVerdurasScreen';
-import { MainTabParamList, RootStackParamList } from './types';
 import { startOfflineSyncListener, syncPendingDataNow } from '../services/offline/syncService';
-
-const Stack = createNativeStackNavigator<RootStackParamList>();
-const Tab = createBottomTabNavigator<MainTabParamList>();
-
-const OfflineBanner = () => {
-  const netInfo = useNetInfo();
-  const [showReconnected, setShowReconnected] = useState(false);
-  const prevConnection = useRef<boolean | null>(null);
-
-  useEffect(() => {
-    if (typeof netInfo.isConnected !== 'boolean') return;
-
-    if (prevConnection.current === false && netInfo.isConnected === true) {
-      setShowReconnected(true);
-      const timer = setTimeout(() => setShowReconnected(false), 2800);
-      prevConnection.current = netInfo.isConnected;
-      return () => clearTimeout(timer);
-    }
-
-    prevConnection.current = netInfo.isConnected;
-  }, [netInfo.isConnected]);
-
-  if (netInfo.type !== 'unknown' && netInfo.isConnected === false) {
-    return (
-      <SafeAreaView style={{ backgroundColor: COLORS.warning }}>
-        <View style={styles.offlineBannerContainer}>
-          <MaterialCommunityIcons name="wifi-off" size={18} color={COLORS.textLight} style={{ marginRight: 8 }} />
-          <Text style={styles.offlineBannerText}>
-            Sem conexão. Trabalhando offline. Os dados serão sincronizados quando a internet voltar.
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (showReconnected) {
-    return (
-      <SafeAreaView style={{ backgroundColor: COLORS.success }}>
-        <View style={[styles.offlineBannerContainer, styles.onlineBannerContainer]}>
-          <MaterialCommunityIcons name="wifi-check" size={18} color={COLORS.textLight} style={{ marginRight: 8 }} />
-          <Text style={styles.offlineBannerText}>Conexão restabelecida. Sincronizando dados...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  return null;
-};
-
-const HomeButton = () => {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  return (
-    <TouchableOpacity
-      onPress={() => navigation.navigate('MainTabs', { screen: 'InicioTab' })}
-      style={{ marginRight: 15, padding: 5 }}
-    >
-      <MaterialCommunityIcons name="home-outline" size={26} color={COLORS.textLight} />
-    </TouchableOpacity>
-  );
-};
-
-const defaultScreenOptions: NativeStackNavigationOptions = {
-  headerStyle: { backgroundColor: COLORS.secondary },
-  headerTintColor: COLORS.textLight,
-  headerTitleStyle: { fontWeight: '800', fontSize: 17 },
-  headerTitleAlign: 'center',
-  headerShadowVisible: false,
-  headerBackTitle: '',
-  animation: 'slide_from_right',
-  headerRight: () => <HomeButton />,
-};
-
-const AuthStack = () => (
-  <Stack.Navigator id="auth-stack" screenOptions={{ headerShown: false, animation: 'fade' }}>
-    <Stack.Screen name="Login" component={LoginScreen} />
-    <Stack.Screen name="Register" component={RegisterScreen} />
-  </Stack.Navigator>
-);
-
-const MainTabs = ({ activeMode, uiV2Enabled }: { activeMode: 'ciclo_longo' | 'campo' | 'hidroponia'; uiV2Enabled: boolean }) => {
-  const mode = useThemeMode();
-  const insets = useSafeAreaInsets();
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { canWrite } = useAuth();
-  const [quickActionsVisible, setQuickActionsVisible] = useState(false);
-  const OperacaoEntryScreen =
-    activeMode === 'hidroponia' ? HidroponiaLotesScreen : activeMode === 'campo' ? CampoHubScreen : EstufasListScreen;
-
-  const quickActions = activeMode === 'hidroponia'
-    ? [
-        { key: 'qa-hydro-read', label: 'Nova leitura pH/EC', icon: 'test-tube', onPress: () => navigation.navigate('HidroponiaLeituraForm') },
-        { key: 'qa-hydro-lote', label: 'Novo lote', icon: 'sprout-outline', onPress: () => navigation.navigate('HidroponiaLoteForm') },
-        { key: 'qa-stock-entry', label: 'Entrada de insumo', icon: 'warehouse', onPress: () => navigation.navigate('InsumoEntry') },
-        { key: 'qa-sale', label: 'Registrar venda', icon: 'cash-plus', onPress: () => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' }) },
-        { key: 'qa-task', label: 'Nova tarefa', icon: 'clipboard-text-plus-outline', onPress: () => navigation.navigate('Tarefas') },
-      ]
-    : activeMode === 'campo'
-    ? [
-        { key: 'qa-talhao', label: 'Novo talhao', icon: 'map-marker-plus-outline', onPress: () => navigation.navigate('TalhoesList') },
-        { key: 'qa-plantio', label: 'Novo plantio', icon: 'sprout', onPress: () => navigation.navigate('PlantioForm') },
-        { key: 'qa-stock-entry', label: 'Entrada de insumo', icon: 'warehouse', onPress: () => navigation.navigate('InsumoEntry') },
-        { key: 'qa-sale', label: 'Registrar venda', icon: 'cash-plus', onPress: () => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' }) },
-        { key: 'qa-task', label: 'Nova tarefa', icon: 'clipboard-text-plus-outline', onPress: () => navigation.navigate('Tarefas') },
-      ]
-    : [
-        { key: 'qa-plantio', label: 'Novo plantio', icon: 'sprout', onPress: () => navigation.navigate('PlantioForm') },
-        { key: 'qa-manejo', label: 'Novo manejo', icon: 'clipboard-pulse-outline', onPress: () => navigation.navigate('WizardSelectPlantio') },
-        { key: 'qa-stock-entry', label: 'Entrada de insumo', icon: 'warehouse', onPress: () => navigation.navigate('InsumoEntry') },
-        { key: 'qa-sale', label: 'Registrar venda', icon: 'cash-plus', onPress: () => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' }) },
-        { key: 'qa-task', label: 'Nova tarefa', icon: 'clipboard-text-plus-outline', onPress: () => navigation.navigate('Tarefas') },
-      ];
-
-  const handleQuickActionPress = (onPress: () => void) => {
-    setQuickActionsVisible(false);
-    onPress();
-  };
-
-  return (
-    <View style={{ flex: 1 }}>
-      <Tab.Navigator
-        id="main-tabs"
-        screenOptions={({ route }) => {
-          const iconMap: Record<keyof MainTabParamList, string> = {
-            InicioTab: 'view-dashboard-outline',
-            OperacaoTab: activeMode === 'hidroponia' ? 'water-outline' : activeMode === 'campo' ? 'tractor-variant' : 'greenhouse',
-            EstoqueTab: 'warehouse',
-            FinanceiroTab: 'cash-multiple',
-            PerfilTab: 'account-circle-outline',
-          };
-
-          return {
-            headerShown: false,
-            tabBarHideOnKeyboard: true,
-            tabBarActiveTintColor: COLORS.primary,
-            tabBarInactiveTintColor: mode.textSecondary,
-            tabBarLabelStyle: { fontSize: 11, fontWeight: '700', marginBottom: 4 },
-            tabBarStyle: {
-              height: 66 + insets.bottom,
-              paddingTop: 6,
-              paddingBottom: Math.max(6, insets.bottom - 2),
-              borderTopWidth: 1,
-              borderTopColor: mode.border,
-              backgroundColor: mode.surfaceBackground,
-            },
-            tabBarIcon: ({ color, size }) => (
-              <MaterialCommunityIcons name={iconMap[route.name] as any} size={size ?? 22} color={color} />
-            ),
-          };
-        }}
-      >
-        <Tab.Screen name="InicioTab" component={DashboardScreen} options={{ title: 'Início' }} />
-        <Tab.Screen
-          name="OperacaoTab"
-          component={OperacaoEntryScreen}
-          options={{ title: activeMode === 'hidroponia' ? 'Hidroponia' : activeMode === 'campo' ? 'Campo' : 'Estufas' }}
-        />
-        <Tab.Screen name="EstoqueTab" component={InsumosListScreen} options={{ title: 'Estoque' }} />
-        <Tab.Screen name="FinanceiroTab" component={VendasListScreen} options={{ title: 'Financeiro' }} />
-        <Tab.Screen name="PerfilTab" component={PerfilScreen} options={{ title: 'Perfil' }} />
-      </Tab.Navigator>
-
-      {uiV2Enabled && canWrite ? (
-        <>
-          <TouchableOpacity
-            activeOpacity={0.88}
-            onPress={() => setQuickActionsVisible(true)}
-            style={[styles.quickFab, { bottom: Math.max(insets.bottom, 8) + 72 }]}
-          >
-            <MaterialCommunityIcons name="flash-outline" size={25} color={COLORS.textLight} />
-          </TouchableOpacity>
-
-          <Modal visible={quickActionsVisible} transparent animationType="slide" onRequestClose={() => setQuickActionsVisible(false)}>
-            <Pressable style={styles.quickSheetBackdrop} onPress={() => setQuickActionsVisible(false)} />
-            <View style={[styles.quickSheet, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-              <View style={styles.quickSheetHeader}>
-                <Text style={styles.quickSheetTitle}>Ações rápidas</Text>
-                <TouchableOpacity onPress={() => setQuickActionsVisible(false)}>
-                  <MaterialCommunityIcons name="close" size={22} color={COLORS.textSecondary} />
-                </TouchableOpacity>
-              </View>
-              {quickActions.map((action) => (
-                <TouchableOpacity key={action.key} style={styles.quickActionRow} onPress={() => handleQuickActionPress(action.onPress)}>
-                  <View style={styles.quickActionIcon}>
-                    <MaterialCommunityIcons name={action.icon as any} size={18} color={COLORS.primary} />
-                  </View>
-                  <Text style={styles.quickActionText}>{action.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </Modal>
-        </>
-      ) : null}
-    </View>
-  );
-};
-
-const AppStack = ({ activeMode, uiV2Enabled }: { activeMode: 'ciclo_longo' | 'campo' | 'hidroponia'; uiV2Enabled: boolean }) => (
-  <Stack.Navigator id="app-stack" screenOptions={defaultScreenOptions}>
-    <Stack.Screen name="MainTabs" options={{ headerShown: false, animation: 'fade' }}>
-      {() => <MainTabs activeMode={activeMode} uiV2Enabled={uiV2Enabled} />}
-    </Stack.Screen>
-
-    <Stack.Screen name="ShareAccount" component={ShareAccountScreen} options={{ title: 'Compartilhar Acesso' }} />
-    <Stack.Screen name="Perfil" component={PerfilScreen} options={{ title: 'Minha Propriedade' }} />
-    <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Configurações' }} />
-
-    <Stack.Screen name="EstufasList" component={EstufasListScreen} options={{ title: 'Hubs de Estufa' }} />
-    <Stack.Screen name="EstufaForm" component={EstufaFormScreen} options={{ title: 'Cadastro da Estufa' }} />
-    <Stack.Screen name="EstufaDetail" component={EstufaDetailScreen} options={{ title: 'Detalhes da Estufa' }} />
-    <Stack.Screen name="EstufaHistory" component={EstufaHistoryScreen} options={{ title: 'Histórico da Estufa' }} />
-
-    <Stack.Screen name="VendasList" component={VendasListScreen} options={{ title: 'Relatórios de Vendas' }} />
-    <Stack.Screen name="ContasReceber" component={ContasReceberScreen} options={{ title: 'Contas a Receber' }} />
-    <Stack.Screen name="HidroponiaVendaForm" component={HidroponiaVendaFormScreen} options={{ title: 'Venda Hidroponia' }} />
-
-    <Stack.Screen name="InsumosList" component={InsumosListScreen} options={{ title: 'Estoque de Insumos' }} />
-    <Stack.Screen name="InsumoForm" component={InsumoFormScreen} options={{ title: 'Cadastro de Insumo' }} />
-    <Stack.Screen name="InsumoEntry" component={InsumoEntryScreen} options={{ title: 'Entrada de Estoque' }} />
-
-    <Stack.Screen name="FornecedoresList" component={FornecedoresListScreen} options={{ title: 'Fornecedores' }} />
-    <Stack.Screen name="FornecedorForm" component={FornecedorFormScreen} options={{ title: 'Cadastro de Fornecedor' }} />
-    <Stack.Screen name="ClientesList" component={ClientesListScreen} options={{ title: 'Clientes' }} />
-    <Stack.Screen name="ClienteForm" component={ClienteFormScreen} options={{ title: 'Cadastro de Cliente' }} />
-
-    <Stack.Screen name="DespesasList" component={DespesasListScreen} options={{ title: 'Despesas' }} />
-    <Stack.Screen name="DespesaForm" component={DespesaFormScreen} options={{ title: 'Lançar Despesa' }} />
-    <Stack.Screen name="CaixaResumo" component={CaixaResumoScreen} options={{ title: 'Caixa - Resumo' }} />
-    <Stack.Screen name="CaixaExtrato" component={CaixaExtratoScreen} options={{ title: 'Caixa - Extrato' }} />
-
-    <Stack.Screen name="Relatorios" component={RelatoriosScreen} options={{ title: 'BI & Relatórios' }} />
-    <Stack.Screen
-      name="RelatorioOperacional"
-      component={RelatorioOperacionalScreen}
-      options={{ title: 'Relatório Operacional' }}
-    />
-
-    <Stack.Screen name="Tarefas" component={TarefasScreen} options={{ title: 'Tarefas Agrícolas' }} />
-    <Stack.Screen name="TalhoesList" component={TalhoesListScreen} options={{ title: 'Talhoes de Campo' }} />
-
-    {activeMode !== 'hidroponia' ? (
-      <>
-        <Stack.Screen name="PlantioForm" component={PlantioFormScreen} options={{ title: 'Novo Plantio' }} />
-        <Stack.Screen name="PlantioDetail" component={PlantioDetailScreen} options={{ title: 'Painel do Ciclo' }} />
-        <Stack.Screen name="PlantioHistory" component={PlantioHistoryScreen} options={{ title: 'Histórico do Ciclo' }} />
-        <Stack.Screen name="ManejoForm" component={ManejoFormScreen} options={{ title: 'Registro de Manejo' }} />
-        <Stack.Screen name="ManejosHistory" component={ManejosHistoryScreen} options={{ title: 'Diário de Manejo' }} />
-        <Stack.Screen name="ColheitaForm" component={ColheitaFormScreen} options={{ title: 'Registrar Venda' }} />
-        <Stack.Screen name="AplicacaoForm" component={AplicacaoFormScreen} options={{ title: 'Aplicação' }} />
-        <Stack.Screen
-          name="AplicacoesHistory"
-          component={AplicacoesHistoryScreen}
-          options={{ title: 'Histórico de Aplicações' }}
-        />
-        <Stack.Screen
-          name="WizardSelectPlantio"
-          component={WizardSelectPlantioScreen}
-          options={{ title: 'Passo 1: Selecionar Ciclo' }}
-        />
-        <Stack.Screen
-          name="WizardSelectActivity"
-          component={WizardSelectActivityScreen}
-          options={{ title: 'Passo 2: Escolher Atividade' }}
-        />
-      </>
-    ) : (
-      <>
-        <Stack.Screen
-          name="HidroponiaEstufaLayout"
-          component={HidroponiaEstufaLayoutScreen}
-          options={{ title: 'Layout da Estufa' }}
-        />
-        <Stack.Screen name="HidroponiaMotores" component={HidroponiaMotoresScreen} options={{ title: 'Motores' }} />
-        <Stack.Screen name="HidroponiaLotes" component={HidroponiaLotesScreen} options={{ title: 'Hidroponia' }} />
-        <Stack.Screen
-          name="HidroponiaVerduras"
-          component={HidroponiaVerdurasScreen}
-          options={{ title: 'Cadastro de Verduras' }}
-        />
-        <Stack.Screen name="HidroponiaLoteForm" component={HidroponiaLoteFormScreen} options={{ title: 'Iniciar Produção' }} />
-        <Stack.Screen
-          name="HidroponiaLoteDetail"
-          component={HidroponiaLoteDetailScreen}
-          options={{ title: 'Detalhe da Produção' }}
-        />
-        <Stack.Screen
-          name="HidroponiaMovimentarLote"
-          component={HidroponiaMovimentarLoteScreen}
-          options={{ title: 'Movimentar Produção' }}
-        />
-        <Stack.Screen
-          name="HidroponiaColheitaForm"
-          component={HidroponiaColheitaFormScreen}
-          options={{ title: 'Colheita Hidroponia' }}
-        />
-        <Stack.Screen
-          name="HidroponiaLeituraForm"
-          component={HidroponiaLeituraFormScreen}
-          options={{ title: 'Leitura pH/CE' }}
-        />
-      </>
-    )}
-  </Stack.Navigator>
-);
+import { OfflineBanner } from './OfflineBanner';
+import { AuthNavigator } from './AuthNavigator';
+import { AppStackNavigator } from './AppStackNavigator';
 
 export const RootNavigator = () => {
   const { user, loading } = useAuth();
@@ -408,7 +38,7 @@ export const RootNavigator = () => {
         <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
         <MaterialCommunityIcons name="greenhouse" size={80} color={COLORS.primary} style={{ marginBottom: 20, opacity: 0.9 }} />
         <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>A CARREGAR SGE...</Text>
+        <Text style={styles.loadingText}>CARREGANDO SGE...</Text>
       </View>
     );
   }
@@ -424,12 +54,17 @@ export const RootNavigator = () => {
             borderRadius: isWideScreen ? RADIUS.xl : 0,
             borderWidth: isWideScreen ? 1 : 0,
             backgroundColor: mode.pageBackground,
+            overflow: isWideScreen ? 'hidden' : 'visible',
           },
         ]}
       >
         <OfflineBanner />
-        <NavigationContainer key={`${settings.activeProductionMode}-${settings.uiV2Enabled ? 'v2' : 'legacy'}`}>
-          {user ? <AppStack activeMode={settings.activeProductionMode} uiV2Enabled={settings.uiV2Enabled} /> : <AuthStack />}
+        <NavigationContainer>
+          {user ? (
+            <AppStackNavigator activeMode={settings.activeProductionMode} uiV2Enabled={settings.uiV2Enabled} />
+          ) : (
+            <AuthNavigator />
+          )}
         </NavigationContainer>
       </View>
     </View>
@@ -445,7 +80,6 @@ const styles = StyleSheet.create({
   innerContainer: {
     flex: 1,
     backgroundColor: COLORS.background,
-    overflow: 'hidden',
     borderColor: COLORS.border,
     shadowColor: COLORS.textDark,
     shadowOffset: { width: 0, height: 4 },
@@ -464,88 +98,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 13,
     letterSpacing: 1.5,
-  },
-  offlineBannerContainer: {
-    backgroundColor: COLORS.warning,
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ? StatusBar.currentHeight + 5 : 10) : 10,
-  },
-  onlineBannerContainer: {
-    backgroundColor: COLORS.success,
-  },
-  offlineBannerText: {
-    color: COLORS.textLight,
-    fontWeight: 'bold',
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  quickFab: {
-    position: 'absolute',
-    right: 18,
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: COLORS.textDark,
-    shadowOffset: { width: 0, height: 7 },
-    shadowOpacity: 0.26,
-    shadowRadius: 14,
-    elevation: 8,
-  },
-  quickSheetBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: COLORS.overlaySoft,
-  },
-  quickSheet: {
-    marginTop: 'auto',
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderColor: COLORS.border,
-  },
-  quickSheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: 10,
-  },
-  quickSheetTitle: {
-    color: COLORS.textPrimary,
-    fontWeight: '900',
-    fontSize: 16,
-  },
-  quickActionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surfaceMuted,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    marginBottom: 9,
-  },
-  quickActionIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: COLORS.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickActionText: {
-    color: COLORS.textPrimary,
-    fontWeight: '800',
-    fontSize: 14,
   },
 });

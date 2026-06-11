@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeMode } from '../../hooks/useThemeMode';
 
 interface ScreenHeaderCardProps {
@@ -23,9 +24,10 @@ const ScreenHeaderCard = ({
   children,
 }: ScreenHeaderCardProps) => {
   const theme = useThemeMode();
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.wrapper, { backgroundColor: theme.panelBackground }]}>
+    <View style={[styles.wrapper, { backgroundColor: theme.panelBackground, paddingTop: Math.max(12, insets.top * 0.35 + 12) }]}>
       <View style={styles.topRow}>
         <View style={styles.titleArea}>
           {badgeLabel ? (
@@ -55,7 +57,6 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
     paddingHorizontal: 24,
-    paddingTop: 12,
     paddingBottom: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },

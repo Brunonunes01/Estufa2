@@ -7,21 +7,25 @@ import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { createColheita, updateColheita, getColheitaById, deleteColheita, ColheitaFormData } from '../../services/colheitaService';
 import { getVendaById } from '../../services/vendaService';
-import { listAllPlantios, unlockPlantioCycleForEarlySale } from '../../services/plantioService';
+import { listAllPlantios, unlockPlantioCycleForEarlySale, updatePlantio } from '../../services/plantioService';
 import { listEstufas } from '../../services/estufaService';
 import { listClientes, createCliente } from '../../services/clienteService';
 import { createCaixaPessoa, listCaixaPessoas, CaixaPessoa } from '../../services/caixaPessoaService';
 import { useAuth } from '../../hooks/useAuth';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Plantio, Cliente } from '../../types/domain';
+import { Plantio, Cliente, PlantioCaixaPerfil } from '../../types/domain';
 import { COLORS } from '../../constants/theme';
-import { queryClient, queryKeys } from '../../lib/queryClient';
+import { invalidateClientesQuery, invalidateVendasQueries } from '../../lib/queryInvalidation';
 import { verifyCurrentUserPassword } from '../../services/securityService';
 import { useAppSettings } from '../../hooks/useAppSettings';
-
-type UnidadeColheita = "kg" | "caixas" | "un" | "maços";
-type MetodoPagamento = "pix" | "dinheiro" | "boleto" | "prazo" | "cartao" | "outro";
+import { sanitizeDecimalInput, sanitizeIntegerInput } from '../../utils/numericFields';
+import {
+  buildColheitaEditSnapshot,
+  loadColheitaFormBootstrap,
+  MetodoPagamento,
+  UnidadeColheita,
+} from './colheitaFormUtils';
 
 const ColheitaFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId, canDeleteEstufa } = useAuth();
@@ -53,6 +57,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const [isFinalHarvest, setIsFinalHarvest] = useState(false);
   const [observacoes, setObservacoes] = useState('');
   const [showObservacoes, setShowObservacoes] = useState(false);
+  const [selectedCaixaPerfilId, setSelectedCaixaPerfilId] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -62,6 +67,12 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const [modalCaixaVisible, setModalCaixaVisible] = useState(false);
   const [novoCaixaNome, setNovoCaixaNome] = useState('');
   const [salvandoNovaPessoaCaixa, setSalvandoNovaPessoaCaixa] = useState(false);
+  const [perfilCaixaModalVisible, setPerfilCaixaModalVisible] = useState(false);
+  const [perfilCaixaNome, setPerfilCaixaNome] = useState('');
+  const [perfilCaixaPesoBruto, setPerfilCaixaPesoBruto] = useState('');
+  const [perfilCaixaPesoLiquido, setPerfilCaixaPesoLiquido] = useState('');
+  const [editingPerfilCaixaId, setEditingPerfilCaixaId] = useState<string | null>(null);
+  const [salvandoPerfilCaixa, setSalvandoPerfilCaixa] = useState(false);
   const [unlockModalVisible, setUnlockModalVisible] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
   const [unlockReason, setUnlockReason] = useState('');
@@ -72,33 +83,6 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const [editAuthorizing, setEditAuthorizing] = useState(false);
   const [isEditAuthorized, setIsEditAuthorized] = useState(false);
   const initialEditSnapshotRef = useRef<string | null>(null);
-
-  const buildEditSnapshot = (values: {
-    selectedPlantioId: string;
-    quantidade: string;
-    unidade: UnidadeColheita;
-    preco: string;
-    pesoBruto: string;
-    pesoLiquido: string;
-    selectedClienteId: string | null;
-    metodoPagamento: MetodoPagamento;
-    pagamentoPara: string | null;
-    dataVenda: Date;
-    observacoes: string;
-  }) =>
-    JSON.stringify({
-      selectedPlantioId: values.selectedPlantioId || '',
-      quantidade: Number(values.quantidade.replace(',', '.')) || 0,
-      unidade: values.unidade,
-      preco: Number(values.preco.replace(',', '.')) || 0,
-      pesoBruto: Number(values.pesoBruto.replace(',', '.')) || 0,
-      pesoLiquido: Number(values.pesoLiquido.replace(',', '.')) || 0,
-      selectedClienteId: values.selectedClienteId || null,
-      metodoPagamento: values.metodoPagamento,
-      pagamentoPara: values.pagamentoPara || null,
-      dataVenda: new Date(values.dataVenda).toISOString().slice(0, 10),
-      observacoes: values.observacoes || '',
-    });
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -176,7 +160,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                         const dc = venda.dataColheita;
                         setDataVenda(dc.toDate ? dc.toDate() : new Date(dc.seconds * 1000));
                     }
-                    initialEditSnapshotRef.current = buildEditSnapshot({
+                    initialEditSnapshotRef.current = buildColheitaEditSnapshot({
                       selectedPlantioId: venda.plantioId,
                       quantidade: String(venda.quantidade),
                       unidade: venda.unidade as UnidadeColheita,
@@ -225,10 +209,17 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
     return plantiosDisponiveis.find(p => p.id === selectedPlantioId);
   }, [selectedPlantioId, plantiosDisponiveis]);
 
+  const caixaPerfisDisponiveis = useMemo(() => loteSelecionado?.caixaPerfis || [], [loteSelecionado]);
+  const useCycleBoxProfiles = settings.useCycleBoxWeightProfiles && unidade === 'caixas' && caixaPerfisDisponiveis.length > 0;
+  const selectedCaixaPerfil = useMemo(
+    () => caixaPerfisDisponiveis.find((item) => item.id === selectedCaixaPerfilId) || null,
+    [caixaPerfisDisponiveis, selectedCaixaPerfilId]
+  );
+
   const hasEditChanges = useMemo(() => {
     if (!isEditMode) return true;
     if (!initialEditSnapshotRef.current) return false;
-    const current = buildEditSnapshot({
+    const current = buildColheitaEditSnapshot({
       selectedPlantioId,
       quantidade,
       unidade,
@@ -285,10 +276,159 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
     setUnlockReason('');
   }, [selectedPlantioId, dataVenda.getTime()]);
 
-  const invalidateQueries = () => {
-    if (targetId) {
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(targetId) });
-      queryClient.invalidateQueries({ queryKey: ['vendas-list', targetId] });
+  useEffect(() => {
+    if (!useCycleBoxProfiles) {
+      setSelectedCaixaPerfilId((current) => (current ? '' : current));
+      return;
+    }
+
+    if (!selectedCaixaPerfilId || !caixaPerfisDisponiveis.some((item) => item.id === selectedCaixaPerfilId)) {
+      const nextPerfilId = caixaPerfisDisponiveis[0]?.id || '';
+      setSelectedCaixaPerfilId((current) => (current === nextPerfilId ? current : nextPerfilId));
+    }
+  }, [useCycleBoxProfiles, caixaPerfisDisponiveis, selectedCaixaPerfilId]);
+
+  useEffect(() => {
+    if (!useCycleBoxProfiles || !selectedCaixaPerfil) return;
+
+    const qtd = parseFloat(quantidade.replace(',', '.')) || 0;
+    if (qtd <= 0) {
+      setPesoBruto((current) => (current === '' ? current : ''));
+      setPesoLiquido((current) => (current === '' ? current : ''));
+      return;
+    }
+
+    const nextPesoBruto = String(Number((qtd * selectedCaixaPerfil.pesoBruto).toFixed(3)));
+    const nextPesoLiquido = String(Number((qtd * selectedCaixaPerfil.pesoLiquido).toFixed(3)));
+    setPesoBruto((current) => (current === nextPesoBruto ? current : nextPesoBruto));
+    setPesoLiquido((current) => (current === nextPesoLiquido ? current : nextPesoLiquido));
+  }, [useCycleBoxProfiles, selectedCaixaPerfil, quantidade]);
+
+  useEffect(() => {
+    if (!isEditMode || !settings.useCycleBoxWeightProfiles || unidade !== 'caixas') return;
+    if (!caixaPerfisDisponiveis.length) return;
+
+    const qtd = parseFloat(quantidade.replace(',', '.')) || 0;
+    const bruto = parseFloat(pesoBruto.replace(',', '.')) || 0;
+    const liquido = parseFloat(pesoLiquido.replace(',', '.')) || 0;
+    if (qtd <= 0) return;
+
+    const matched = caixaPerfisDisponiveis.find((perfil) => {
+      const expectedBruto = Number((perfil.pesoBruto * qtd).toFixed(3));
+      const expectedLiquido = Number((perfil.pesoLiquido * qtd).toFixed(3));
+      return Math.abs(expectedBruto - bruto) < 0.01 && Math.abs(expectedLiquido - liquido) < 0.01;
+    });
+
+    if (matched) {
+      setSelectedCaixaPerfilId((current) => (current === matched.id ? current : matched.id));
+    }
+  }, [isEditMode, settings.useCycleBoxWeightProfiles, unidade, caixaPerfisDisponiveis, quantidade, pesoBruto, pesoLiquido]);
+
+  const invalidateQueries = async () => {
+    if (!targetId) return;
+    await invalidateVendasQueries(targetId);
+  };
+
+  const resetPerfilCaixaForm = () => {
+    setPerfilCaixaNome('');
+    setPerfilCaixaPesoBruto('');
+    setPerfilCaixaPesoLiquido('');
+    setEditingPerfilCaixaId(null);
+  };
+
+  const handleEditPerfilCaixa = (perfil: PlantioCaixaPerfil) => {
+    setEditingPerfilCaixaId(perfil.id);
+    setPerfilCaixaNome(perfil.nome);
+    setPerfilCaixaPesoBruto(String(perfil.pesoBruto));
+    setPerfilCaixaPesoLiquido(String(perfil.pesoLiquido));
+  };
+
+  const syncPlantioPerfis = (plantioId: string, nextProfiles: PlantioCaixaPerfil[]) => {
+    setPlantiosDisponiveis((prev) =>
+      prev.map((plantio) =>
+        plantio.id === plantioId ? { ...plantio, caixaPerfis: nextProfiles } : plantio
+      )
+    );
+  };
+
+  const handleSavePerfilCaixa = async () => {
+    if (!targetId) return;
+    if (!selectedPlantioId) {
+      Alert.alert('Atenção', 'Selecione o ciclo antes de cadastrar perfis de caixa.');
+      return;
+    }
+
+    const nome = perfilCaixaNome.trim();
+    const pesoBrutoNum = parseFloat(perfilCaixaPesoBruto.replace(',', '.'));
+    const pesoLiquidoNum = parseFloat(perfilCaixaPesoLiquido.replace(',', '.'));
+
+    if (!nome) {
+      Alert.alert('Atenção', 'Digite o nome do tipo de caixa.');
+      return;
+    }
+    if (!pesoBrutoNum || pesoBrutoNum <= 0) {
+      Alert.alert('Atenção', 'Informe um peso bruto válido.');
+      return;
+    }
+    if (!pesoLiquidoNum || pesoLiquidoNum <= 0) {
+      Alert.alert('Atenção', 'Informe um peso líquido válido.');
+      return;
+    }
+
+    const perfisAtuais = loteSelecionado?.caixaPerfis || [];
+    const nextProfiles: PlantioCaixaPerfil[] = editingPerfilCaixaId
+      ? perfisAtuais.map((perfil) =>
+          perfil.id === editingPerfilCaixaId
+            ? { ...perfil, nome, pesoBruto: pesoBrutoNum, pesoLiquido: pesoLiquidoNum }
+            : perfil
+        )
+      : [
+          ...perfisAtuais,
+          {
+            id: `perfil-${Date.now()}`,
+            nome,
+            pesoBruto: pesoBrutoNum,
+            pesoLiquido: pesoLiquidoNum,
+          },
+        ];
+
+    setSalvandoPerfilCaixa(true);
+    try {
+      await updatePlantio(selectedPlantioId, { caixaPerfis: nextProfiles }, targetId);
+      syncPlantioPerfis(selectedPlantioId, nextProfiles);
+      if (!editingPerfilCaixaId) {
+        setSelectedCaixaPerfilId(nextProfiles[nextProfiles.length - 1]?.id || '');
+      } else if (editingPerfilCaixaId === selectedCaixaPerfilId) {
+        setSelectedCaixaPerfilId(editingPerfilCaixaId);
+      }
+      resetPerfilCaixaForm();
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Não foi possível salvar o perfil de caixa.');
+    } finally {
+      setSalvandoPerfilCaixa(false);
+    }
+  };
+
+  const handleDeletePerfilCaixa = async (perfilId: string) => {
+    if (!targetId || !selectedPlantioId) return;
+
+    const perfisAtuais = loteSelecionado?.caixaPerfis || [];
+    const nextProfiles = perfisAtuais.filter((perfil) => perfil.id !== perfilId);
+
+    setSalvandoPerfilCaixa(true);
+    try {
+      await updatePlantio(selectedPlantioId, { caixaPerfis: nextProfiles }, targetId);
+      syncPlantioPerfis(selectedPlantioId, nextProfiles);
+      if (selectedCaixaPerfilId === perfilId) {
+        setSelectedCaixaPerfilId(nextProfiles[0]?.id || '');
+      }
+      if (editingPerfilCaixaId === perfilId) {
+        resetPerfilCaixaForm();
+      }
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Não foi possível excluir o perfil de caixa.');
+    } finally {
+      setSalvandoPerfilCaixa(false);
     }
   };
 
@@ -304,7 +444,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
       { text: "Excluir", style: "destructive", onPress: async () => {
           try {
             await deleteColheita(editingColheitaId, targetId);
-            invalidateQueries();
+            await invalidateQueries();
             navigation.goBack();
           } catch (e: any) { Alert.alert("Erro", e?.message || "Falha ao excluir."); }
       }}
@@ -327,12 +467,12 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
         setSelectedClienteId(novoId);
         setModalVisible(false);
         setNovoClienteNome('');
-        queryClient.invalidateQueries({ queryKey: queryKeys.clientesList(targetId) });
+        await invalidateClientesQuery(targetId);
     } catch (error) { Alert.alert("Erro", "Falha ao cadastrar."); } finally { setSalvandoNovoCliente(false); }
   };
 
   const handleQuickRegisterCaixaPessoa = async () => {
-    if (!novoCaixaNome.trim()) return Alert.alert("AtenÃ§Ã£o", "Digite o nome");
+    if (!novoCaixaNome.trim()) return Alert.alert("Atenção", "Digite o nome");
     if (!targetId) return;
 
     setSalvandoNovaPessoaCaixa(true);
@@ -410,7 +550,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
               });
           }
 
-          invalidateQueries();
+          await invalidateQueries();
           const totalVenda = (qtdNum || 0) * (precoNum || 0);
           Alert.alert(
             isEditMode ? "Venda atualizada" : "Venda registrada",
@@ -610,7 +750,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
             <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 10 }}>
                     <Text style={styles.label}>Quantidade</Text>
-                    <TextInput style={styles.input} keyboardType="numeric" value={quantidade} onChangeText={setQuantidade} placeholder="0" editable={!isCycleLockedForSale} />
+                    <TextInput style={styles.input} keyboardType="numeric" value={quantidade} onChangeText={(value) => setQuantidade(sanitizeDecimalInput(value))} placeholder="0" editable={!isCycleLockedForSale} />
                 </View>
                 <View style={{ width: 110 }}>
                     <Text style={styles.label}>Unidade</Text>
@@ -625,20 +765,77 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
             </View>
 
             {unidade === 'caixas' && (
-                <View style={styles.row}>
+                <>
+                    {useCycleBoxProfiles ? (
+                      <>
+                        <Text style={styles.label}>Tipo de Caixa do Ciclo</Text>
+                        <View style={styles.pickerWrapper}>
+                          <Picker selectedValue={selectedCaixaPerfilId} onValueChange={(val: any) => setSelectedCaixaPerfilId(String(val || ''))} style={styles.picker} enabled={!isCycleLockedForSale}>
+                            {caixaPerfisDisponiveis.map((perfil) => (
+                              <Picker.Item key={perfil.id} label={`${perfil.nome} - B ${perfil.pesoBruto}kg - L ${perfil.pesoLiquido}kg`} value={perfil.id} />
+                            ))}
+                          </Picker>
+                        </View>
+                        {selectedCaixaPerfil ? (
+                          <View style={styles.infoRow}>
+                            <MaterialCommunityIcons name="archive-outline" size={20} color={COLORS.primary} />
+                            <Text style={styles.infoText}>Perfil: {selectedCaixaPerfil.nome}. Pesos calculados automaticamente pela quantidade.</Text>
+                          </View>
+                        ) : null}
+                        <TouchableOpacity
+                          style={styles.secondaryBtn}
+                          onPress={() => setPerfilCaixaModalVisible(true)}
+                          disabled={!selectedPlantioId}
+                        >
+                          <MaterialCommunityIcons name="archive-cog-outline" size={18} color={COLORS.primary} />
+                          <Text style={styles.secondaryBtnText}>Gerenciar perfis deste ciclo</Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : null}
+                    {settings.useCycleBoxWeightProfiles && !caixaPerfisDisponiveis.length ? (
+                      <>
+                        <View style={styles.infoRow}>
+                          <MaterialCommunityIcons name="information-outline" size={20} color={COLORS.primary} />
+                          <Text style={styles.infoText}>Este ciclo ainda não tem perfis de caixa. Cadastre aqui para calcular os pesos automaticamente.</Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.secondaryBtn}
+                          onPress={() => setPerfilCaixaModalVisible(true)}
+                          disabled={!selectedPlantioId}
+                        >
+                          <MaterialCommunityIcons name="plus-circle-outline" size={18} color={COLORS.primary} />
+                          <Text style={styles.secondaryBtnText}>Cadastrar perfis deste ciclo</Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : null}
+                    <View style={[styles.row, useCycleBoxProfiles && styles.hiddenRow]}>
                     <View style={{ flex: 1, marginRight: 10 }}>
                         <Text style={styles.label}>P. Bruto (kg)</Text>
-                        <TextInput style={styles.input} keyboardType="numeric" value={pesoBruto} onChangeText={setPesoBruto} placeholder="0.00" editable={!isCycleLockedForSale} />
+                        <TextInput style={[styles.input, useCycleBoxProfiles && styles.inputAuto]} keyboardType="numeric" value={pesoBruto} onChangeText={(value) => setPesoBruto(sanitizeDecimalInput(value))} placeholder="0.00" editable={!isCycleLockedForSale && !useCycleBoxProfiles} />
                     </View>
                     <View style={{ flex: 1 }}>
                         <Text style={styles.label}>P. Líquido (kg)</Text>
-                        <TextInput style={styles.input} keyboardType="numeric" value={pesoLiquido} onChangeText={setPesoLiquido} placeholder="0.00" editable={!isCycleLockedForSale} />
+                        <TextInput style={[styles.input, useCycleBoxProfiles && styles.inputAuto]} keyboardType="numeric" value={pesoLiquido} onChangeText={(value) => setPesoLiquido(sanitizeDecimalInput(value))} placeholder="0.00" editable={!isCycleLockedForSale && !useCycleBoxProfiles} />
                     </View>
                 </View>
+                {useCycleBoxProfiles ? (
+                  <View style={styles.weightSummaryCard}>
+                    <View style={styles.weightSummaryItem}>
+                      <Text style={styles.weightSummaryLabel}>Peso bruto total</Text>
+                      <Text style={styles.weightSummaryValue}>{pesoBruto || '0'} kg</Text>
+                    </View>
+                    <View style={styles.weightSummaryDivider} />
+                    <View style={styles.weightSummaryItem}>
+                      <Text style={styles.weightSummaryLabel}>Peso liquido total</Text>
+                      <Text style={styles.weightSummaryValue}>{pesoLiquido || '0'} kg</Text>
+                    </View>
+                  </View>
+                ) : null}
+                </>
             )}
 
             <Text style={styles.label}>Preço Unitário (R$)</Text>
-            <TextInput style={styles.input} keyboardType="numeric" value={preco} onChangeText={setPreco} placeholder="0.00" editable={!isCycleLockedForSale} />
+            <TextInput style={styles.input} keyboardType="numeric" value={preco} onChangeText={(value) => setPreco(sanitizeDecimalInput(value))} placeholder="0.00" editable={!isCycleLockedForSale} />
 
             {unidade === 'caixas' && precoPorKg > 0 && (
                 <View style={styles.infoRow}>
@@ -782,6 +979,119 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
         </View>
       </Modal>
 
+      <Modal
+        animationType="slide"
+        transparent
+        visible={perfilCaixaModalVisible}
+        onRequestClose={() => {
+          setPerfilCaixaModalVisible(false);
+          resetPerfilCaixaForm();
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.largeModalContent]}>
+            <Text style={styles.modalTitle}>Perfis de Caixa do Ciclo</Text>
+            <Text style={styles.unlockText}>
+              Cadastre aqui os pesos por tipo de caixa para este ciclo. A venda pode continuar manual quando essa opção estiver desligada nas configurações.
+            </Text>
+
+            <Text style={styles.label}>Nome do tipo de caixa</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ex: Caixa 22kg"
+              value={perfilCaixaNome}
+              onChangeText={setPerfilCaixaNome}
+            />
+
+            <View style={styles.row}>
+              <View style={{ flex: 1, marginRight: 10 }}>
+                <Text style={styles.label}>Peso Bruto por Caixa</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="0.00"
+                  keyboardType="numeric"
+                  value={perfilCaixaPesoBruto}
+                  onChangeText={(value) => setPerfilCaixaPesoBruto(sanitizeDecimalInput(value))}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>Peso Líquido por Caixa</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="0.00"
+                  keyboardType="numeric"
+                  value={perfilCaixaPesoLiquido}
+                  onChangeText={(value) => setPerfilCaixaPesoLiquido(sanitizeDecimalInput(value))}
+                />
+              </View>
+            </View>
+
+            <View style={styles.profileModalActions}>
+              <TouchableOpacity
+                style={styles.modalBtn}
+                onPress={handleSavePerfilCaixa}
+                disabled={salvandoPerfilCaixa}
+              >
+                {salvandoPerfilCaixa ? (
+                  <ActivityIndicator color={COLORS.textLight} />
+                ) : (
+                  <Text style={{ color: COLORS.textLight, fontWeight: 'bold' }}>
+                    {editingPerfilCaixaId ? 'Atualizar' : 'Salvar Perfil'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+              {editingPerfilCaixaId ? (
+                <TouchableOpacity onPress={resetPerfilCaixaForm} disabled={salvandoPerfilCaixa}>
+                  <Text style={{ color: COLORS.textSecondary }}>Cancelar edição</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            <ScrollView style={styles.profileList} showsVerticalScrollIndicator={false}>
+              {caixaPerfisDisponiveis.map((perfil) => (
+                <View key={perfil.id} style={styles.profileCard}>
+                  <Text style={styles.profileTitle}>{perfil.nome}</Text>
+                  <Text style={styles.profileMeta}>
+                    Bruto: {perfil.pesoBruto} kg • Líquido: {perfil.pesoLiquido} kg
+                  </Text>
+                  <View style={styles.profileActionsRow}>
+                    <TouchableOpacity onPress={() => handleEditPerfilCaixa(perfil)} disabled={salvandoPerfilCaixa}>
+                      <Text style={styles.profileActionText}>Editar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() =>
+                        Alert.alert('Excluir perfil', 'Deseja remover este perfil de caixa?', [
+                          { text: 'Cancelar', style: 'cancel' },
+                          { text: 'Excluir', style: 'destructive', onPress: () => handleDeletePerfilCaixa(perfil.id) },
+                        ])
+                      }
+                      disabled={salvandoPerfilCaixa}
+                    >
+                      <Text style={[styles.profileActionText, styles.profileDeleteText]}>Excluir</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+              {!caixaPerfisDisponiveis.length ? (
+                <Text style={styles.emptyProfilesText}>Nenhum perfil cadastrado para este ciclo.</Text>
+              ) : null}
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                onPress={() => {
+                  setPerfilCaixaModalVisible(false);
+                  resetPerfilCaixaForm();
+                }}
+                disabled={salvandoPerfilCaixa}
+              >
+                <Text style={{ color: COLORS.textSecondary }}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal animationType="fade" transparent visible={unlockModalVisible} onRequestClose={() => setUnlockModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -826,8 +1136,8 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
       <Modal animationType="fade" transparent visible={editAuthModalVisible} onRequestClose={() => setEditAuthModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Confirmar edicao da venda</Text>
-            <Text style={styles.unlockText}>Digite a senha do app para autorizar a alteracao desta venda.</Text>
+            <Text style={styles.modalTitle}>Confirmar edição da venda</Text>
+            <Text style={styles.unlockText}>Digite a senha do app para autorizar a alteração desta venda.</Text>
             <TextInput
               style={styles.input}
               placeholder="Senha"
@@ -845,7 +1155,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                 disabled={editAuthorizing}
                 onPress={async () => {
                   if (!editPassword.trim()) {
-                    Alert.alert('Atencao', 'Digite a senha para continuar.');
+                    Alert.alert('Atenção', 'Digite a senha para continuar.');
                     return;
                   }
                   setEditAuthorizing(true);
@@ -882,6 +1192,7 @@ const styles = StyleSheet.create({
   sectionHeader: { fontSize: 14, fontWeight: 'bold', color: COLORS.primary, marginBottom: 12, textTransform: 'uppercase' },
   label: { fontSize: 12, color: COLORS.textPrimary, marginBottom: 5, fontWeight: '600' },
   input: { backgroundColor: COLORS.surface, borderRadius: 8, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border, color: COLORS.textPrimary, fontWeight: 'bold' },
+  inputAuto: { backgroundColor: COLORS.surfaceMuted, opacity: 0.9 },
   dateButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, padding: 12, borderRadius: 8, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border },
   dateText: { marginLeft: 10, fontWeight: 'bold', color: COLORS.textPrimary },
   row: { flexDirection: 'row' },
@@ -890,11 +1201,19 @@ const styles = StyleSheet.create({
   disabledPicker: { opacity: 0.6, backgroundColor: COLORS.disabledBg },
   picker: { color: COLORS.textPrimary },
   addBtn: { width: 50, height: 50, backgroundColor: COLORS.primary, borderRadius: 8, marginLeft: 10, justifyContent: 'center', alignItems: 'center' },
+  secondaryBtn: { minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.surface, paddingHorizontal: 12, marginBottom: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  secondaryBtnText: { color: COLORS.primary, fontWeight: '800', fontSize: 13 },
   rastreioBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, padding: 10, borderRadius: 8, marginTop: 10, borderWidth: 1, borderColor: COLORS.c86EFAC },
   rastreioTitle: { fontSize: 12, fontWeight: 'bold', color: COLORS.primary },
   rastreioText: { fontSize: 11, color: COLORS.c15803D },
   infoRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.cF0FDF4, padding: 12, borderRadius: 8, marginBottom: 15 },
   infoText: { marginLeft: 8, color: COLORS.primary, fontWeight: 'bold' },
+  hiddenRow: { display: 'none' },
+  weightSummaryCard: { flexDirection: 'row', alignItems: 'stretch', backgroundColor: COLORS.surfaceMuted, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 },
+  weightSummaryItem: { flex: 1, paddingHorizontal: 12, paddingVertical: 14 },
+  weightSummaryLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 4 },
+  weightSummaryValue: { color: COLORS.textPrimary, fontSize: 16, fontWeight: '800' },
+  weightSummaryDivider: { width: 1, backgroundColor: COLORS.border },
   observacoesToggle: {
     marginTop: 18,
     marginBottom: 4,
@@ -928,10 +1247,20 @@ const styles = StyleSheet.create({
   saveText: { color: COLORS.textLight, fontWeight: 'bold', fontSize: 17 },
   modalOverlay: { flex: 1, backgroundColor: COLORS.rgba00005, justifyContent: 'center', padding: 30 },
   modalContent: { backgroundColor: COLORS.surface, borderRadius: 15, padding: 20 },
+  largeModalContent: { maxHeight: '85%' },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
   unlockText: { color: COLORS.textSecondary, marginBottom: 12, lineHeight: 18 },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 20, alignItems: 'center' },
-  modalBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }
+  modalBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
+  profileModalActions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 12 },
+  profileList: { marginTop: 6, marginBottom: 12 },
+  profileCard: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, padding: 12, marginBottom: 10, backgroundColor: COLORS.surface },
+  profileTitle: { fontWeight: '800', color: COLORS.textPrimary, marginBottom: 4 },
+  profileMeta: { color: COLORS.textSecondary, fontSize: 12, marginBottom: 8 },
+  profileActionsRow: { flexDirection: 'row', alignItems: 'center', gap: 18 },
+  profileActionText: { color: COLORS.primary, fontWeight: '700' },
+  profileDeleteText: { color: COLORS.danger },
+  emptyProfilesText: { color: COLORS.textSecondary, textAlign: 'center', marginVertical: 12 }
 });
 
 export default ColheitaFormScreen;

@@ -6,6 +6,7 @@ import { RegistroManejo } from '../../types/domain';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { useIsFocused } from '@react-navigation/native';
+import { formatDateTimeSafe } from '../../utils/date';
 
 const getManejoIcon = (tipo: string) => {
   switch(tipo) {
@@ -83,7 +84,7 @@ const ManejosHistoryScreen = ({ route, navigation }: any) => {
           <Text style={styles.tipoText}>
             {item.tipoManejo === 'praga_doenca' ? 'PRAGA/DOENÇA' : item.tipoManejo.toUpperCase()}
           </Text>
-          <Text style={styles.dateText}>{item.dataRegistro.toDate().toLocaleString('pt-BR')}</Text>
+          <Text style={styles.dateText}>{formatDateTimeSafe(item.dataRegistro)}</Text>
         </View>
         <TouchableOpacity onPress={() => handleDelete(item.id)} style={{ padding: 5 }}>
           <MaterialCommunityIcons name="trash-can-outline" size={20} color={COLORS.textLight} />
@@ -112,7 +113,7 @@ const ManejosHistoryScreen = ({ route, navigation }: any) => {
         </View>
       )}
 
-      <Text style={styles.respText}>Registado por: {item.responsavel || 'Sistema'}</Text>
+      <Text style={styles.respText}>Registrado por: {item.responsavel || 'Sistema'}</Text>
     </View>
   );
 

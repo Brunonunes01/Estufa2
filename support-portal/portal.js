@@ -57,6 +57,7 @@ const state = {
   supportCases: [],
   supportOps: { statusFilter: '' },
   supportExpandedCaseId: '',
+  salesReportFilters: { status: 'todos', from: '', to: '' },
 };
 
 const appRoot = document.getElementById('portalApp');
@@ -582,6 +583,510 @@ async function queryTenantCollection(collectionName) {
   return rows;
 }
 
+function getFilteredRowsForCollection(collectionName) {
+  const config = MODULE_CONFIG[collectionName];
+  const rows = state.cachedRows[collectionName] || [];
+  if (!config) return rows;
+
+  const table = ensureTableState(collectionName);
+  const term = String(table.search || '')
+    .toLowerCase()
+    .trim();
+
+  let filtered = rows;
+
+  if (collectionName === 'vendas') {
+    const { status, from, to } = state.salesReportFilters;
+    filtered = filtered.filter((row) => {
+      const rowStatus = String(row.status_pagamento || '').toLowerCase();
+      const rowDate = toDate(row.data_venda);
+      if (status && status !== 'todos' && rowStatus !== status) return false;
+      if (from && rowDate) {
+        const fromDate = new Date(`${from}T00:00:00`);
+        if (rowDate.getTime() < fromDate.getTime()) return false;
+      }
+      if (to && rowDate) {
+        const toDateLimit = new Date(`${to}T23:59:59`);
+        if (rowDate.getTime() > toDateLimit.getTime()) return false;
+      }
+      return true;
+    });
+  }
+
+  if (!term) return filtered;
+
+  return filtered.filter((row) => config.columns.some((column) => String(row[column.key] ?? '').toLowerCase().includes(term)));
+}
+
+function triggerBlobDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function sanitizeFilenameSegment(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function reportDateToken() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function normalizeSalesMeasureLabel(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'caixas' || raw === 'caixa' || raw === 'cx') return 'CAIXAS';
+  if (raw === 'kg' || raw === 'quilo' || raw === 'quilos') return 'KG';
+  if (raw === 'un' || raw === 'unidade' || raw === 'unidades') return 'UN';
+  return raw ? raw.toUpperCase() : 'UN';
+}
+
+function buildSalesSummary(rows) {
+  const totalGeral = rows.reduce((acc, item) => acc + Number(item.valor_total || 0), 0);
+  const pagos = rows.filter((item) => String(item.status_pagamento || '').toLowerCase() === 'pago');
+  const pendentes = rows.filter((item) => String(item.status_pagamento || '').toLowerCase() === 'pendente');
+  const cancelados = rows.filter((item) => String(item.status_pagamento || '').toLowerCase() === 'cancelado');
+  const totalPago = pagos.reduce((acc, item) => acc + Number(item.valor_total || 0), 0);
+  const totalPendente = pendentes.reduce((acc, item) => acc + Number(item.valor_total || 0), 0);
+  const totalCancelado = cancelados.reduce((acc, item) => acc + Number(item.valor_total || 0), 0);
+  return {
+    totalGeral,
+    totalPago,
+    totalPendente,
+    totalCancelado,
+    registros: rows.length,
+    pagos: pagos.length,
+    pendentes: pendentes.length,
+    cancelados: cancelados.length,
+    recebimentoPercentual: totalGeral > 0 ? totalPago / totalGeral : 0,
+    inadimplenciaPercentual: totalGeral > 0 ? totalPendente / totalGeral : 0,
+  };
+}
+
+async function buildSalesExportRows() {
+  const vendas = getFilteredRowsForCollection('vendas');
+  const [clientes, estufas] = await Promise.all([queryTenantCollection('clientes'), queryTenantCollection('estufas')]);
+  const clienteMap = new Map(clientes.map((item) => [item.id, item]));
+  const estufaMap = new Map(estufas.map((item) => [item.id, item]));
+
+  return vendas.map((item) => {
+    const cliente = clienteMap.get(item.cliente_id);
+    const estufa = estufaMap.get(item.estufa_id);
+    const status = String(item.status_pagamento || 'pendente').toUpperCase();
+    const metodo = String(item.metodo_pagamento || item.forma_pagamento || 'N/A').toUpperCase();
+    const data = formatDate(item.data_venda);
+    const valorTotal = Number(item.valor_total || 0);
+    const valorRecebido = status === 'PAGO' ? valorTotal : 0;
+    const valorPendente = status === 'PAGO' ? 0 : valorTotal;
+
+    return {
+      codigo: String(item.id || '-'),
+      data,
+      cliente: cliente?.nome || item.cliente_nome || item.nome_cliente || 'Venda avulsa',
+      documentoCliente: cliente?.cpf_cnpj || cliente?.documento || '',
+      estufa: estufa?.nome || item.estufa_nome || item.estufa_id || '-',
+      lote: String(item.lote_colheita || item.codigo_lote || item.plantio_id || item.colheita_id || '-'),
+      produto: item.produto_nome || item.descricao || item.cultura || 'Produto',
+      quantidade: Number(item.quantidade || 0),
+      medida: normalizeSalesMeasureLabel(item.unidade || item.unidade_medida || 'un'),
+      quantidadeComercial: `${Number(item.quantidade || 0)} ${normalizeSalesMeasureLabel(item.unidade || item.unidade_medida || 'un')}`,
+      precoUnitario: Number(item.preco_unitario || item.valor_unitario || 0),
+      valorTotal,
+      valorRecebido,
+      valorPendente,
+      metodoPagamento: metodo,
+      status,
+      recebidoPor: item.pagamento_para || item.recebido_por || '',
+      observacoes: item.observacoes || '',
+    };
+  });
+}
+
+function buildPortalSalesInsights(rows) {
+  const summary = buildSalesSummary(
+    rows.map((item) => ({
+      valor_total: item.valorTotal,
+      status_pagamento: item.status.toLowerCase(),
+    }))
+  );
+
+  const methodRows = Array.from(
+    rows.reduce((map, item) => {
+      const key = item.metodoPagamento || 'N/A';
+      const current = map.get(key) || { Metodo: key, Vendas: 0, Total: 0, Pago: 0, Pendente: 0, Cancelado: 0 };
+      current.Vendas += 1;
+      current.Total += item.valorTotal;
+      if (item.status === 'PAGO') current.Pago += item.valorTotal;
+      if (item.status === 'PENDENTE') current.Pendente += item.valorTotal;
+      if (item.status === 'CANCELADO') current.Cancelado += item.valorTotal;
+      map.set(key, current);
+      return map;
+    }, new Map()).values()
+  )
+    .map((item) => ({ ...item, Participacao: summary.totalGeral > 0 ? item.Total / summary.totalGeral : 0 }))
+    .sort((a, b) => b.Total - a.Total);
+
+  const clientRows = Array.from(
+    rows.reduce((map, item) => {
+      const key = item.cliente || 'Venda avulsa';
+      const current = map.get(key) || {
+        Cliente: key,
+        Documento: item.documentoCliente || '',
+        Vendas: 0,
+        Total: 0,
+        Pago: 0,
+        Pendente: 0,
+        Cancelado: 0,
+      };
+      current.Vendas += 1;
+      current.Total += item.valorTotal;
+      if (item.status === 'PAGO') current.Pago += item.valorTotal;
+      if (item.status === 'PENDENTE') current.Pendente += item.valorTotal;
+      if (item.status === 'CANCELADO') current.Cancelado += item.valorTotal;
+      map.set(key, current);
+      return map;
+    }, new Map()).values()
+  )
+    .map((item) => ({
+      ...item,
+      Participacao: summary.totalGeral > 0 ? item.Total / summary.totalGeral : 0,
+      Inadimplencia: item.Total > 0 ? item.Pendente / item.Total : 0,
+    }))
+    .sort((a, b) => b.Total - a.Total);
+
+  const productRows = Array.from(
+    rows.reduce((map, item) => {
+      const key = item.produto || 'Produto';
+      const current = map.get(key) || { Produto: key, Vendas: 0, Quantidade: 0, Total: 0 };
+      current.Vendas += 1;
+      current.Quantidade += Number(item.quantidade || 0);
+      current.Total += item.valorTotal;
+      map.set(key, current);
+      return map;
+    }, new Map()).values()
+  )
+    .map((item) => ({
+      ...item,
+      TicketMedio: item.Vendas > 0 ? item.Total / item.Vendas : 0,
+      Participacao: summary.totalGeral > 0 ? item.Total / summary.totalGeral : 0,
+    }))
+    .sort((a, b) => b.Total - a.Total);
+
+  const dailyRows = Array.from(
+    rows.reduce((map, item) => {
+      const key = item.data || '-';
+      const current = map.get(key) || { Data: key, Registros: 0, Total: 0, Pago: 0, Pendente: 0, Cancelado: 0 };
+      current.Registros += 1;
+      current.Total += item.valorTotal;
+      if (item.status === 'PAGO') current.Pago += item.valorTotal;
+      if (item.status === 'PENDENTE') current.Pendente += item.valorTotal;
+      if (item.status === 'CANCELADO') current.Cancelado += item.valorTotal;
+      map.set(key, current);
+      return map;
+    }, new Map()).values()
+  );
+
+  return {
+    summary,
+    methodRows,
+    clientRows,
+    productRows,
+    dailyRows,
+    pendingRows: rows.filter((item) => item.status === 'PENDENTE'),
+  };
+}
+
+async function exportSalesExcelCompatFromPortal() {
+  const tenant = state.tenants.find((item) => item.id === state.selectedTenantId);
+  const empresa = tenant?.label || state.selectedTenantId;
+  const rows = await buildSalesExportRows();
+  const insights = buildPortalSalesInsights(rows);
+  const fileName = `Portal_Vendas_Compativel_${sanitizeFilenameSegment(empresa)}_${reportDateToken()}.xlsx`;
+
+  const lancamentosRows = rows.map((item) => ({
+    Codigo: item.codigo,
+    Data: item.data,
+    Cliente: item.cliente,
+    Documento: item.documentoCliente,
+    Estufa: item.estufa,
+    Lote: item.lote,
+    Produto: item.produto,
+    Quantidade: item.quantidade,
+    'Caixas/KG/UN': item.medida,
+    'Quantidade Comercial': item.quantidadeComercial,
+    'Preco Unitario': item.precoUnitario,
+    'Valor Total': item.valorTotal,
+    'Valor Recebido': item.valorRecebido,
+    'Valor Pendente': item.valorPendente,
+    Metodo: item.metodoPagamento,
+    Status: item.status,
+    'Recebido Por': item.recebidoPor,
+    Observacoes: item.observacoes,
+  }));
+
+  const totais = [
+    { Indicador: 'Empresa', Valor: empresa },
+    { Indicador: 'Tenant', Valor: state.selectedTenantId },
+    { Indicador: 'Gerado em', Valor: new Date().toLocaleString('pt-BR') },
+    { Indicador: 'Registros', Valor: insights.summary.registros },
+    { Indicador: 'Total geral', Valor: insights.summary.totalGeral },
+    { Indicador: 'Total pago', Valor: insights.summary.totalPago },
+    { Indicador: 'Total pendente', Valor: insights.summary.totalPendente },
+    { Indicador: 'Total cancelado', Valor: insights.summary.totalCancelado },
+    { Indicador: 'Cobertura de recebimento', Valor: insights.summary.recebimentoPercentual },
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  const summarySheet = XLSX.utils.json_to_sheet(totais);
+  const salesSheet = XLSX.utils.json_to_sheet(lancamentosRows);
+  const methodsSheet = XLSX.utils.json_to_sheet(insights.methodRows);
+  const clientsSheet = XLSX.utils.json_to_sheet(insights.clientRows);
+  const productsSheet = XLSX.utils.json_to_sheet(insights.productRows);
+  const pendingSheet = XLSX.utils.json_to_sheet(insights.pendingRows);
+  const dailySheet = XLSX.utils.json_to_sheet(insights.dailyRows);
+  summarySheet['!cols'] = [{ wch: 24 }, { wch: 18 }];
+  salesSheet['!cols'] = [
+    { wch: 14 }, { wch: 12 }, { wch: 26 }, { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 24 }, { wch: 12 }, { wch: 12 },
+    { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 18 }, { wch: 28 },
+  ];
+  salesSheet['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(lancamentosRows.length, 1), c: 17 } }) };
+  XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumo');
+  XLSX.utils.book_append_sheet(workbook, salesSheet, 'Lancamentos');
+  XLSX.utils.book_append_sheet(workbook, methodsSheet, 'Resumo Metodos');
+  XLSX.utils.book_append_sheet(workbook, clientsSheet, 'Resumo Clientes');
+  XLSX.utils.book_append_sheet(workbook, productsSheet, 'Ranking Produtos');
+  XLSX.utils.book_append_sheet(workbook, pendingSheet, 'Pendencias');
+  XLSX.utils.book_append_sheet(workbook, dailySheet, 'Consolidado Diario');
+  const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+  triggerBlobDownload(
+    new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    fileName
+  );
+}
+
+async function exportSalesExcelStyledFromPortal() {
+  const excelJsModule = await import('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/+esm');
+  const ExcelJS = excelJsModule.default ?? excelJsModule;
+  const tenant = state.tenants.find((item) => item.id === state.selectedTenantId);
+  const empresa = tenant?.label || state.selectedTenantId;
+  const rows = await buildSalesExportRows();
+  const insights = buildPortalSalesInsights(rows);
+  const fileName = `Portal_Vendas_Completo_${sanitizeFilenameSegment(empresa)}_${reportDateToken()}.xlsx`;
+  const workbook = new ExcelJS.Workbook();
+  const palette = {
+    brand: '1F4E78',
+    brandSoft: 'D9EAF7',
+    success: '2E7D32',
+    successSoft: 'E8F5E9',
+    warning: 'B26A00',
+    warningSoft: 'FFF4D6',
+    danger: 'B42318',
+    dangerSoft: 'FDECEC',
+    neutral: '5F6B7A',
+    neutralSoft: 'EEF2F6',
+    border: 'C9D3DD',
+    text: '1B1F24',
+    white: 'FFFFFF',
+  };
+  const currencyFormat = '"R$" #,##0.00';
+
+  const applyBorder = (cell) => {
+    cell.border = {
+      top: { style: 'thin', color: { argb: palette.border } },
+      left: { style: 'thin', color: { argb: palette.border } },
+      bottom: { style: 'thin', color: { argb: palette.border } },
+      right: { style: 'thin', color: { argb: palette.border } },
+    };
+  };
+
+  const paint = (cell, fill, color = palette.text, bold = false) => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
+    cell.font = { name: 'Aptos', size: 11, bold, color: { argb: color } };
+    applyBorder(cell);
+  };
+
+  const styleSheetIntro = (sheet, title, subtitle, fill, softFill, accent) => {
+    sheet.insertRow(1, []);
+    sheet.insertRow(1, []);
+    sheet.mergeCells(`A1:${sheet.getColumn(sheet.columnCount).letter}1`);
+    sheet.mergeCells(`A2:${sheet.getColumn(sheet.columnCount).letter}2`);
+    sheet.getCell('A1').value = title;
+    sheet.getCell('A2').value = subtitle;
+    paint(sheet.getCell('A1'), fill, palette.white, true);
+    paint(sheet.getCell('A2'), softFill, accent, true);
+  };
+
+  const applyZebraAndFormats = (sheet, startRow, endRow, options = {}) => {
+    const { currencyCols = [], percentCols = [], statusCol = '' } = options;
+    for (let i = startRow; i <= endRow; i += 1) {
+      const row = sheet.getRow(i);
+      row.eachCell((cell) => {
+        applyBorder(cell);
+        if (i % 2 === 0) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FAFCFE' } };
+        }
+      });
+      currencyCols.forEach((col) => {
+        sheet.getCell(`${col}${i}`).numFmt = currencyFormat;
+      });
+      percentCols.forEach((col) => {
+        sheet.getCell(`${col}${i}`).numFmt = '0.00%';
+      });
+      if (statusCol) {
+        const statusCell = sheet.getCell(`${statusCol}${i}`);
+        const status = String(statusCell.value || '').toUpperCase();
+        if (status === 'PAGO') paint(statusCell, palette.successSoft, palette.success, true);
+        if (status === 'PENDENTE') paint(statusCell, palette.warningSoft, palette.warning, true);
+        if (status === 'CANCELADO') paint(statusCell, palette.dangerSoft, palette.danger, true);
+      }
+    }
+  };
+
+  const summary = workbook.addWorksheet('Resumo Executivo');
+  summary.columns = [{ width: 24 }, { width: 18 }, { width: 24 }, { width: 18 }, { width: 24 }, { width: 18 }];
+  summary.mergeCells('A1:D1');
+  summary.getCell('A1').value = 'RELATORIO DE VENDAS - PORTAL DE SUPORTE';
+  paint(summary.getCell('A1'), palette.brand, palette.white, true);
+  const indicators = [
+    ['Empresa', empresa, 'Tenant', state.selectedTenantId],
+    ['Gerado em', new Date().toLocaleString('pt-BR'), 'Registros', insights.summary.registros],
+    ['Total geral', insights.summary.totalGeral, 'Total pago', insights.summary.totalPago],
+    ['Total pendente', insights.summary.totalPendente, 'Total cancelado', insights.summary.totalCancelado],
+    ['Cobertura recebimento', insights.summary.recebimentoPercentual, 'Inadimplencia', insights.summary.inadimplenciaPercentual],
+  ];
+  indicators.forEach((line, index) => {
+    const rowNumber = index + 3;
+    line.forEach((value, colIndex) => {
+      const cell = summary.getCell(rowNumber, colIndex + 1);
+      cell.value = value;
+      paint(cell, colIndex % 2 === 0 ? palette.brandSoft : palette.white, colIndex % 2 === 0 ? palette.brand : palette.text, colIndex % 2 === 0);
+      if (typeof value === 'number' && colIndex % 2 === 1) {
+        cell.numFmt = rowNumber === 6 ? '0.00%' : currencyFormat;
+      }
+    });
+  });
+
+  const sales = workbook.addWorksheet('Lancamentos', { views: [{ state: 'frozen', ySplit: 1 }] });
+  sales.columns = [
+    { header: 'Codigo', key: 'codigo', width: 14 },
+    { header: 'Data', key: 'data', width: 12 },
+    { header: 'Cliente', key: 'cliente', width: 26 },
+    { header: 'Documento', key: 'documentoCliente', width: 18 },
+    { header: 'Estufa', key: 'estufa', width: 20 },
+    { header: 'Lote', key: 'lote', width: 18 },
+    { header: 'Produto', key: 'produto', width: 24 },
+    { header: 'Quantidade', key: 'quantidade', width: 12 },
+    { header: 'Caixas/KG/UN', key: 'medida', width: 12 },
+    { header: 'Quantidade Comercial', key: 'quantidadeComercial', width: 18 },
+    { header: 'Preco Unitario', key: 'precoUnitario', width: 14 },
+    { header: 'Valor Total', key: 'valorTotal', width: 14 },
+    { header: 'Valor Recebido', key: 'valorRecebido', width: 14 },
+    { header: 'Valor Pendente', key: 'valorPendente', width: 14 },
+    { header: 'Metodo', key: 'metodoPagamento', width: 16 },
+    { header: 'Status', key: 'status', width: 12 },
+    { header: 'Recebido Por', key: 'recebidoPor', width: 18 },
+  ];
+  sales.addRows(rows);
+  styleSheetIntro(sales, 'LANCAMENTOS COMERCIAIS', `${empresa} • tenant ${state.selectedTenantId}`, palette.brand, palette.brandSoft, palette.brand);
+  sales.getRow(1).eachCell((cell) => paint(cell, palette.brand, palette.white, true));
+  sales.getRow(3).eachCell((cell) => paint(cell, palette.brand, palette.white, true));
+  applyZebraAndFormats(sales, 4, sales.rowCount, { currencyCols: ['K', 'L', 'M', 'N'], statusCol: 'P' });
+
+  const methods = workbook.addWorksheet('Resumo Metodos', { views: [{ state: 'frozen', ySplit: 1 }] });
+  methods.columns = [
+    { header: 'Metodo', key: 'Metodo', width: 22 },
+    { header: 'Vendas', key: 'Vendas', width: 12 },
+    { header: 'Total', key: 'Total', width: 14 },
+    { header: 'Pago', key: 'Pago', width: 14 },
+    { header: 'Pendente', key: 'Pendente', width: 14 },
+    { header: 'Cancelado', key: 'Cancelado', width: 14 },
+    { header: 'Participacao', key: 'Participacao', width: 14 },
+  ];
+  methods.addRows(insights.methodRows);
+  styleSheetIntro(methods, 'RESUMO POR METODO DE PAGAMENTO', `${empresa} • conciliacao financeira`, palette.neutral, palette.neutralSoft, palette.neutral);
+  methods.getRow(3).eachCell((cell) => paint(cell, palette.neutral, palette.white, true));
+  applyZebraAndFormats(methods, 4, methods.rowCount, { currencyCols: ['C', 'D', 'E', 'F'], percentCols: ['G'] });
+
+  const clients = workbook.addWorksheet('Resumo Clientes', { views: [{ state: 'frozen', ySplit: 1 }] });
+  clients.columns = [
+    { header: 'Cliente', key: 'Cliente', width: 28 },
+    { header: 'Documento', key: 'Documento', width: 18 },
+    { header: 'Vendas', key: 'Vendas', width: 12 },
+    { header: 'Total', key: 'Total', width: 14 },
+    { header: 'Pago', key: 'Pago', width: 14 },
+    { header: 'Pendente', key: 'Pendente', width: 14 },
+    { header: 'Cancelado', key: 'Cancelado', width: 14 },
+    { header: 'Participacao', key: 'Participacao', width: 14 },
+    { header: 'Inadimplencia', key: 'Inadimplencia', width: 14 },
+  ];
+  clients.addRows(insights.clientRows);
+  styleSheetIntro(clients, 'RANKING E INADIMPLENCIA POR CLIENTE', `${empresa} • leitura comercial`, palette.success, palette.successSoft, palette.success);
+  clients.getRow(3).eachCell((cell) => paint(cell, palette.success, palette.white, true));
+  applyZebraAndFormats(clients, 4, clients.rowCount, { currencyCols: ['D', 'E', 'F', 'G'], percentCols: ['H', 'I'] });
+
+  const products = workbook.addWorksheet('Ranking Produtos', { views: [{ state: 'frozen', ySplit: 1 }] });
+  products.columns = [
+    { header: 'Produto', key: 'Produto', width: 30 },
+    { header: 'Vendas', key: 'Vendas', width: 12 },
+    { header: 'Quantidade', key: 'Quantidade', width: 14 },
+    { header: 'Total', key: 'Total', width: 14 },
+    { header: 'TicketMedio', key: 'TicketMedio', width: 14 },
+    { header: 'Participacao', key: 'Participacao', width: 14 },
+  ];
+  products.addRows(insights.productRows);
+  styleSheetIntro(products, 'RANKING DE PRODUTOS', `${empresa} • participacao no faturamento`, palette.brand, palette.brandSoft, palette.brand);
+  products.getRow(3).eachCell((cell) => paint(cell, palette.brand, palette.white, true));
+  applyZebraAndFormats(products, 4, products.rowCount, { currencyCols: ['D', 'E'], percentCols: ['F'] });
+
+  const pending = workbook.addWorksheet('Pendencias', { views: [{ state: 'frozen', ySplit: 1 }] });
+  pending.columns = [
+    { header: 'Codigo', key: 'codigo', width: 14 },
+    { header: 'Data', key: 'data', width: 12 },
+    { header: 'Cliente', key: 'cliente', width: 26 },
+    { header: 'Documento', key: 'documentoCliente', width: 18 },
+    { header: 'Produto', key: 'produto', width: 24 },
+    { header: 'Valor Pendente', key: 'valorPendente', width: 16 },
+    { header: 'Metodo', key: 'metodoPagamento', width: 16 },
+    { header: 'Status', key: 'status', width: 12 },
+  ];
+  pending.addRows(insights.pendingRows);
+  styleSheetIntro(pending, 'PENDENCIAS FINANCEIRAS', `${empresa} • cobrancas em aberto`, palette.warning, palette.warningSoft, palette.warning);
+  pending.getRow(3).eachCell((cell) => paint(cell, palette.warning, palette.white, true));
+  applyZebraAndFormats(pending, 4, pending.rowCount, { currencyCols: ['F'], statusCol: 'H' });
+
+  const daily = workbook.addWorksheet('Consolidado Diario', { views: [{ state: 'frozen', ySplit: 1 }] });
+  daily.columns = [
+    { header: 'Data', key: 'Data', width: 14 },
+    { header: 'Registros', key: 'Registros', width: 12 },
+    { header: 'Total', key: 'Total', width: 14 },
+    { header: 'Pago', key: 'Pago', width: 14 },
+    { header: 'Pendente', key: 'Pendente', width: 14 },
+    { header: 'Cancelado', key: 'Cancelado', width: 14 },
+  ];
+  daily.addRows(insights.dailyRows);
+  styleSheetIntro(daily, 'CONSOLIDADO DIARIO', `${empresa} • ritmo de faturamento`, palette.neutral, palette.neutralSoft, palette.neutral);
+  daily.getRow(3).eachCell((cell) => paint(cell, palette.neutral, palette.white, true));
+  applyZebraAndFormats(daily, 4, daily.rowCount, { currencyCols: ['C', 'D', 'E', 'F'] });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  const blobBytes = new Uint8Array(bytes.byteLength);
+  blobBytes.set(bytes);
+      triggerBlobDownload(
+    new Blob([blobBytes.buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    fileName
+  );
+}
+
 async function logSupportAction({ action, note, metadata }) {
   const payload = {
     tenant_id: state.selectedTenantId,
@@ -613,11 +1118,7 @@ function buildRowActions(config, row) {
 
 function buildTableHtml(config, rows, collectionName) {
   const table = ensureTableState(collectionName);
-  const term = table.search.toLowerCase().trim();
-  const filtered = rows.filter((row) => {
-    if (!term) return true;
-    return config.columns.some((c) => String(row[c.key] ?? '').toLowerCase().includes(term));
-  });
+  const filtered = getFilteredRowsForCollection(collectionName);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   table.page = Math.min(table.page, totalPages);
@@ -648,6 +1149,42 @@ function buildTableHtml(config, rows, collectionName) {
     `
       : '';
 
+  const salesExports =
+    collectionName === 'vendas'
+      ? `
+      ${(() => {
+        const summary = buildSalesSummary(filtered);
+        return `
+      <div class="card" style="margin-top:10px;background:var(--surface-2);">
+        <h2>Relatorio de vendas</h2>
+        <div class="row">
+          <select class="input" id="sales-filter-status">
+            <option value="todos" ${state.salesReportFilters.status === 'todos' ? 'selected' : ''}>Todos</option>
+            <option value="pago" ${state.salesReportFilters.status === 'pago' ? 'selected' : ''}>Pagos</option>
+            <option value="pendente" ${state.salesReportFilters.status === 'pendente' ? 'selected' : ''}>Pendentes</option>
+            <option value="cancelado" ${state.salesReportFilters.status === 'cancelado' ? 'selected' : ''}>Cancelados</option>
+          </select>
+          <input class="input" id="sales-filter-from" type="date" value="${escapeHtml(state.salesReportFilters.from)}" />
+          <input class="input" id="sales-filter-to" type="date" value="${escapeHtml(state.salesReportFilters.to)}" />
+          <button class="btn btn-outline" data-action="sales-apply-filters">Aplicar filtros</button>
+          <button class="btn btn-outline" data-action="sales-reset-filters">Limpar</button>
+        </div>
+        <div class="grid cols-4" style="margin-top:10px;">
+          <div class="kpi"><span class="label">Registros</span><span class="value">${summary.registros}</span></div>
+          <div class="kpi"><span class="label">Total geral</span><span class="value">${formatCurrency(summary.totalGeral)}</span></div>
+          <div class="kpi"><span class="label">Total pago</span><span class="value">${formatCurrency(summary.totalPago)}</span></div>
+          <div class="kpi"><span class="label">Total pendente</span><span class="value">${formatCurrency(summary.totalPendente)}</span></div>
+        </div>
+      </div>
+      `;
+      })()}
+      <div class="row" style="margin-top:10px;">
+        <button class="btn btn-outline" data-action="sales-export-excel-compat">Excel Compativel</button>
+        <button class="btn btn-primary" data-action="sales-export-excel-styled">Excel Completo</button>
+      </div>
+    `
+      : '';
+
   return `
     <div class="card">
       <h2>${escapeHtml(config.title)}</h2>
@@ -660,6 +1197,7 @@ function buildTableHtml(config, rows, collectionName) {
         }
       </div>
       ${auditFilters}
+      ${salesExports}
       <div class="table-wrap" style="margin-top:10px;">
         <table>
           <thead><tr>${head}<th>Acoes</th></tr></thead>
@@ -1771,6 +2309,42 @@ function attachGlobalListeners() {
       const rows = state.cachedRows.support_audit || [];
       const csv = buildCsvFromRows(rows);
       triggerCsvDownload(csv, `support_audit_${new Date().toISOString().slice(0, 10)}.csv`);
+      return;
+    }
+
+    if (action === 'sales-apply-filters') {
+      state.salesReportFilters.status = document.getElementById('sales-filter-status')?.value || 'todos';
+      state.salesReportFilters.from = document.getElementById('sales-filter-from')?.value || '';
+      state.salesReportFilters.to = document.getElementById('sales-filter-to')?.value || '';
+      ensureTableState('vendas').page = 1;
+      await safeRenderMain();
+      return;
+    }
+
+    if (action === 'sales-reset-filters') {
+      state.salesReportFilters = { status: 'todos', from: '', to: '' };
+      ensureTableState('vendas').page = 1;
+      await safeRenderMain();
+      return;
+    }
+
+    if (action === 'sales-export-excel-compat') {
+      try {
+        await exportSalesExcelCompatFromPortal();
+        setStatus('Excel compativel exportado com sucesso.');
+      } catch (error) {
+        setStatus(error.message || 'Falha ao exportar o Excel compativel.', true);
+      }
+      return;
+    }
+
+    if (action === 'sales-export-excel-styled') {
+      try {
+        await exportSalesExcelStyledFromPortal();
+        setStatus('Excel completo exportado com sucesso.');
+      } catch (error) {
+        setStatus(error.message || 'Falha ao exportar o Excel completo.', true);
+      }
       return;
     }
 

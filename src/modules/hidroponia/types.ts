@@ -1,4 +1,4 @@
-import { Timestamp } from '../../compat/legacyDataApi';
+import { Timestamp } from '../../lib/timestamp';
 import { HydroponicSystemType } from '../../types/domain';
 
 export type HydroLoteStatus = 'ativo' | 'concluido' | 'cancelado';
@@ -182,3 +182,4 @@ export interface HydroLeituraFormData {
   observacoes?: string | null;
   measuredAt?: Date;
 }
+
