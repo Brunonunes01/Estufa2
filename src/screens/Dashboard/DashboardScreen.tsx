@@ -53,10 +53,12 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
     refetchResumo,
     activePlantioByEstufa,
     criticalAlerts,
+    lucroTotal,
+    roiGeral,
   } = useDashboardMetrics();
 
   useEffect(() => {
-    if (isError) showError('NÃ£o foi possÃ­vel carregar os indicadores do painel.');
+    if (isError) showError('Não foi possível carregar os indicadores do painel.');
   }, [isError, showError]);
 
   const navigateTo = useCallback(
@@ -328,7 +330,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         await updateTarefaStatus(taskId, 'concluida', targetId);
         await refetchResumo();
       } catch {
-        showError('NÃ£o foi possÃ­vel concluir a tarefa.');
+        showError('Não foi possível concluir a tarefa.');
       }
     },
     [selectedTenantId, user?.uid, refetchResumo, showError]
@@ -454,6 +456,8 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
             totalReceber={totalReceber}
             totalRecebido={totalRecebido}
             totalPagar={totalPagar}
+            lucroTotal={lucroTotal}
+            roiGeral={roiGeral}
           />
         )
       )}

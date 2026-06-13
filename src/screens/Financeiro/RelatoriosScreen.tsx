@@ -127,11 +127,19 @@ const RelatoriosScreen = () => {
   }, [targetId, selectedYear, selectedMonth]);
 
   const stats = useMemo(() => {
+    let totalCaixas = 0;
     const receitaTotal = vendas.reduce((acc, venda) => {
       const status = String(venda.statusPagamento || '').toLowerCase().trim();
       if (status === 'cancelado') return acc;
+      
       const item = venda.itens?.[0];
       const fallbackTotal = Number(item?.quantidade || 0) * Number(item?.valorUnitario || 0);
+      
+      const unidade = String((venda as any).unidade || item?.unidade || '').toLowerCase().trim();
+      if (unidade === 'caixas' || unidade === 'caixa' || unidade === 'cx') {
+        totalCaixas += Number(venda.quantidade || item?.quantidade || 0);
+      }
+
       return acc + Number(venda.valorTotal || fallbackTotal || 0);
     }, 0);
 
@@ -150,7 +158,7 @@ const RelatoriosScreen = () => {
       .map(([nome, valor]) => ({ nome, valor }))
       .sort((a, b) => b.valor - a.valor);
 
-    return { receitaTotal, despesaTotal, lucroLiquido, margem, categoriasArray };
+    return { receitaTotal, despesaTotal, lucroLiquido, margem, categoriasArray, totalCaixas };
   }, [despesas, vendas]);
 
   const periodoLabel = useMemo(
@@ -284,6 +292,19 @@ const RelatoriosScreen = () => {
               <Text style={[styles.kpiValue, { color: COLORS.danger }]}>{formatCurrency(stats.despesaTotal)}</Text>
             </View>
           </View>
+
+          <View style={[styles.quickReadGrid, { marginTop: 12, marginBottom: 0 }]}>
+            <View style={styles.quickReadCard}>
+              <Text style={styles.quickReadLabel}>Volume de Saida</Text>
+              <Text style={styles.quickReadValue}>{stats.totalCaixas.toFixed(1)} caixas</Text>
+              <Text style={styles.quickReadMeta}>Considerando apenas unidades 'caixa', 'cx' ou 'caixas'.</Text>
+            </View>
+            <View style={styles.quickReadCard}>
+              <Text style={styles.quickReadLabel}>Qtd. Vendas</Text>
+              <Text style={styles.quickReadValue}>{vendas.length} registros</Text>
+              <Text style={styles.quickReadMeta}>Total de notas/vendas emitidas no periodo.</Text>
+            </View>
+          </View>
         </View>
 
         <View style={styles.reportHubCard}>
@@ -349,6 +370,18 @@ const RelatoriosScreen = () => {
               <Text style={styles.reportNavTitle}>Analise de Ciclo de Producao</Text>
               <Text style={styles.reportNavDescription}>
                 Use quando quiser avaliar um ciclo especifico com receita, custo, produtividade, lote e vendas.
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.reportNavCard} onPress={() => navigation.navigate('EstufaPerformance')}>
+            <View style={styles.reportNavIconWrap}>
+              <MaterialCommunityIcons name="greenhouse" size={22} color={COLORS.primary} />
+            </View>
+            <View style={styles.reportNavContent}>
+              <Text style={styles.reportNavTitle}>Performance por Estufa</Text>
+              <Text style={styles.reportNavDescription}>
+                Visão consolidada de ROI e lucratividade acumulada por ambiente de cultivo.
               </Text>
             </View>
           </TouchableOpacity>

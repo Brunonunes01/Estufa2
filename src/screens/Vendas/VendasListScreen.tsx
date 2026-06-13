@@ -30,7 +30,12 @@ import { getColheitaById } from '../../services/colheitaService';
 import { getPlantioById, listAllPlantios } from '../../services/plantioService';
 import { getTotalDespesasPendentes } from '../../services/despesaService';
 import { listCaixaPessoas } from '../../services/caixaPessoaService';
-import { exportSalesAccountingExcel, shareSalesAccountingPdf, shareSalesReportPdf } from '../../services/receiptService';
+import {
+  exportSalesAccountingExcel,
+  shareCustomerSalesStatement,
+  shareSalesAccountingPdf,
+  shareSalesReportPdf,
+} from '../../services/receiptService';
 import { compartilharPDF } from '../../services/pdfService';
 import { Cliente } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
@@ -247,9 +252,9 @@ const VendasListScreen = ({ navigation }: any) => {
   };
 
   const getVendaLocalNome = (venda: any) => {
-    if (venda.talhaoId) return talhoesMap[venda.talhaoId] || 'TalhÃ£o nÃ£o identificado';
-    if (venda.estufaId) return estufasMap[venda.estufaId] || 'Estufa nÃ£o identificada';
-    return 'Local nÃ£o identificado';
+    if (venda.talhaoId) return talhoesMap[venda.talhaoId] || 'Talhão não identificado';
+    if (venda.estufaId) return estufasMap[venda.estufaId] || 'Estufa não identificada';
+    return 'Local não identificado';
   };
 
   const getVendaLoteNome = (venda: any) => {
@@ -376,38 +381,7 @@ const VendasListScreen = ({ navigation }: any) => {
     });
   }, [allVendas, filterCliente, filterStatus, startDate, endDate, searchText, clientesMap, estufasMap, talhoesMap, caixaPessoasMap]);
 
-  const stats = useMemo(() => {
-    const data = {
-      totalValor: 0,
-      totalItens: 0,
-      totalItensFinanceiros: 0,
-      totalRecebido: 0,
-      totalReceber: 0,
-      ticketMedio: 0,
-      porMetodo: {} as Record<string, number>,
-    };
-
-    filteredVendas.forEach((venda) => {
-      const val = getVendaTotal(venda);
-      const status = getFinancialStatus(venda);
-      const ignorarFinanceiro = status === 'cancelado';
-
-      data.totalItens += 1;
-      if (ignorarFinanceiro) return;
-
-      data.totalItensFinanceiros += 1;
-      data.totalValor += val;
-      if (status === 'pago') data.totalRecebido += val;
-      if (status === 'pendente') data.totalReceber += val;
-
-      const metodoRaw = String(venda.metodoPagamento || venda.formaPagamento || 'não definido');
-      const metodo = metodoRaw.charAt(0).toUpperCase() + metodoRaw.slice(1);
-      data.porMetodo[metodo] = (data.porMetodo[metodo] || 0) + val;
-    });
-
-    data.ticketMedio = data.totalItensFinanceiros > 0 ? data.totalValor / data.totalItensFinanceiros : 0;
-    return data;
-  }, [filteredVendas]);
+  const stats = useMemo(() => buildVendasStats(filteredVendas), [filteredVendas]);
 
   const saldoAtual = stats.totalRecebido - totalPagar;
   const saldoProjetado = stats.totalRecebido + stats.totalReceber - totalPagar;
@@ -479,38 +453,7 @@ const VendasListScreen = ({ navigation }: any) => {
     return reportBaseVendas.filter((venda) => getFinancialStatus(venda) === reportStatusFilter);
   }, [reportBaseVendas, reportStatusFilter]);
 
-  const reportStats = useMemo(() => {
-    const data = {
-      totalValor: 0,
-      totalItens: 0,
-      totalItensFinanceiros: 0,
-      totalRecebido: 0,
-      totalReceber: 0,
-      ticketMedio: 0,
-      porMetodo: {} as Record<string, number>,
-    };
-
-    reportFilteredVendas.forEach((venda) => {
-      const val = getVendaTotal(venda);
-      const status = getFinancialStatus(venda);
-      const ignorarFinanceiro = status === 'cancelado';
-
-      data.totalItens += 1;
-      if (ignorarFinanceiro) return;
-
-      data.totalItensFinanceiros += 1;
-      data.totalValor += val;
-      if (status === 'pago') data.totalRecebido += val;
-      if (status === 'pendente') data.totalReceber += val;
-
-      const metodoRaw = String(venda.metodoPagamento || venda.formaPagamento || 'não definido');
-      const metodo = metodoRaw.charAt(0).toUpperCase() + metodoRaw.slice(1);
-      data.porMetodo[metodo] = (data.porMetodo[metodo] || 0) + val;
-    });
-
-    data.ticketMedio = data.totalItensFinanceiros > 0 ? data.totalValor / data.totalItensFinanceiros : 0;
-    return data;
-  }, [reportFilteredVendas]);
+  const reportStats = useMemo(() => buildVendasStats(reportFilteredVendas), [reportFilteredVendas]);
 
   const clearFilters = () => {
     setFilterCliente('todos');
@@ -540,8 +483,8 @@ const VendasListScreen = ({ navigation }: any) => {
 
     msg += '\nPrincipais vendas:\n';
     sourceVendas.slice(0, 10).forEach((venda) => {
-      const metodo = String(venda.metodoPagamento || venda.formaPagamento || 'não definido');
-      const metodoLabel = metodo.charAt(0).toUpperCase() + metodo.slice(1);
+      const metodoRaw = String(venda.metodoPagamento || venda.formaPagamento || 'não definido');
+      const metodoLabel = metodoRaw.charAt(0).toUpperCase() + metodoRaw.slice(1);
       msg += `- ${getClienteNome(venda.clienteId)}: ${formatCurrency(getVendaTotal(venda))} | ${metodoLabel}\n`;
     });
     if (sourceVendas.length > 10) {
@@ -770,6 +713,41 @@ const VendasListScreen = ({ navigation }: any) => {
     }
   };
 
+  const handleShareCustomerStatement = async () => {
+    if (filterCliente === 'todos') {
+      Alert.alert('Aviso', 'Selecione um cliente no filtro para gerar o extrato.');
+      return;
+    }
+
+    const cliente = clientesList.find((c) => c.id === filterCliente);
+    const clienteNome = filterCliente === 'avulso' ? 'Cliente Avulso' : cliente?.nome || 'Cliente';
+
+    try {
+      await shareCustomerSalesStatement({
+        clienteNome,
+        empresa: (settings as any).farmName || 'SGE - Sistema de Gestao de Estufas',
+        periodo: periodLabel,
+        vendas: filteredVendas.map((v) => ({
+          codigo: v.id.slice(0, 8).toUpperCase(),
+          data: formatDate(getVendaData(v)),
+          cliente: clienteNome,
+          estufa: getVendaLocalNome(v),
+          produto: getVendaProdutoNome(v),
+          quantidade: `${getVendaQuantidade(v)} ${getVendaUnidade(v)}`,
+          precoUnitario: getVendaPrecoUnitario(v),
+          valorTotal: getVendaTotal(v),
+          metodoPagamento: String(v.metodoPagamento || v.formaPagamento || 'N/A').toUpperCase(),
+          status: getFinancialStatus(v).toUpperCase(),
+        })),
+        totalVendido: stats.totalValor,
+        totalPago: stats.totalRecebido,
+        totalPendente: stats.totalReceber,
+      });
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Não foi possível gerar o extrato do cliente.');
+    }
+  };
+
   const goToContasReceber = () => navigation.navigate('ContasReceber');
 
   const activeFiltersLabel =
@@ -898,12 +876,136 @@ const VendasListScreen = ({ navigation }: any) => {
     );
   };
 
+  const renderSaleItem = ({ item }: { item: any }) => {
+    const total = getVendaTotal(item);
+    const quantidade = getVendaQuantidade(item);
+    const precoUnitario = getVendaPrecoUnitario(item);
+    const unidade = getVendaUnidade(item);
+    const dataVenda = getVendaData(item);
+    const clienteNome = getClienteNome(item.clienteId);
+    const recebidoPor = getRecebidoPor(item);
+    const estufa = estufasMap[item.estufaId] || 'Sem estufa';
+    const talhao = talhoesMap[item.talhaoId] || 'Sem talhao';
+    const isCampoSale = !!item.talhaoId;
+    const status = getFinancialStatus(item);
+    const metodo = String(item.metodoPagamento || item.formaPagamento || 'nao definido');
+    const isHydroSale = item.originType === 'hydro_lote' || !!item.hydroLoteId;
+    const produtoNome = getVendaProdutoNome(item);
+    const loteNome = getVendaLoteNome(item);
+    const localLabel = isCampoSale ? 'Talhao' : 'Estufa';
+    const localNome = isCampoSale ? talhao : estufa;
+
+    const statusTone =
+      status === 'pendente'
+        ? { bg: theme.dangerBackground, border: COLORS.cFECACA, text: COLORS.danger }
+        : status === 'cancelado'
+        ? { bg: theme.surfaceMuted, border: theme.border, text: theme.textSecondary }
+        : { bg: theme.successBackground, border: COLORS.c86EFAC, text: COLORS.success };
+
+    return (
+      <View
+        style={[
+          styles.saleCard,
+          {
+            backgroundColor: theme.surfaceBackground,
+            borderColor: theme.border,
+            borderLeftColor: statusTone.text,
+          },
+        ]}
+      >
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() =>
+            isHydroSale
+              ? navigation.navigate('HidroponiaVendaForm', { vendaId: item.id })
+              : navigation.navigate('ColheitaForm', { vendaId: item.id, isEdit: true })
+          }
+        >
+          <View style={styles.saleTopRow}>
+            <View style={styles.saleTopLeft}>
+              <Text style={[styles.saleProductTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+                {produtoNome}
+              </Text>
+              <Text style={[styles.saleClient, { color: theme.textSecondary }]} numberOfLines={1}>
+                {clienteNome}
+              </Text>
+              <Text style={[styles.saleQuickMeta, { color: theme.textSecondary }]} numberOfLines={1}>
+                {formatDate(dataVenda)} • {localLabel}: {localNome}
+              </Text>
+            </View>
+            <View style={styles.saleTopRight}>
+              <Text style={[styles.saleTotal, { color: theme.textPrimary }]}>{formatCurrency(total)}</Text>
+              <View style={[styles.badge, { backgroundColor: statusTone.bg, borderColor: statusTone.border }]}>
+                <Text style={[styles.badgeText, { color: statusTone.text }]}>
+                  {status === 'pago' ? 'PAGO' : status === 'pendente' ? 'PENDENTE' : 'CANCELADO'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.saleBadgesRow}>
+            <View style={[styles.methodBadge, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
+              <Text style={[styles.methodBadgeText, { color: theme.textSecondary }]}>{metodo.toUpperCase()}</Text>
+            </View>
+            <View style={[styles.methodBadge, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
+              <Text style={[styles.methodBadgeText, { color: theme.textSecondary }]}>LOTE {loteNome}</Text>
+            </View>
+            {isHydroSale ? (
+              <View style={[styles.methodBadge, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
+                <Text style={[styles.methodBadgeText, { color: theme.info }]}>HIDROPONIA</Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View style={styles.saleInfoGrid}>
+            <View style={[styles.saleInfoCard, { backgroundColor: theme.surfaceMuted }]}>
+              <Text style={[styles.saleInfoLabel, { color: theme.textSecondary }]}>Quantidade</Text>
+              <Text style={[styles.saleInfoValue, { color: theme.textPrimary }]}>{quantidade} {unidade}</Text>
+            </View>
+            <View style={[styles.saleInfoCard, { backgroundColor: theme.surfaceMuted }]}>
+              <Text style={[styles.saleInfoLabel, { color: theme.textSecondary }]}>Preco unitario</Text>
+              <Text style={[styles.saleInfoValue, { color: theme.textPrimary }]}>{formatCurrency(precoUnitario)}</Text>
+            </View>
+            <View style={[styles.saleInfoCard, { backgroundColor: theme.surfaceMuted }]}>
+              <Text style={[styles.saleInfoLabel, { color: theme.textSecondary }]}>{localLabel}</Text>
+              <Text style={[styles.saleInfoValue, { color: theme.textPrimary }]} numberOfLines={1}>
+                {localNome}
+              </Text>
+            </View>
+          </View>
+          <Text style={[styles.saleMetaStrong, { color: theme.textSecondary }]}>
+            {status === 'pago' ? `Recebido por: ${recebidoPor}` : 'Recebimento pendente'}
+          </Text>
+        </TouchableOpacity>
+
+        <View style={[styles.saleFooter, { borderTopColor: theme.divider }]}>
+          {canWrite && status === 'pendente' ? (
+            <TouchableOpacity
+              style={[styles.saleFooterBtn, styles.saleFooterBtnPrimary, { backgroundColor: `${COLORS.success}18` }]}
+              onPress={goToContasReceber}
+            >
+              <MaterialCommunityIcons name="cash-check" size={20} color={COLORS.success} />
+              <Text style={[styles.saleFooterBtnText, { color: COLORS.success }]}>Receber</Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            style={[styles.saleFooterBtn, { backgroundColor: theme.surfaceMuted }]}
+            onPress={() => void handlePrintReceiptById(item.id, item)}
+          >
+            <MaterialCommunityIcons name="file-pdf-box" size={20} color={theme.info} />
+            <Text style={[styles.saleFooterBtnText, { color: theme.info }]}>PDF</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.pageBackground }]}>
       <FlatList
         data={filteredVendas}
         keyExtractor={(item) => item.id}
-        renderItem={renderItem}
+        renderItem={renderSaleItem}
         refreshing={refreshing}
         onRefresh={() => void refreshAll()}
         contentContainerStyle={[
@@ -914,17 +1016,21 @@ const VendasListScreen = ({ navigation }: any) => {
           <>
             <ScreenHeaderCard
               title="Financeiro"
-              subtitle="Acompanhe vendas, pendencias e caixa com uma leitura mais objetiva."
+              subtitle="Acompanhe vendas, pendências e caixa com uma leitura mais objetiva."
               badgeLabel="Vendas"
             >
               <View style={styles.headerStatsRow}>
                 <View style={styles.headerChip}>
                   <Text style={styles.headerChipValue}>{stats.totalItens}</Text>
-                  <Text style={styles.headerChipLabel}>Vendas filtradas</Text>
+                  <Text style={styles.headerChipLabel}>Vendas</Text>
+                </View>
+                <View style={styles.headerChip}>
+                  <Text style={styles.headerChipValue}>{stats.totalCaixas.toFixed(1)}</Text>
+                  <Text style={styles.headerChipLabel}>Caixas</Text>
                 </View>
                 <View style={styles.headerChip}>
                   <Text style={styles.headerChipValue}>{formatCurrency(stats.totalValor)}</Text>
-                  <Text style={styles.headerChipLabel}>Total vendido</Text>
+                  <Text style={styles.headerChipLabel}>Total</Text>
                 </View>
               </View>
             </ScreenHeaderCard>
@@ -1065,6 +1171,19 @@ const VendasListScreen = ({ navigation }: any) => {
                   <MaterialCommunityIcons name="file-pdf-box" size={18} color={theme.info} />
                   <Text style={[styles.actionBtnText, { color: theme.textPrimary }]}>PDF</Text>
                 </TouchableOpacity>
+
+                {filterCliente !== 'todos' && (
+                  <TouchableOpacity
+                    style={[
+                      styles.actionBtn,
+                      { borderColor: COLORS.success, backgroundColor: `${COLORS.success}10`, minWidth: '96%' },
+                    ]}
+                    onPress={() => void handleShareCustomerStatement()}
+                  >
+                    <MaterialCommunityIcons name="account-details-outline" size={18} color={COLORS.success} />
+                    <Text style={[styles.actionBtnText, { color: COLORS.success }]}>Gerar Extrato do Cliente</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
 
@@ -1294,6 +1413,17 @@ const VendasListScreen = ({ navigation }: any) => {
             <View style={[styles.bigStat, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
               <Text style={[styles.bigStatLabel, { color: theme.textSecondary }]}>Total vendido</Text>
               <Text style={[styles.bigStatValue, { color: theme.textPrimary }]}>{formatCurrency(reportStats.totalValor)}</Text>
+            </View>
+
+            <View style={[styles.sectionBox, { borderColor: theme.border, backgroundColor: theme.surfaceMuted, marginBottom: 12 }]}>
+              <View style={styles.statRow}>
+                <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Volume Total</Text>
+                <Text style={[styles.statValue, { color: theme.textPrimary }]}>{reportStats.totalCaixas.toFixed(1)} caixas</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Qtd. Vendas</Text>
+                <Text style={[styles.statValue, { color: theme.textPrimary }]}>{reportStats.totalItens} registros</Text>
+              </View>
             </View>
 
             <View style={[styles.sectionBox, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
@@ -1574,6 +1704,7 @@ const styles = StyleSheet.create({
 
   saleCard: {
     borderWidth: 1,
+    borderLeftWidth: 5,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginBottom: 10,
@@ -1588,14 +1719,28 @@ const styles = StyleSheet.create({
   saleTopLeft: {
     flex: 1,
   },
+  saleTopRight: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  saleProductTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+  },
   saleClient: {
-    fontSize: TYPOGRAPHY.title,
+    marginTop: 3,
+    fontSize: 13,
     fontWeight: '800',
   },
   saleProduct: {
     marginTop: 3,
     fontSize: 12,
     fontWeight: '700',
+  },
+  saleQuickMeta: {
+    marginTop: 5,
+    fontSize: 12,
+    fontWeight: '600',
   },
   saleTotal: {
     fontSize: TYPOGRAPHY.title,
@@ -1618,9 +1763,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginTop: 10,
+    flexWrap: 'wrap',
   },
   saleInfoCard: {
     flex: 1,
+    minWidth: '31%',
     borderRadius: RADIUS.sm,
     paddingHorizontal: 10,
     paddingVertical: 8,

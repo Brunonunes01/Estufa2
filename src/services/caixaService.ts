@@ -1,6 +1,7 @@
 import { listCaixaPessoas } from './caixaPessoaService';
 import { listDespesas } from './despesaService';
 import { listAllVendas } from './vendaService';
+import { listClientes } from './clienteService';
 
 export type CaixaPeriod = 'today' | '7d' | 'month' | 'all' | 'custom';
 export type CaixaTipoMov = 'entrada' | 'saida';
@@ -16,6 +17,7 @@ export type CaixaMovimento = {
   data: Date;
   metodoPagamento?: string;
   observacoes?: string;
+  clienteNome?: string;
 };
 
 export type CaixaResumoPessoa = {
@@ -95,14 +97,16 @@ const resolveRange = (range: CaixaDateRange) => {
 const inRange = (date: Date, from: Date, to: Date) => date.getTime() >= from.getTime() && date.getTime() <= to.getTime();
 
 export const getCaixaResumo = async (tenantId: string, range: CaixaDateRange): Promise<CaixaResumoData> => {
-  const [{ from, to }, vendas, despesas, pessoas] = await Promise.all([
+  const [{ from, to }, vendas, despesas, pessoas, clientes] = await Promise.all([
     Promise.resolve(resolveRange(range)),
     listAllVendas(tenantId),
     listDespesas(tenantId),
     listCaixaPessoas(tenantId),
+    listClientes(tenantId),
   ]);
 
   const pessoaMap = new Map<string, string>(pessoas.map((p) => [p.id, p.nome]));
+  const clienteMap = new Map<string, string>(clientes.map((c) => [c.id, c.nome]));
   const movimentos: CaixaMovimento[] = [];
 
   vendas.forEach((venda: any) => {
@@ -118,6 +122,7 @@ export const getCaixaResumo = async (tenantId: string, range: CaixaDateRange): P
       String(venda?.itens?.[0]?.descricao || '').trim() ||
       'Venda';
     const pessoaId = venda?.pagamentoPara || NON_CLASSIFIED_ID;
+    const clienteId = venda?.clienteId;
     movimentos.push({
       id: `venda:${venda.id}`,
       tipo: 'entrada',
@@ -129,6 +134,7 @@ export const getCaixaResumo = async (tenantId: string, range: CaixaDateRange): P
       data,
       metodoPagamento: String(venda?.metodoPagamento || venda?.formaPagamento || '').trim() || undefined,
       observacoes: venda?.observacoes || undefined,
+      clienteNome: clienteId ? clienteMap.get(clienteId) || 'Cliente não identificado' : 'Cliente avulso',
     });
   });
 

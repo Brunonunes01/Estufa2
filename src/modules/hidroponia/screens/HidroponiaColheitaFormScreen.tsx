@@ -29,6 +29,7 @@ const PAYMENT_METHODS = [
   { value: 'dinheiro', label: 'Dinheiro', icon: 'cash' },
   { value: 'boleto', label: 'Boleto', icon: 'barcode' },
   { value: 'cartao', label: 'Cartão', icon: 'credit-card' },
+  { value: 'cheque', label: 'Cheque', icon: 'card-account-details-outline' },
   { value: 'prazo', label: 'A Prazo', icon: 'calendar-clock' },
   { value: 'outro', label: 'Outro', icon: 'dots-horizontal-circle-outline' },
 ];

@@ -28,6 +28,7 @@ import ManejoFormScreen from '../screens/Manejos/ManejoFormScreen';
 import ManejosHistoryScreen from '../screens/Manejos/ManejosHistoryScreen';
 import RelatoriosScreen from '../screens/Financeiro/RelatoriosScreen';
 import RelatorioOperacionalScreen from '../screens/Financeiro/RelatorioOperacionalScreen';
+import EstufaPerformanceScreen from '../screens/Financeiro/EstufaPerformanceScreen';
 import CaixasPesoCicloScreen from '../screens/Financeiro/CaixasPesoCicloScreen';
 import TarefasScreen from '../screens/Tarefas/TarefasScreen';
 import TalhoesListScreen from '../screens/Campo/TalhoesListScreen';
@@ -112,6 +113,7 @@ export const AppStackNavigator = ({
     <Stack.Screen name="CaixaExtrato" component={CaixaExtratoScreen} options={{ title: 'Caixa - Extrato' }} />
     <Stack.Screen name="Relatorios" component={RelatoriosScreen} options={{ title: 'BI & Relatórios' }} />
     <Stack.Screen name="RelatorioOperacional" component={RelatorioOperacionalScreen} options={{ title: 'Relatório Operacional' }} />
+    <Stack.Screen name="EstufaPerformance" component={EstufaPerformanceScreen} options={{ title: 'Performance por Estufa' }} />
     <Stack.Screen name="CaixasPesoCiclo" component={CaixasPesoCicloScreen} options={{ title: 'Caixas e Peso por Ciclo' }} />
     <Stack.Screen name="Tarefas" component={TarefasScreen} options={{ title: 'Tarefas Agrícolas' }} />
     <Stack.Screen name="TalhoesList" component={TalhoesListScreen} options={{ title: 'Talhões de Campo' }} />

@@ -52,6 +52,7 @@ export const buildVendasStats = (vendas: any[]) => {
     totalItensFinanceiros: 0,
     totalRecebido: 0,
     totalReceber: 0,
+    totalCaixas: 0,
     ticketMedio: 0,
     porMetodo: {} as Record<string, number>,
   };
@@ -60,6 +61,8 @@ export const buildVendasStats = (vendas: any[]) => {
     const total = getVendaTotal(venda);
     const status = getFinancialStatus(venda);
     const ignoreFinancial = status === 'cancelado';
+    const unidade = String(getVendaUnidade(venda)).toLowerCase().trim();
+    const isCaixa = unidade === 'caixas' || unidade === 'caixa' || unidade === 'cx';
 
     data.totalItens += 1;
     if (ignoreFinancial) return;
@@ -68,6 +71,7 @@ export const buildVendasStats = (vendas: any[]) => {
     data.totalValor += total;
     if (status === 'pago') data.totalRecebido += total;
     if (status === 'pendente') data.totalReceber += total;
+    if (isCaixa) data.totalCaixas += getVendaQuantidade(venda);
 
     const metodoRaw = String(venda.metodoPagamento || venda.formaPagamento || 'não definido');
     const metodo = metodoRaw.charAt(0).toUpperCase() + metodoRaw.slice(1);

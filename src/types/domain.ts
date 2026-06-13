@@ -342,7 +342,7 @@ export interface Venda extends BaseDoc {
   itens: VendaItem[];
   valorTotal: number;
   statusPagamento: 'pendente' | 'pago' | 'atrasado' | 'cancelado';
-  formaPagamento?: 'pix' | 'boleto' | 'transferencia' | 'dinheiro' | 'cartao' | 'outro' | 'prazo';
+  formaPagamento?: 'pix' | 'boleto' | 'transferencia' | 'dinheiro' | 'cartao' | 'outro' | 'prazo' | 'cheque';
   observacoes?: string;
   quantidade?: number;
 

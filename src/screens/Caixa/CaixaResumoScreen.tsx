@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert, ActivityIndicator } from 'react-native';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -8,8 +8,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeMode } from '../../hooks/useThemeMode';
 import { useAuth } from '../../hooks/useAuth';
 import { RootStackParamList } from '../../navigation/types';
-import { CaixaPeriod, getCaixaResumo } from '../../services/caixaService';
+import { CaixaPeriod, getCaixaResumo, getCaixaExtrato } from '../../services/caixaService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { exportToExcel } from '../../services/excelService';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
@@ -29,10 +30,57 @@ const CaixaResumoScreen = () => {
   const isFocused = useIsFocused();
   const [period, setPeriod] = useState<CaixaPeriod>('month');
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [data, setData] = useState<any>(null);
 
   const canView = canViewCash;
   const targetId = selectedTenantId || user?.uid;
+
+  const handleExportExcel = async () => {
+    if (!targetId) return;
+    setExporting(true);
+    try {
+      const { items } = await getCaixaExtrato(targetId, {
+        range: { period },
+        pageSize: 1000,
+      });
+
+      if (items.length === 0) {
+        Alert.alert('Aviso', 'Não há dados para exportar.');
+        return;
+      }
+
+      await exportToExcel({
+        fileName: `Caixa_Resumo_${period}_${new Date().toISOString().slice(0, 10)}`,
+        sheetName: 'Caixa',
+        columns: [
+          { header: 'Data', key: 'data', width: 15 },
+          { header: 'Cliente', key: 'cliente', width: 25 },
+          { header: 'Descrição', key: 'descricao', width: 35 },
+          { header: 'Responsável', key: 'pessoa', width: 20 },
+          { header: 'Tipo', key: 'tipo', width: 12 },
+          { header: 'Valor', key: 'valor', width: 15 },
+          { header: 'Meio Pagamento', key: 'metodo', width: 20 },
+          { header: 'Observações', key: 'obs', width: 30 },
+        ],
+        data: items.map((m) => ({
+          data: new Date(m.data).toLocaleDateString('pt-BR'),
+          cliente: m.clienteNome || (m.tipo === 'entrada' ? 'Cliente avulso' : '-'),
+          descricao: m.descricao,
+          pessoa: m.caixaPessoaNome,
+          tipo: m.tipo === 'entrada' ? 'Entrada' : 'Saída',
+          valor: m.valor,
+          metodo: String(m.metodoPagamento || '-').toUpperCase(),
+          obs: m.observacoes || '-',
+        })),
+      });
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Erro', 'Falha ao gerar Excel.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const load = useCallback(async () => {
     if (!targetId || !canView) return;
@@ -136,6 +184,18 @@ const CaixaResumoScreen = () => {
               Visão consolidada de entradas, saídas e saldo por responsável.
             </Text>
           </View>
+          <TouchableOpacity 
+            onPress={handleExportExcel} 
+            style={[styles.exportBtn, { backgroundColor: '#1D6F42' }]} 
+            disabled={exporting}
+            activeOpacity={0.7}
+          >
+            {exporting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <MaterialCommunityIcons name="file-excel" size={24} color="#fff" />
+            )}
+          </TouchableOpacity>
         </View>
 
         <View style={styles.overviewTopRow}>
@@ -332,6 +392,13 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: TYPOGRAPHY.h2, fontWeight: '900' },
   subtitle: { fontSize: 14, marginTop: 2, fontWeight: '600', lineHeight: 20 },
+  exportBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   overviewTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

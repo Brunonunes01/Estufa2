@@ -7,7 +7,7 @@ import { getVendaById } from '../../services/vendaService';
 import { Cliente, Plantio } from '../../types/domain';
 
 export type UnidadeColheita = 'kg' | 'caixas' | 'un' | 'maços';
-export type MetodoPagamento = 'pix' | 'dinheiro' | 'boleto' | 'prazo' | 'cartao' | 'outro';
+export type MetodoPagamento = 'pix' | 'dinheiro' | 'boleto' | 'prazo' | 'cartao' | 'cheque' | 'outro';
 
 export const buildColheitaEditSnapshot = (values: {
   selectedPlantioId: string;

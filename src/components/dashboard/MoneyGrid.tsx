@@ -8,6 +8,8 @@ interface MoneyGridProps {
   totalReceber: number;
   totalRecebido: number;
   totalPagar: number;
+  lucroTotal?: number;
+  roiGeral?: number;
 }
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
@@ -16,7 +18,7 @@ const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   maximumFractionDigits: 0,
 });
 
-const MoneyGrid = ({ totalReceber, totalRecebido, totalPagar }: MoneyGridProps) => (
+const MoneyGrid = ({ totalReceber, totalRecebido, totalPagar, lucroTotal, roiGeral }: MoneyGridProps) => (
   <View style={styles.container}>
     <SectionHeading title="Fluxo Financeiro" />
     <View style={styles.grid}>
@@ -34,11 +36,30 @@ const MoneyGrid = ({ totalReceber, totalRecebido, totalPagar }: MoneyGridProps) 
       />
       <MetricCard 
         tone="danger" 
-        label="Saídas" 
+        label="A Pagar" 
         value={currencyFormatter.format(totalPagar)} 
         icon="cash-minus"
       />
     </View>
+
+    {lucroTotal !== undefined && (
+      <View style={[styles.grid, { marginTop: -10 }]}>
+        <MetricCard 
+          tone="info" 
+          label="Lucro Total" 
+          value={currencyFormatter.format(lucroTotal)} 
+          icon="finance"
+          style={{ flex: 1.5 }}
+        />
+        <MetricCard 
+          tone={roiGeral && roiGeral > 0 ? 'success' : 'danger'}
+          label="ROI" 
+          value={`${roiGeral?.toFixed(1)}%`} 
+          icon="chart-line"
+          style={{ flex: 1 }}
+        />
+      </View>
+    )}
   </View>
 );
 

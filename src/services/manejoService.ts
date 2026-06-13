@@ -87,6 +87,30 @@ export const createManejo = async (
   });
 };
 
+export const listManejosByEstufa = async (userId: string, estufaId: string): Promise<RegistroManejo[]> => {
+  const tenantId = assertTenantId(userId);
+  if (!estufaId) {
+    return [];
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('manejos')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('estufa_id', estufaId)
+      .order('data_registro', { ascending: false });
+    if (error) {
+      throw new Error(`Não foi possível buscar os registros de manejo da estufa. ${error.message}`);
+    }
+    return (data || []).map(mapSupabaseManejoToDomain);
+  } catch (error) {
+    console.error('Erro ao listar manejos por estufa: ', error);
+    throw new Error('Não foi possível buscar os registros.');
+  }
+};
+
 export const listManejosByPlantio = async (userId: string, plantioId: string): Promise<RegistroManejo[]> => {
   const tenantId = assertTenantId(userId);
   if (!plantioId) {

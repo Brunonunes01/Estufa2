@@ -7,6 +7,8 @@ export interface GlobalStatsResult {
   totalCustoProd: number;
   totalDespesas: number;
   totalPlantios: number;
+  roiGeral: number;
+  ticketMedioVenda: number;
 }
 
 export const getGlobalStats = async (userId: string): Promise<GlobalStatsResult> => {
@@ -19,7 +21,7 @@ export const getGlobalStats = async (userId: string): Promise<GlobalStatsResult>
         .from('plantios')
         .select('id, custo_acumulado, custo_total, custo_estimado_inicial')
         .eq('tenant_id', tenantId),
-      supabase.from('vendas').select('id, valor_total').eq('tenant_id', tenantId),
+      supabase.from('vendas').select('id, valor_total').eq('tenant_id', tenantId).neq('status_pagamento', 'cancelado'),
       supabase.from('despesas').select('id, valor, tipo_gasto').eq('tenant_id', tenantId),
     ]);
 
@@ -43,15 +45,30 @@ export const getGlobalStats = async (userId: string): Promise<GlobalStatsResult>
       .filter((item: any) => item.tipo_gasto !== 'investimento_inicial')
       .reduce((acc, curr: any) => acc + Number(curr.valor || 0), 0);
 
+    const lucroTotal = totalReceita - totalCustoProd - totalDespesas;
+    const custoTotal = totalCustoProd + totalDespesas;
+    const roiGeral = custoTotal > 0 ? (lucroTotal / custoTotal) * 100 : 0;
+    const ticketMedioVenda = vendas.length > 0 ? totalReceita / vendas.length : 0;
+
     return {
-      lucroTotal: totalReceita - totalCustoProd - totalDespesas,
+      lucroTotal,
       totalReceita,
       totalCustoProd,
       totalDespesas,
       totalPlantios: plantios.length,
+      roiGeral,
+      ticketMedioVenda,
     };
   } catch (error) {
     console.error('Erro ao calcular stats:', error);
-    return { lucroTotal: 0, totalReceita: 0, totalCustoProd: 0, totalDespesas: 0, totalPlantios: 0 };
+    return { 
+      lucroTotal: 0, 
+      totalReceita: 0, 
+      totalCustoProd: 0, 
+      totalDespesas: 0, 
+      totalPlantios: 0,
+      roiGeral: 0,
+      ticketMedioVenda: 0
+    };
   }
 };

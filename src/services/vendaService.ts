@@ -178,12 +178,12 @@ const resolveCompradorTrace = async (tenantId: string, clienteId?: string | null
 };
 
 const toStatusPagamento = (metodoPagamento?: string | null): Venda['statusPagamento'] => {
-  if (metodoPagamento === 'prazo') return 'pendente';
+  if (metodoPagamento === 'prazo' || metodoPagamento === 'cheque') return 'pendente';
   return 'pago';
 };
 
 const isReceivableStatus = (status?: Venda['statusPagamento'] | null, metodoPagamento?: string | null) =>
-  status === 'pendente' || status === 'atrasado' || (!status && metodoPagamento === 'prazo');
+  status === 'pendente' || status === 'atrasado' || (!status && (metodoPagamento === 'prazo' || metodoPagamento === 'cheque'));
 
 const isReceivedStatus = (status?: Venda['statusPagamento'] | null) => status === 'pago';
 

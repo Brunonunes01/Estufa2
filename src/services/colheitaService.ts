@@ -248,7 +248,7 @@ export const createColheita = async (
           preco_unitario: Number(data.precoUnitario || 0),
           cliente_id: data.clienteId || null,
           metodo_pagamento: data.metodoPagamento || null,
-          status_pagamento: data.metodoPagamento === 'prazo' ? 'pendente' : 'pago',
+          status_pagamento: (data.metodoPagamento === 'prazo' || data.metodoPagamento === 'cheque') ? 'pendente' : 'pago',
           ...(overrideAudit
             ? {
                 ciclo_desbloqueado_por_admin: true,
@@ -500,7 +500,7 @@ export const updateColheita = async (
           preco_unitario: Number(data.precoUnitario || 0),
           cliente_id: data.clienteId || null,
           metodo_pagamento: data.metodoPagamento || null,
-          status_pagamento: data.metodoPagamento === 'prazo' ? 'pendente' : 'pago',
+          status_pagamento: (data.metodoPagamento === 'prazo' || data.metodoPagamento === 'cheque') ? 'pendente' : 'pago',
           ...(overrideAudit
             ? {
                 ciclo_desbloqueado_por_admin: true,

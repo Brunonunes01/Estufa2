@@ -32,10 +32,15 @@ import { HydroLote, HydroOcupacao } from '../types';
 import { registrarVendaHidroponicaPorLote } from '../services/hidroponiaColheitaService';
 import { useAppSettings } from '../../../hooks/useAppSettings';
 import { verifyCurrentUserPassword } from '../../../services/securityService';
+import {
+  clearHidroponiaVendaDraft,
+  loadHidroponiaVendaDraft,
+  saveHidroponiaVendaDraft,
+} from '../services/hidroponiaVendaDraftStorage';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'HidroponiaVendaForm'>;
 type UnidadeVenda = 'kg' | 'caixas' | 'un' | 'maços';
-type MetodoPagamento = 'pix' | 'dinheiro' | 'boleto' | 'prazo' | 'cartao' | 'outro';
+type MetodoPagamento = 'pix' | 'dinheiro' | 'boleto' | 'prazo' | 'cartao' | 'cheque' | 'outro';
 
 const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
   const { user, selectedTenantId } = useAuth();
@@ -76,7 +81,9 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
   const [editAuthModalVisible, setEditAuthModalVisible] = useState(false);
   const [editPassword, setEditPassword] = useState('');
   const [editAuthorizing, setEditAuthorizing] = useState(false);
+  const [draftRestoredAt, setDraftRestoredAt] = useState<string | null>(null);
   const initialEditSnapshotRef = useRef<string | null>(null);
+  const draftReadyRef = useRef(false);
 
   const buildEditSnapshot = (values: {
     selectedLoteId: string;
@@ -261,6 +268,82 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
   }, [targetId, isEditMode, params.vendaId, params.loteId, navigation]);
 
   useEffect(() => {
+    const restoreDraft = async () => {
+      if (!targetId || isEditMode || loadingData) return;
+
+      const draft = await loadHidroponiaVendaDraft(targetId);
+      if (!draft) {
+        draftReadyRef.current = true;
+        return;
+      }
+
+      setSelectedLoteId(draft.selectedLoteId || '');
+      setQuantidade(draft.quantidade || '');
+      setUnidade((draft.unidade as UnidadeVenda) || 'caixas');
+      setPrecoUnitario(draft.precoUnitario || '');
+      setMetodoPagamento((draft.metodoPagamento as MetodoPagamento) || 'pix');
+      setPagamentoPara(draft.pagamentoPara || null);
+      setSelectedClienteId(draft.selectedClienteId || null);
+      setDataVenda(draft.dataVendaIso ? new Date(draft.dataVendaIso) : new Date());
+      setProdutoDescricao(draft.produtoDescricao || '');
+      setObservacoes(draft.observacoes || '');
+      setDraftRestoredAt(draft.savedAt);
+      draftReadyRef.current = true;
+    };
+
+    void restoreDraft();
+  }, [targetId, isEditMode, loadingData]);
+
+  useEffect(() => {
+    const persistDraft = async () => {
+      if (!targetId || isEditMode || !draftReadyRef.current) return;
+
+      const hasContent =
+        !!selectedLoteId ||
+        !!quantidade ||
+        !!precoUnitario ||
+        !!pagamentoPara ||
+        !!selectedClienteId ||
+        !!produtoDescricao.trim() ||
+        !!observacoes.trim();
+
+      if (!hasContent) {
+        await clearHidroponiaVendaDraft(targetId);
+        setDraftRestoredAt(null);
+        return;
+      }
+
+      await saveHidroponiaVendaDraft(targetId, {
+        selectedLoteId,
+        quantidade,
+        unidade,
+        precoUnitario,
+        metodoPagamento,
+        pagamentoPara,
+        selectedClienteId,
+        dataVendaIso: dataVenda.toISOString(),
+        produtoDescricao,
+        observacoes,
+      });
+    };
+
+    void persistDraft();
+  }, [
+    targetId,
+    isEditMode,
+    selectedLoteId,
+    quantidade,
+    unidade,
+    precoUnitario,
+    metodoPagamento,
+    pagamentoPara,
+    selectedClienteId,
+    dataVenda,
+    produtoDescricao,
+    observacoes,
+  ]);
+
+  useEffect(() => {
     if (!targetId || !selectedLoteId) {
       setLoteInfo(null);
       setOcupacoesAtivas([]);
@@ -335,6 +418,22 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
     } finally {
       setSalvandoCaixaPessoa(false);
     }
+  };
+
+  const handleDiscardDraft = async () => {
+    if (!targetId || isEditMode) return;
+    await clearHidroponiaVendaDraft(targetId);
+    setDraftRestoredAt(null);
+    setSelectedLoteId(params.loteId || lotes[0]?.id || '');
+    setQuantidade('');
+    setUnidade('caixas');
+    setPrecoUnitario('');
+    setMetodoPagamento('pix');
+    setPagamentoPara(caixaPessoas[0]?.id || null);
+    setSelectedClienteId(null);
+    setDataVenda(new Date());
+    setProdutoDescricao('');
+    setObservacoes('');
   };
 
   const continueSave = async () => {
@@ -442,7 +541,15 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
       Alert.alert(
         isEditMode ? 'Venda atualizada' : 'Venda registrada',
         `${qtd} ${unidade} • R$ ${(qtd * preco).toFixed(2)}`,
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
+        [{
+          text: 'OK',
+          onPress: () => {
+            if (!isEditMode && targetId) {
+              void clearHidroponiaVendaDraft(targetId);
+            }
+            navigation.goBack();
+          },
+        }]
       );
     } catch (error: any) {
       Alert.alert('Erro', error?.message || 'Não foi possível salvar a venda.');
@@ -463,6 +570,20 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
           { paddingBottom: (settings.uiV2Enabled ? 138 : 34) + insets.bottom },
         ]}
       >
+        {!isEditMode && draftRestoredAt ? (
+          <View style={styles.draftBanner}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.draftBannerTitle}>Rascunho recuperado</Text>
+              <Text style={styles.draftBannerText}>
+                Última atualização em {new Date(draftRestoredAt).toLocaleString('pt-BR')}
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.draftBannerAction} onPress={() => void handleDiscardDraft()}>
+              <Text style={styles.draftBannerActionText}>Descartar</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         <View style={styles.card}>
           <Text style={styles.sectionHeader}>Origem do Produto</Text>
           <Text style={styles.label}>Produção hidropônica</Text>
@@ -594,6 +715,7 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
               <Picker.Item label="Boleto" value="boleto" />
               <Picker.Item label="A Prazo" value="prazo" />
               <Picker.Item label="Cartão" value="cartao" />
+              <Picker.Item label="Cheque" value="cheque" />
               <Picker.Item label="Outro" value="outro" />
             </Picker>
           </View>
@@ -695,8 +817,8 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
       <Modal animationType="fade" transparent visible={editAuthModalVisible} onRequestClose={() => setEditAuthModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Confirmar edicao da venda</Text>
-            <Text style={[styles.infoText, { marginBottom: 10 }]}>Digite a senha do app para autorizar a alteracao.</Text>
+            <Text style={styles.modalTitle}>Confirmar edição da venda</Text>
+            <Text style={[styles.infoText, { marginBottom: 10 }]}>Digite a senha do app para autorizar a alteração.</Text>
             <TextInput
               style={styles.input}
               value={editPassword}
@@ -714,14 +836,14 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
                 disabled={editAuthorizing}
                 onPress={async () => {
                   if (!editPassword.trim()) {
-                    Alert.alert('Atencao', 'Digite a senha para continuar.');
+                    Alert.alert('Atenção', 'Digite a senha para continuar.');
                     return;
                   }
                   setEditAuthorizing(true);
                   try {
                     const ok = await verifyCurrentUserPassword(editPassword.trim());
                     if (!ok) {
-                      Alert.alert('Senha invalida', 'A senha informada esta incorreta.');
+                      Alert.alert('Senha inválida', 'A senha informada está incorreta.');
                       return;
                     }
                     setIsEditAuthorized(true);
@@ -745,6 +867,28 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   scrollContent: { padding: 20, paddingBottom: 34 },
+  draftBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: COLORS.infoSoft,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.info,
+    padding: 12,
+    marginBottom: 14,
+  },
+  draftBannerTitle: { color: COLORS.info, fontSize: 13, fontWeight: '800', marginBottom: 2 },
+  draftBannerText: { color: COLORS.textPrimary, fontSize: 12, fontWeight: '600' },
+  draftBannerAction: {
+    minHeight: 38,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  draftBannerActionText: { color: COLORS.info, fontWeight: '800', fontSize: 12 },
   card: {
     backgroundColor: COLORS.surface,
     borderRadius: 14,

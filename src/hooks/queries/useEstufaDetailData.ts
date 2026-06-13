@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getEstufaById } from '../../services/estufaService';
 import { listPlantiosByEstufa } from '../../services/plantioService';
+import { listManejosByEstufa } from '../../services/manejoService';
 import { queryKeys } from '../../lib/queryClient';
 
 const getPlantioSortSeconds = (value?: { seconds?: number; toDate?: () => Date } | null) => {
@@ -21,9 +22,10 @@ export const useEstufaDetailData = (estufaId?: string, tenantId?: string) =>
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     queryFn: async () => {
-      const [estufa, plantios] = await Promise.all([
+      const [estufa, plantios, manejos] = await Promise.all([
         getEstufaById(estufaId as string, tenantId as string),
         listPlantiosByEstufa(tenantId as string, estufaId as string),
+        listManejosByEstufa(tenantId as string, estufaId as string),
       ]);
 
       plantios.sort((a, b) => {
@@ -34,6 +36,6 @@ export const useEstufaDetailData = (estufaId?: string, tenantId?: string) =>
         return getPlantioSortSeconds(b.dataPlantio) - getPlantioSortSeconds(a.dataPlantio);
       });
 
-      return { estufa, plantios };
+      return { estufa, plantios, manejos };
     },
   });

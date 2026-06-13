@@ -5,6 +5,7 @@ import { useDashboardSummary } from './queries/useDashboardSummary';
 import { evaluateEstufaHealth } from '../utils/estufaHealth';
 import { Plantio } from '../types/domain';
 import { selectPrimaryPlantioByEstufa } from './dashboardMetricsUtils';
+import { useGlobalStats } from './useGlobalStats';
 
 export const useDashboardMetrics = () => {
   const { user, selectedTenantId, changeTenant, availableTenants } = useAuth();
@@ -12,15 +13,12 @@ export const useDashboardMetrics = () => {
   const targetId = selectedTenantId || user?.uid;
 
   const query = useDashboardSummary(targetId);
+  const globalStats = useGlobalStats(targetId);
+  
   const estufas = query.data?.estufas || [];
   const plantios = query.data?.activePlantios || [];
   const todayTasks = query.data?.todayTasks || [];
 
-  /**
-   * Lógica aprimorada para selecionar o plantio "principal" de uma estufa:
-   * 1. Prioriza plantios em fase de colheita (colheita_iniciada ou em_colheita).
-   * 2. Em seguida, prioriza pelo updatedAt mais recente.
-   */
   const activePlantioByEstufa = useMemo(() => {
     return selectPrimaryPlantioByEstufa(
       estufas.map((estufa) => estufa.id),
@@ -66,17 +64,22 @@ export const useDashboardMetrics = () => {
     totalReceber: query.data?.totalReceber || 0,
     totalRecebido: query.data?.totalRecebido || 0,
     totalPagar: query.data?.totalPagar || 0,
-    // O contador "Tarefas Hoje" deve refletir sempre a lista diária em tempo real.
     tarefasHojePendentes: todayTasks.length,
     summarySource: query.data?.summarySource,
     summaryUpdatedAt: query.data?.summaryUpdatedAt,
-    loadingResumo: query.isLoading || query.isFetching,
-    isError: query.isError,
-    refetchResumo: query.refetch,
+    loadingResumo: query.isLoading || query.isFetching || globalStats.isFetching,
+    isError: query.isError || globalStats.isError,
+    refetchResumo: async () => {
+      await Promise.all([query.refetch(), globalStats.refetch()]);
+    },
     activePlantioByEstufa,
     plantiosByEstufa,
     totalCiclosAtivos: plantios.length,
     healthByEstufa,
     criticalAlerts,
+    lucroTotal: globalStats.data?.lucroTotal || 0,
+    roiGeral: globalStats.data?.roiGeral || 0,
+    totalReceita: globalStats.data?.totalReceita || 0,
+    totalVendido: globalStats.data?.totalReceita || 0,
   };
 };

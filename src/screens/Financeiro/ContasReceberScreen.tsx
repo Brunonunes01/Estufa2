@@ -133,6 +133,8 @@ const ContasReceberScreen = ({ navigation }: any) => {
         return 'Fiado / Prazo';
       case 'boleto':
         return 'Boleto';
+      case 'cheque':
+        return 'Cheque';
       default:
         return metodo.charAt(0).toUpperCase() + metodo.slice(1);
     }

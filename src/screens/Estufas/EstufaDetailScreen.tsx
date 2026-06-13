@@ -47,6 +47,7 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
   const { data, isLoading, isFetching, isError, refetch } = useEstufaDetailData(estufaId, targetId);
   const estufa: Estufa | null = data?.estufa || null;
   const plantios: Plantio[] = data?.plantios || [];
+  const manejos = data?.manejos || [];
   const loading = isLoading || isFetching;
 
   useFocusEffect(
@@ -119,7 +120,7 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
     [plantios]
   );
   const totalFinalizados = useMemo(() => plantios.filter((plantio) => plantio.status === 'finalizado').length, [plantios]);
-  const health = useMemo(() => (estufa ? evaluateEstufaHealth(estufa, plantios) : null), [estufa, plantios]);
+  const health = useMemo(() => (estufa ? evaluateEstufaHealth(estufa, plantios, manejos) : null), [estufa, plantios, manejos]);
 
   const openDeleteFlow = () => {
     if (!canDeleteEstufa) {

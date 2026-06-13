@@ -64,7 +64,7 @@ const resolveCompradorTrace = async (tenantId: string, clienteId?: string | null
   }
   const cliente = await getClienteById(clienteId, tenantId);
   return {
-    nome: cliente?.nome || 'Cliente nÃ£o identificado',
+    nome: cliente?.nome || 'Cliente não identificado',
     documento: cliente?.documento || null,
     endereco: cliente ? buildClienteEndereco(cliente) : null,
     tipo: 'comprador',
@@ -72,9 +72,9 @@ const resolveCompradorTrace = async (tenantId: string, clienteId?: string | null
 };
 
 const validateVendaValues = (quantidade: number, unidade: string, precoUnitario: number) => {
-  if (!Number.isFinite(quantidade) || quantidade <= 0) throw new Error('Quantidade invÃ¡lida para venda.');
+  if (!Number.isFinite(quantidade) || quantidade <= 0) throw new Error('Quantidade inválida para venda.');
   if (!unidade?.trim()) throw new Error('Informe a unidade da venda.');
-  if (!Number.isFinite(precoUnitario) || precoUnitario < 0) throw new Error('PreÃ§o unitÃ¡rio da venda nÃ£o pode ser negativo.');
+  if (!Number.isFinite(precoUnitario) || precoUnitario < 0) throw new Error('Preço unitário da venda não pode ser negativo.');
 };
 
 const restoreHydroOccupancies = async (
@@ -98,7 +98,7 @@ const restoreHydroOccupancies = async (
       .eq('id', snapshot.id)
       .eq('tenant_id', tenantId);
     if (error) {
-      throw new Error(`Falha ao restaurar saldo hidropÃ´nico. ${error.message}`);
+      throw new Error(`Falha ao restaurar saldo hidropônico. ${error.message}`);
     }
   }
 };
@@ -125,8 +125,8 @@ export const registrarColheitaHidroponica = async (
       const dataOp = data.dataColheita ? Timestamp.fromDate(data.dataColheita) : now;
 
       const ocupacao = await getHydroOcupacaoById(data.ocupacaoId, tenantId);
-      if (!ocupacao) throw new Error('OcupaÃ§Ã£o nÃ£o encontrada.');
-      if (ocupacao.status !== 'ativa') throw new Error('A ocupaÃ§Ã£o selecionada jÃ¡ estÃ¡ encerrada.');
+      if (!ocupacao) throw new Error('Ocupação não encontrada.');
+      if (ocupacao.status !== 'ativa') throw new Error('A ocupação selecionada já está encerrada.');
 
       const quantidade = Number(data.quantidadeColhida || 0);
       validateVendaValues(quantidade, data.unidade, Number(data.precoUnitario || 0));
@@ -135,7 +135,7 @@ export const registrarColheitaHidroponica = async (
       }
 
       const lote = await getHydroLoteById(ocupacao.loteId, tenantId);
-      if (!lote) throw new Error('ProduÃ§Ã£o hidropÃ´nica nÃ£o encontrada.');
+      if (!lote) throw new Error('Produção hidropônica não encontrada.');
       const compradorTrace = await resolveCompradorTrace(tenantId, data.clienteId || null);
 
       const supabase = getSupabaseClient();
@@ -167,9 +167,9 @@ export const registrarColheitaHidroponica = async (
           )
           .eq('id', ocupacao.id)
           .eq('tenant_id', tenantId);
-        if (ocupError) throw new Error(`Erro ao atualizar ocupaÃ§Ã£o da colheita. ${ocupError.message}`);
+        if (ocupError) throw new Error(`Erro ao atualizar ocupação da colheita. ${ocupError.message}`);
 
-        const descricaoItem = `${ocupacao.cultura || 'ProduÃ§Ã£o hidropÃ´nica'} - Colheita HidropÃ´nica`;
+        const descricaoItem = `${ocupacao.cultura || 'Produção hidropônica'} - Colheita Hidropônica`;
         const observacoesFinal = data.observacoes || `Bancada ${ocupacao.estruturaId}`;
         vendaId = await createVenda(
           {
@@ -214,7 +214,7 @@ export const registrarColheitaHidroponica = async (
           bancada: ocupacao.estruturaId,
           produto: {
             codigoRastreio: lote.codigoLote,
-            descricao: `${ocupacao.cultura || 'ProduÃ§Ã£o hidropÃ´nica'} - Colheita`,
+            descricao: `${ocupacao.cultura || 'Produção hidropônica'} - Colheita`,
             quantidade,
             unidade: data.unidade,
           },
@@ -245,7 +245,7 @@ export const registrarVendaHidroponicaPorLote = async (
     onQueuedValue: () => buildOfflinePlaceholderId(),
     write: async () => {
       const lote = await getHydroLoteById(data.loteId, tenantId);
-      if (!lote) throw new Error('ProduÃ§Ã£o hidropÃ´nica nÃ£o encontrada.');
+      if (!lote) throw new Error('Produção hidropônica não encontrada.');
       const compradorTrace = await resolveCompradorTrace(tenantId, data.clienteId || null);
 
       const quantidade = Number(data.quantidadeColhida || 0);
@@ -257,11 +257,11 @@ export const registrarVendaHidroponicaPorLote = async (
         return msA - msB;
       });
 
-      if (ocupacoesAtivas.length === 0) throw new Error('Esta produÃ§Ã£o nÃ£o possui bancadas ativas para venda.');
+      if (ocupacoesAtivas.length === 0) throw new Error('Esta produção não possui bancadas ativas para venda.');
 
       const totalDisponivel = ocupacoesAtivas.reduce((sum, item) => sum + Number(item.quantidadeAlocada || 0), 0);
       if (quantidade > totalDisponivel) {
-        throw new Error(`Quantidade acima do saldo ativo da produÃ§Ã£o (${totalDisponivel} unidades).`);
+        throw new Error(`Quantidade acima do saldo ativo da produção (${totalDisponivel} unidades).`);
       }
 
       let restante = quantidade;
@@ -274,19 +274,19 @@ export const registrarVendaHidroponicaPorLote = async (
         allocations.push({
           ocupacaoId: ocupacao.id,
           estruturaId: ocupacao.estruturaId,
-          cultura: ocupacao.cultura || 'ProduÃ§Ã£o hidropÃ´nica',
+          cultura: ocupacao.cultura || 'Produção hidropônica',
           quantidade: abater,
         });
         restante -= abater;
       }
 
       if (allocations.length === 0 || restante > 0) {
-        throw new Error('NÃ£o foi possÃ­vel distribuir a baixa de saldo nas bancadas ativas.');
+        throw new Error('Não foi possível distribuir a baixa de saldo nas bancadas ativas.');
       }
 
       const culturas = Array.from(new Set(allocations.map((item) => item.cultura))).filter(Boolean);
-      const descricaoItem = data.itemDescricao?.trim() || (culturas.length > 0 ? culturas.join(' / ') : 'ProduÃ§Ã£o hidropÃ´nica');
-      const observacoesFinal = data.observacoes?.trim() || `ProduÃ§Ã£o hidropÃ´nica: ${lote.codigoLote}`;
+      const descricaoItem = data.itemDescricao?.trim() || (culturas.length > 0 ? culturas.join(' / ') : 'Produção hidropônica');
+      const observacoesFinal = data.observacoes?.trim() || `Produção hidropônica: ${lote.codigoLote}`;
 
       const supabase = getSupabaseClient();
       const now = Timestamp.now();
@@ -366,7 +366,7 @@ export const registrarVendaHidroponicaPorLote = async (
         entidade: 'venda',
         entidadeId: vendaId,
         acao: 'colhido',
-        descricao: `Venda hidropÃ´nica da produÃ§Ã£o ${lote.codigoLote} (${quantidade} ${data.unidade}).`,
+        descricao: `Venda hidropônica da produção ${lote.codigoLote} (${quantidade} ${data.unidade}).`,
         actorUid: tenantId,
         metadata: {
           quantidade,

@@ -363,7 +363,7 @@ const CREATE_FIELD_PRESETS = {
       key: 'metodo_pagamento',
       label: 'Metodo de Pagamento',
       type: 'select',
-      options: ['pix', 'dinheiro', 'cartao', 'prazo'],
+      options: ['pix', 'dinheiro', 'cartao', 'boleto', 'cheque', 'prazo'],
       defaultValue: 'pix',
     },
     { key: 'data_venda', label: 'Data da Venda', type: 'date' },
@@ -1829,7 +1829,7 @@ function buildCreatePayloadFromForm(collectionName, config, formData) {
     if (!unidade) throw new Error('Unidade e obrigatoria.');
 
     const metodo = String(payload.metodo_pagamento || 'pix');
-    const statusPagamento = metodo === 'prazo' ? 'pendente' : 'pago';
+    const statusPagamento = metodo === 'prazo' || metodo === 'cheque' ? 'pendente' : 'pago';
     const valorTotal = quantidade * precoUnitario;
     const dataVenda = payload.data_venda || new Date().toISOString();
     const dataVencimento =

@@ -24,6 +24,7 @@ import { CaixaPeriod, CaixaTipoMov, getCaixaExtrato } from '../../services/caixa
 import { listCaixaPessoas, CaixaPessoa } from '../../services/caixaPessoaService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { gerarRelatorioCaixaPDF } from '../../services/pdfService';
+import { exportToExcel } from '../../services/excelService';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
@@ -46,6 +47,7 @@ const CaixaExtratoScreen = () => {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
   const [items, setItems] = useState<any[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [caixaPessoas, setCaixaPessoas] = useState<CaixaPessoa[]>([]);
@@ -205,6 +207,47 @@ const CaixaExtratoScreen = () => {
     }
   };
 
+  const handleExportExcel = async () => {
+    if (items.length === 0) {
+      Alert.alert('Aviso', 'Não há dados para exportar.');
+      return;
+    }
+    setExportingExcel(true);
+    try {
+      await exportToExcel({
+        fileName: `Extrato_Caixa_${new Date().toISOString().slice(0, 10)}`,
+        sheetName: 'Extrato',
+        columns: [
+          { header: 'Data', key: 'data', width: 15 },
+          { header: 'Cliente', key: 'cliente', width: 25 },
+          { header: 'Descrição', key: 'descricao', width: 35 },
+          { header: 'Responsável', key: 'pessoa', width: 20 },
+          { header: 'Tipo', key: 'tipo', width: 12 },
+          { header: 'Valor', key: 'valor', width: 15 },
+          { header: 'Origem', key: 'origem', width: 15 },
+          { header: 'Meio Pagamento', key: 'metodo', width: 20 },
+          { header: 'Observações', key: 'obs', width: 30 },
+        ],
+        data: items.map((m) => ({
+          data: new Date(m.data).toLocaleDateString('pt-BR'),
+          cliente: m.clienteNome || (m.tipo === 'entrada' ? 'Cliente avulso' : '-'),
+          descricao: m.descricao,
+          pessoa: m.caixaPessoaNome,
+          tipo: m.tipo === 'entrada' ? 'Entrada' : 'Saída',
+          valor: m.valor,
+          origem: String(m.origem).toUpperCase(),
+          metodo: String(m.metodoPagamento || '-').toUpperCase(),
+          obs: m.observacoes || '-',
+        })),
+      });
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Erro', 'Falha ao gerar arquivo Excel.');
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
   const onDateChange = (_event: any, selectedDate?: Date) => {
     setShowPicker(null);
     if (selectedDate) {
@@ -266,9 +309,32 @@ const CaixaExtratoScreen = () => {
               Filtre os movimentos e acompanhe o saldo da visao atual.
             </Text>
           </View>
-          <TouchableOpacity onPress={handleExportPdf} style={[styles.exportBtn, { backgroundColor: COLORS.modFinanceiro }]} disabled={exporting}>
-            {exporting ? <ActivityIndicator size="small" color="#fff" /> : <MaterialCommunityIcons name="file-pdf-box" size={22} color="#fff" />}
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity 
+              onPress={handleExportExcel} 
+              style={[styles.exportBtn, { backgroundColor: '#1D6F42' }]} 
+              disabled={exportingExcel}
+              activeOpacity={0.7}
+            >
+              {exportingExcel ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <MaterialCommunityIcons name="file-excel" size={24} color="#fff" />
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity 
+              onPress={handleExportPdf} 
+              style={[styles.exportBtn, { backgroundColor: COLORS.modFinanceiro }]} 
+              disabled={exporting}
+              activeOpacity={0.7}
+            >
+              {exporting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <MaterialCommunityIcons name="file-pdf-box" size={24} color="#fff" />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.overviewTopRow}>

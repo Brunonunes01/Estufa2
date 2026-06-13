@@ -21,11 +21,22 @@ import { verifyCurrentUserPassword } from '../../services/securityService';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { sanitizeDecimalInput, sanitizeIntegerInput } from '../../utils/numericFields';
 import {
+  clearColheitaDraft,
+  loadColheitaDraft,
+  saveColheitaDraft,
+} from '../../services/colheitaDraftStorage';
+import {
   buildColheitaEditSnapshot,
   loadColheitaFormBootstrap,
   MetodoPagamento,
   UnidadeColheita,
 } from './colheitaFormUtils';
+
+const startOfDay = (date: Date) => {
+  const normalized = new Date(date);
+  normalized.setHours(0, 0, 0, 0);
+  return normalized;
+};
 
 const ColheitaFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId, canDeleteEstufa } = useAuth();
@@ -82,7 +93,9 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const [editPassword, setEditPassword] = useState('');
   const [editAuthorizing, setEditAuthorizing] = useState(false);
   const [isEditAuthorized, setIsEditAuthorized] = useState(false);
+  const [draftRestoredAt, setDraftRestoredAt] = useState<string | null>(null);
   const initialEditSnapshotRef = useRef<string | null>(null);
+  const draftReadyRef = useRef(false);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -193,11 +206,105 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
     carregarTudo();
   }, [targetId, isEditMode, colheitaIdParam, vendaIdParam]);
 
+  useEffect(() => {
+    const restoreDraft = async () => {
+      if (!targetId || isEditMode || loadingData) return;
+
+      const draft = await loadColheitaDraft(targetId);
+      if (!draft) {
+        draftReadyRef.current = true;
+        return;
+      }
+
+      setSelectedPlantioId(draft.selectedPlantioId || '');
+      setQuantidade(draft.quantidade || '');
+      setUnidade(draft.unidade || 'caixas');
+      setPreco(draft.preco || '');
+      setPesoBruto(draft.pesoBruto || '');
+      setPesoLiquido(draft.pesoLiquido || '');
+      setSelectedClienteId(draft.selectedClienteId || null);
+      setMetodoPagamento(draft.metodoPagamento || 'pix');
+      setPagamentoPara(draft.pagamentoPara || null);
+      setDataVenda(draft.dataVendaIso ? new Date(draft.dataVendaIso) : new Date());
+      setIsFinalHarvest(Boolean(draft.isFinalHarvest));
+      setObservacoes(draft.observacoes || '');
+      setShowObservacoes(Boolean(draft.showObservacoes) || !!draft.observacoes);
+      setSelectedCaixaPerfilId(draft.selectedCaixaPerfilId || '');
+      setDraftRestoredAt(draft.savedAt);
+      draftReadyRef.current = true;
+    };
+
+    void restoreDraft();
+  }, [targetId, isEditMode, loadingData]);
+
+  useEffect(() => {
+    const persistDraft = async () => {
+      if (!targetId || isEditMode || !draftReadyRef.current) return;
+
+      const hasContent =
+        !!selectedPlantioId ||
+        !!quantidade ||
+        !!preco ||
+        !!pesoBruto ||
+        !!pesoLiquido ||
+        !!selectedClienteId ||
+        !!pagamentoPara ||
+        !!observacoes.trim() ||
+        isFinalHarvest;
+
+      if (!hasContent) {
+        await clearColheitaDraft(targetId);
+        setDraftRestoredAt(null);
+        return;
+      }
+
+      await saveColheitaDraft(targetId, {
+        selectedPlantioId,
+        quantidade,
+        unidade,
+        preco,
+        pesoBruto,
+        pesoLiquido,
+        selectedClienteId,
+        metodoPagamento,
+        pagamentoPara,
+        dataVendaIso: dataVenda.toISOString(),
+        isFinalHarvest,
+        observacoes,
+        showObservacoes,
+        selectedCaixaPerfilId,
+      });
+    };
+
+    void persistDraft();
+  }, [
+    targetId,
+    isEditMode,
+    selectedPlantioId,
+    quantidade,
+    unidade,
+    preco,
+    pesoBruto,
+    pesoLiquido,
+    selectedClienteId,
+    metodoPagamento,
+    pagamentoPara,
+    dataVenda,
+    isFinalHarvest,
+    observacoes,
+    showObservacoes,
+    selectedCaixaPerfilId,
+  ]);
+
   const valorTotal = useMemo(() => {
     const qtd = parseFloat(quantidade.replace(',','.')) || 0;
     const prc = parseFloat(preco.replace(',','.')) || 0;
     return qtd * prc;
   }, [quantidade, preco]);
+  const quantidadeNum = useMemo(() => parseFloat(quantidade.replace(',', '.')) || 0, [quantidade]);
+  const precoNum = useMemo(() => parseFloat(preco.replace(',', '.')) || 0, [preco]);
+  const pesoBrutoNum = useMemo(() => parseFloat(pesoBruto.replace(',', '.')) || 0, [pesoBruto]);
+  const pesoLiquidoNum = useMemo(() => parseFloat(pesoLiquido.replace(',', '.')) || 0, [pesoLiquido]);
 
   const precoPorKg = useMemo(() => {
     const pLiq = parseFloat(pesoLiquido.replace(',','.')) || 0;
@@ -208,6 +315,14 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const loteSelecionado = useMemo(() => {
     return plantiosDisponiveis.find(p => p.id === selectedPlantioId);
   }, [selectedPlantioId, plantiosDisponiveis]);
+  const localVendaLabel = useMemo(
+    () => (loteSelecionado?.estufaId ? estufasMap[loteSelecionado.estufaId] || 'Estufa nao identificada' : 'Sem estufa'),
+    [estufasMap, loteSelecionado]
+  );
+  const clienteSelecionadoNome = useMemo(() => {
+    if (!selectedClienteId) return 'Venda avulsa / consumidor final';
+    return clientesList.find((item) => item.id === selectedClienteId)?.nome || 'Cliente nao identificado';
+  }, [clientesList, selectedClienteId]);
 
   const caixaPerfisDisponiveis = useMemo(() => loteSelecionado?.caixaPerfis || [], [loteSelecionado]);
   const useCycleBoxProfiles = settings.useCycleBoxWeightProfiles && unidade === 'caixas' && caixaPerfisDisponiveis.length > 0;
@@ -269,6 +384,59 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const isCycleUnlockedForSale = saleUnlockedByAdmin || hasPermanentCycleUnlock;
   const isCycleLockedForSale = isBeforeMinimumSaleDate && !isCycleUnlockedForSale;
   const cycleUnlockReason = saleUnlockedByAdmin ? unlockReason : loteSelecionado?.desbloqueioAdminReason || '';
+  const validationErrors = useMemo(() => {
+    const issues: string[] = [];
+
+    if (!selectedPlantioId) issues.push('Selecione o ciclo da venda.');
+    if (quantidadeNum <= 0) issues.push('Informe uma quantidade maior que zero.');
+    if (precoNum <= 0) issues.push('Informe um preco unitario maior que zero.');
+    if (metodoPagamento !== 'prazo' && caixaPessoas.length > 0 && !pagamentoPara) {
+      issues.push('Selecione quem recebeu no caixa.');
+    }
+    if (unidade === 'caixas' && pesoBruto && pesoBrutoNum <= 0) {
+      issues.push('Revise o peso bruto informado.');
+    }
+    if (unidade === 'caixas' && pesoLiquido && pesoLiquidoNum <= 0) {
+      issues.push('Revise o peso liquido informado.');
+    }
+    if (unidade === 'caixas' && pesoBrutoNum > 0 && pesoLiquidoNum > pesoBrutoNum) {
+      issues.push('O peso liquido nao pode ser maior que o peso bruto.');
+    }
+    if (startOfDay(dataVenda).getTime() > startOfDay(new Date()).getTime()) {
+      issues.push('A data da venda nao pode ficar no futuro.');
+    }
+
+    return issues;
+  }, [
+    selectedPlantioId,
+    quantidadeNum,
+    precoNum,
+    metodoPagamento,
+    caixaPessoas.length,
+    pagamentoPara,
+    unidade,
+    pesoBruto,
+    pesoBrutoNum,
+    pesoLiquido,
+    pesoLiquidoNum,
+    dataVenda,
+  ]);
+  const validationWarnings = useMemo(() => {
+    const issues: string[] = [];
+
+    if (!selectedClienteId) issues.push('A venda sera salva como cliente avulso.');
+    if (unidade === 'caixas' && quantidadeNum > 0 && pesoLiquidoNum <= 0) {
+      issues.push('Sem peso liquido preenchido, o preco por kg nao podera ser conferido.');
+    }
+    if (isBeforeMinimumSaleDate) {
+      issues.push(`A data escolhida e anterior ao ciclo minimo de ${minSaleDate?.toLocaleDateString('pt-BR')}.`);
+    }
+    if (observacoes.trim().length === 0 && precoNum > 0 && quantidadeNum > 0 && precoNum < 1) {
+      issues.push('Preco unitario muito baixo. Se for intencional, vale registrar observacao.');
+    }
+
+    return issues;
+  }, [selectedClienteId, unidade, quantidadeNum, pesoLiquidoNum, isBeforeMinimumSaleDate, minSaleDate, observacoes, precoNum]);
 
   useEffect(() => {
     setSaleUnlockedByAdmin(false);
@@ -490,6 +658,26 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
     }
   };
 
+  const handleDiscardDraft = async () => {
+    if (!targetId || isEditMode) return;
+    await clearColheitaDraft(targetId);
+    setDraftRestoredAt(null);
+    setSelectedPlantioId(plantiosDisponiveis[0]?.id || '');
+    setQuantidade('');
+    setUnidade('caixas');
+    setPreco('');
+    setPesoBruto('');
+    setPesoLiquido('');
+    setSelectedClienteId(null);
+    setMetodoPagamento('pix');
+    setPagamentoPara(caixaPessoas[0]?.id || null);
+    setDataVenda(new Date());
+    setIsFinalHarvest(false);
+    setObservacoes('');
+    setShowObservacoes(false);
+    setSelectedCaixaPerfilId('');
+  };
+
   const persistColheita = async (allowBeforeCycleDays = false, reason?: string) => {
       if (!targetId) return Alert.alert("Atenção", "Sua sessão expirou. Entre novamente.");
       if (!selectedPlantioId) return Alert.alert("Atenção", "Escolha o ciclo para registrar a venda.");
@@ -555,7 +743,15 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
           Alert.alert(
             isEditMode ? "Venda atualizada" : "Venda registrada",
             `${qtdNum} ${unidade} • R$ ${totalVenda.toFixed(2)}${plantioObj?.codigoLote ? `\nLote: ${plantioObj.codigoLote}` : ''}`,
-            [{ text: "OK", onPress: () => navigation.goBack() }]
+            [{
+              text: "OK",
+              onPress: () => {
+                if (!isEditMode && targetId) {
+                  void clearColheitaDraft(targetId);
+                }
+                navigation.goBack();
+              },
+            }]
           );
       } catch (e: any) { Alert.alert("Erro", e.message || "Não consegui salvar a venda. Tente novamente."); } finally { setLoading(false); }
   };
@@ -600,11 +796,15 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
       setSaleUnlockedByAdmin(true);
       setUnlockModalVisible(false);
       setAdminPassword('');
-      setUnlockReason(reason);
-      
-      // Salva direto apos autorizacao de admin
-      await persistColheita(true, reason);
-    } catch {
+	      setUnlockReason(reason);
+	      
+	      if (validationErrors.length > 0) {
+	        Alert.alert('Revise os campos', validationErrors[0]);
+	        return;
+	      }
+	      // Salva direto apos autorizacao de admin
+	      await persistColheita(true, reason);
+	    } catch {
       Alert.alert('Erro', 'Não foi possível desbloquear o ciclo.');
     } finally {
       setUnlocking(false);
@@ -612,6 +812,10 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   };
 
   const handleSave = async () => {
+    if (validationErrors.length > 0) {
+      Alert.alert('Revise os campos', validationErrors[0]);
+      return;
+    }
     // 1. Prioridade: Se o ciclo esta bloqueado, usamos o modal de desbloqueio (pede senha + motivo)
     // Esse modal agora tambem autoriza a edicao se for o caso.
     if (isCycleLockedForSale) {
@@ -653,6 +857,20 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
           { paddingBottom: (settings.uiV2Enabled ? 138 : 30) + insets.bottom },
         ]}
       >
+
+        {!isEditMode && draftRestoredAt ? (
+          <View style={styles.draftBanner}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.draftBannerTitle}>Rascunho recuperado</Text>
+              <Text style={styles.draftBannerText}>
+                Ultima atualizacao em {new Date(draftRestoredAt).toLocaleString('pt-BR')}
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.draftBannerAction} onPress={() => void handleDiscardDraft()}>
+              <Text style={styles.draftBannerActionText}>Descartar</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         <View style={styles.card}>
             <Text style={styles.sectionHeader}>Origem e Destino</Text>
@@ -745,10 +963,26 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
             ) : null}
         </View>
 
-        <View style={[styles.card, isCycleLockedForSale && styles.lockedCard]}>
-            <Text style={styles.sectionHeader}>Quantidade e Pesagem</Text>
-            <View style={styles.row}>
-                <View style={{ flex: 1, marginRight: 10 }}>
+	        <View style={[styles.card, isCycleLockedForSale && styles.lockedCard]}>
+	            <Text style={styles.sectionHeader}>Quantidade e Pesagem</Text>
+	            {validationErrors.length > 0 ? (
+	              <View style={styles.validationBox}>
+	                <Text style={styles.validationTitle}>Revise antes de salvar</Text>
+	                {validationErrors.map((issue) => (
+	                  <Text key={issue} style={styles.validationText}>• {issue}</Text>
+	                ))}
+	              </View>
+	            ) : null}
+	            {validationWarnings.length > 0 ? (
+	              <View style={styles.warningBox}>
+	                <Text style={styles.warningTitle}>Conferencias importantes</Text>
+	                {validationWarnings.map((issue) => (
+	                  <Text key={issue} style={styles.warningText}>• {issue}</Text>
+	                ))}
+	              </View>
+	            ) : null}
+	            <View style={styles.row}>
+	                <View style={{ flex: 1, marginRight: 10 }}>
                     <Text style={styles.label}>Quantidade</Text>
                     <TextInput style={styles.input} keyboardType="numeric" value={quantidade} onChangeText={(value) => setQuantidade(sanitizeDecimalInput(value))} placeholder="0" editable={!isCycleLockedForSale} />
                 </View>
@@ -844,12 +1078,49 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                 </View>
             )}
 
-            <View style={styles.totalContainer}>
-                <Text style={styles.totalLabel}>TOTAL DA VENDA</Text>
-                <Text style={styles.totalValue}>R$ {valorTotal.toFixed(2)}</Text>
-            </View>
+	            <View style={styles.totalContainer}>
+	                <Text style={styles.totalLabel}>TOTAL DA VENDA</Text>
+	                <Text style={styles.totalValue}>R$ {valorTotal.toFixed(2)}</Text>
+	            </View>
+	            <View style={styles.reviewCard}>
+	              <Text style={styles.reviewTitle}>Resumo da venda</Text>
+	              <View style={styles.reviewGrid}>
+	                <View style={styles.reviewItem}>
+	                  <Text style={styles.reviewLabel}>Lote</Text>
+	                  <Text style={styles.reviewValue}>{loteSelecionado?.codigoLote || 'Sem lote'}</Text>
+	                </View>
+	                <View style={styles.reviewItem}>
+	                  <Text style={styles.reviewLabel}>Local</Text>
+	                  <Text style={styles.reviewValue}>{localVendaLabel}</Text>
+	                </View>
+	                <View style={styles.reviewItem}>
+	                  <Text style={styles.reviewLabel}>Cliente</Text>
+	                  <Text style={styles.reviewValue}>{clienteSelecionadoNome}</Text>
+	                </View>
+	                <View style={styles.reviewItem}>
+	                  <Text style={styles.reviewLabel}>Data</Text>
+	                  <Text style={styles.reviewValue}>{dataVenda.toLocaleDateString('pt-BR')}</Text>
+	                </View>
+	                <View style={styles.reviewItem}>
+	                  <Text style={styles.reviewLabel}>Quantidade</Text>
+	                  <Text style={styles.reviewValue}>{quantidadeNum > 0 ? `${quantidadeNum} ${unidade}` : '-'}</Text>
+	                </View>
+	                <View style={styles.reviewItem}>
+	                  <Text style={styles.reviewLabel}>Preco unitario</Text>
+	                  <Text style={styles.reviewValue}>{precoNum > 0 ? `R$ ${precoNum.toFixed(2)}` : '-'}</Text>
+	                </View>
+	                <View style={styles.reviewItem}>
+	                  <Text style={styles.reviewLabel}>Pagamento</Text>
+	                  <Text style={styles.reviewValue}>{String(metodoPagamento || '-').toUpperCase()}</Text>
+	                </View>
+	                <View style={styles.reviewItem}>
+	                  <Text style={styles.reviewLabel}>Total</Text>
+	                  <Text style={styles.reviewValueStrong}>R$ {valorTotal.toFixed(2)}</Text>
+	                </View>
+	              </View>
+	            </View>
 
-            <TouchableOpacity
+	            <TouchableOpacity
               style={styles.observacoesToggle}
               onPress={() => setShowObservacoes((current) => !current)}
               activeOpacity={0.85}
@@ -899,6 +1170,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                     <Picker.Item label="Boleto" value="boleto" />
                     <Picker.Item label="A Prazo" value="prazo" />
                     <Picker.Item label="Cartão" value="cartao" />
+                    <Picker.Item label="Cheque" value="cheque" />
                     <Picker.Item label="Outro" value="outro" />
                 </Picker>
             </View>
@@ -1165,10 +1437,14 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                       Alert.alert('Senha invalida', 'A senha informada esta incorreta.');
                       return;
                     }
-                    setIsEditAuthorized(true);
-                    setEditAuthModalVisible(false);
-                    // Salva direto para evitar o delay do estado assincrono que faria o handleSave abrir o modal de novo
-                    await persistColheita(isCycleUnlockedForSale, cycleUnlockReason);
+	                    setIsEditAuthorized(true);
+	                    setEditAuthModalVisible(false);
+	                    if (validationErrors.length > 0) {
+	                      Alert.alert('Revise os campos', validationErrors[0]);
+	                      return;
+	                    }
+	                    // Salva direto para evitar o delay do estado assincrono que faria o handleSave abrir o modal de novo
+	                    await persistColheita(isCycleUnlockedForSale, cycleUnlockReason);
                   } finally {
                     setEditAuthorizing(false);
                   }
@@ -1188,6 +1464,28 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   scrollContent: { padding: 20 },
+  draftBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: COLORS.infoSoft,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.info,
+    padding: 12,
+    marginBottom: 14,
+  },
+  draftBannerTitle: { color: COLORS.info, fontSize: 13, fontWeight: '800', marginBottom: 2 },
+  draftBannerText: { color: COLORS.textPrimary, fontSize: 12, fontWeight: '600' },
+  draftBannerAction: {
+    minHeight: 38,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  draftBannerActionText: { color: COLORS.info, fontWeight: '800', fontSize: 12 },
   card: { backgroundColor: COLORS.surface, borderRadius: 15, padding: 18, marginBottom: 15, elevation: 2 },
   sectionHeader: { fontSize: 14, fontWeight: 'bold', color: COLORS.primary, marginBottom: 12, textTransform: 'uppercase' },
   label: { fontSize: 12, color: COLORS.textPrimary, marginBottom: 5, fontWeight: '600' },
@@ -1236,10 +1534,23 @@ const styles = StyleSheet.create({
   unlockBtnText: { color: COLORS.textLight, fontWeight: '800', fontSize: 12 },
   unlockOkBox: { backgroundColor: COLORS.successSoft, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: COLORS.success, marginBottom: 12 },
   unlockOkText: { color: COLORS.success, fontWeight: '700', fontSize: 12 },
+  validationBox: { backgroundColor: COLORS.dangerSoft, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: COLORS.danger, marginBottom: 12 },
+  validationTitle: { color: COLORS.danger, fontWeight: '800', marginBottom: 4 },
+  validationText: { color: COLORS.danger, fontSize: 12, lineHeight: 18 },
+  warningBox: { backgroundColor: COLORS.alertSoft, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: COLORS.warning, marginBottom: 12 },
+  warningTitle: { color: COLORS.alertText, fontWeight: '800', marginBottom: 4 },
+  warningText: { color: COLORS.alertText, fontSize: 12, lineHeight: 18 },
   lockedCard: { opacity: 0.55 },
   totalContainer: { alignItems: 'center', borderTopWidth: 1, borderTopColor: COLORS.divider, paddingTop: 15 },
   totalLabel: { fontSize: 11, color: COLORS.textPrimary, fontWeight: 'bold' },
   totalValue: { fontSize: 24, fontWeight: 'bold', color: COLORS.primary },
+  reviewCard: { marginTop: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surfaceMuted, padding: 12 },
+  reviewTitle: { color: COLORS.textPrimary, fontWeight: '800', fontSize: 14, marginBottom: 10 },
+  reviewGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 10, columnGap: 8 },
+  reviewItem: { width: '48%' },
+  reviewLabel: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 3 },
+  reviewValue: { color: COLORS.textPrimary, fontSize: 13, fontWeight: '700' },
+  reviewValueStrong: { color: COLORS.primary, fontSize: 16, fontWeight: '900' },
   finalHarvestRow: { marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: COLORS.border, flexDirection: 'row', alignItems: 'center', gap: 12 },
   finalHarvestHint: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
   saveBtn: { backgroundColor: COLORS.primary, height: 58, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 30 },
