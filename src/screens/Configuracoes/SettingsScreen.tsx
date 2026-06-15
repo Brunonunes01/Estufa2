@@ -16,6 +16,7 @@ import Constants from 'expo-constants';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { changeCurrentUserPassword } from '../../services/securityService';
+import { getPasswordChangeErrorMessage } from '../../services/securityUiHelpers';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import SectionHeading from '../../components/ui/SectionHeading';
 import { useFeedback } from '../../hooks/useFeedback';
@@ -143,13 +144,9 @@ const SettingsScreen = ({ navigation }: any) => {
       } else {
         showSuccess('Senha de administrador alterada com sucesso.');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      if (error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential') {
-        showError('Senha atual inválida.');
-      } else {
-        showError('Não foi possível alterar a senha.');
-      }
+      showError(getPasswordChangeErrorMessage(error));
     } finally {
       setSavingSecurity(false);
     }

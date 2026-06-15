@@ -37,7 +37,6 @@ import {
   shareSalesReportPdf,
 } from '../../services/receiptService';
 import { compartilharPDF } from '../../services/pdfService';
-import { Cliente } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 import EmptyState from '../../components/ui/EmptyState';
@@ -54,6 +53,7 @@ import {
   normalizeSearchText,
   toDateSafe,
 } from './vendasListUtils';
+import { resolveServiceErrorMessage } from '../../services/securityUiHelpers';
 
 const VendasListScreen = ({ navigation }: any) => {
   const { canWrite, user, selectedTenantId, availableTenants, canViewCash } = useAuth();
@@ -503,7 +503,7 @@ const VendasListScreen = ({ navigation }: any) => {
   const handleExportPdf = async (sourceVendas = filteredVendas, sourcePeriodLabel = periodLabel) => {
     const targetId = selectedTenantId || user?.uid;
     if (!targetId) {
-      Alert.alert('Erro', 'Usuário inválido para gerar relatório.');
+      Alert.alert('Erro', 'Usuario invalido para gerar relatorio.');
       return;
     }
 
@@ -526,27 +526,12 @@ const VendasListScreen = ({ navigation }: any) => {
         { totalVendido: 0, totalRecebido: 0, totalReceber: 0, totalRegistros: 0 }
       );
 
-      sourceVendas.map((item) => {
-      const status = getFinancialStatus(item);
-      return {
-          codigo: item.id,
-          data: formatDate(getVendaData(item)),
-          cliente: getClienteNome(item.clienteId),
-          estufa: estufasMap[item.estufaId] || 'Estufa não identificada',
-          metodoPagamento: (item.metodoPagamento || item.formaPagamento || 'N/A').toUpperCase(),
-          status: status === 'pendente' ? ('PENDENTE' as const) : status === 'cancelado' ? ('CANCELADO' as const) : ('PAGO' as const),
-          valor: getVendaTotal(item),
-          observacoes:
-            `${status === 'pago' ? `Recebido por: ${getRecebidoPor(item)}` : 'Pagamento pendente'}${item.observacoes ? `\n${item.observacoes}` : ''}`,
-        };
-      });
-
       await shareSalesReportPdf({
         nomeProdutor,
-        nomeEstufa: Object.keys(estufasMap).length === 1 ? Object.values(estufasMap)[0] : 'Relatório Consolidado',
-        tituloRelatorio: 'Relatório Gerencial de Vendas',
+        nomeEstufa: Object.keys(estufasMap).length === 1 ? Object.values(estufasMap)[0] : 'Relatorio Consolidado',
+        tituloRelatorio: 'Relatorio Gerencial de Vendas',
         periodo: sourcePeriodLabel,
-        observacoes: `Relatório consolidado com ${sourceVendas.length} vendas.`,
+        observacoes: `Relatorio consolidado com ${sourceVendas.length} vendas.`,
         totais: {
           totalReceber: totaisRelatorio.totalReceber,
           totalPagar,
@@ -558,33 +543,33 @@ const VendasListScreen = ({ navigation }: any) => {
         },
         itens: buildSalesReportItems(sourceVendas),
       });
-    } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Não foi possível exportar o PDF.');
+    } catch (error: unknown) {
+      Alert.alert('Erro', resolveServiceErrorMessage(error, 'Nao foi possivel exportar o PDF.'));
     }
   };
 
   const handlePrintReceiptById = async (vendaId?: string, vendaFallback?: any) => {
     if (!vendaId && !vendaFallback?.id) {
-      Alert.alert('Erro', 'Venda inválida para gerar PDF.');
+      Alert.alert('Erro', 'Venda invalida para gerar PDF.');
       return;
     }
 
     const targetId = selectedTenantId || user?.uid;
     if (!targetId) {
-      Alert.alert('Erro', 'Usuário inválido para gerar relatório.');
+      Alert.alert('Erro', 'Usuario invalido para gerar relatorio.');
       return;
     }
 
     try {
       const venda = (vendaId ? await getVendaById(vendaId, targetId).catch(() => null) : null) || vendaFallback;
-      if (!venda) throw new Error('Registro da venda não encontrado.');
+      if (!venda) throw new Error('Registro da venda nao encontrado.');
 
       const currentTenant = availableTenants.find((t) => t.uid === targetId);
       const nomeFazenda = currentTenant?.ownerName || user?.name || 'Produtor';
       const cliente = clientesList.find((item) => item.id === venda.clienteId) || null;
       const plantio = venda.plantioId ? await getPlantioById(venda.plantioId, targetId).catch(() => null) : null;
       const colheita = venda.colheitaId ? await getColheitaById(venda.colheitaId, targetId).catch(() => null) : null;
-      const cultura = plantio?.cultura || venda.cultura || venda.itens?.[0]?.descricao || 'Cultura não informada';
+      const cultura = plantio?.cultura || venda.cultura || venda.itens?.[0]?.descricao || 'Cultura nao informada';
 
       const vendaParaPdf = colheita
         ? {
@@ -606,110 +591,50 @@ const VendasListScreen = ({ navigation }: any) => {
         nomeEstufa: estufasMap[venda.estufaId] || 'Estufa Geral',
         cultura,
       });
-    } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Não foi possível gerar o PDF desta venda.');
+    } catch (error: unknown) {
+      Alert.alert('Erro', resolveServiceErrorMessage(error, 'Nao foi possivel gerar o PDF desta venda.'));
     }
   };
 
   const handleExportAccountingPdf = async (sourceVendas = reportFilteredVendas, sourcePeriodLabel = reportPeriodLabel) => {
     const targetId = selectedTenantId || user?.uid;
     if (!targetId) {
-      Alert.alert('Erro', 'Usuário inválido para gerar relatório.');
+      Alert.alert('Erro', 'Usuario invalido para gerar relatorio.');
       return;
     }
 
     const currentTenant = availableTenants.find((t) => t.uid === targetId);
     const empresa = currentTenant?.ownerName || user?.name || 'Produtor';
 
-      sourceVendas.map((item) => {
-      const quantidade = getVendaQuantidade(item);
-      const unidade = getVendaUnidade(item);
-      const precoUnitario = getVendaPrecoUnitario(item);
-      const total = getVendaTotal(item);
-      const status = getFinancialStatus(item);
-      const clienteId = item.clienteId || null;
-      const produto = getVendaProdutoNome(item);
-      const lote = String((item as any).loteColheita || (item as any).codigoLote || item.plantioId || item.colheitaId || '-');
-      const recebidoPor = status === 'pago' ? getRecebidoPor(item) : '-';
-        return {
-          codigo: String(item.id || '-'),
-          data: formatDate(getVendaData(item)),
-          cliente: getClienteNome(clienteId),
-          documentoCliente: getClienteDocumento(clienteId) || undefined,
-        estufa: estufasMap[item.estufaId] || 'Estufa não identificada',
-        lote,
-        produto,
-        quantidade: `${quantidade} ${unidade}`,
-        quantidadeValor: quantidade,
-        quantidadeUnidade: unidade,
-        precoUnitario,
-          valorTotal: total,
-          metodoPagamento: String(item.metodoPagamento || item.formaPagamento || 'N/A').toUpperCase(),
-          status: status.toUpperCase(),
-          recebidoPor,
-          observacoes: item.observacoes || '',
-        };
-      });
-
     try {
-        await shareSalesAccountingPdf({
-          empresa,
-          periodo: sourcePeriodLabel,
-          itens: buildSalesAccountingItems(sourceVendas),
-        });
-    } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Não foi possível exportar o relatório contábil.');
+      await shareSalesAccountingPdf({
+        empresa,
+        periodo: sourcePeriodLabel,
+        itens: buildSalesAccountingItems(sourceVendas),
+      });
+    } catch (error: unknown) {
+      Alert.alert('Erro', resolveServiceErrorMessage(error, 'Nao foi possivel exportar o relatorio contabil.'));
     }
   };
 
   const handleExportAccountingExcel = async (sourceVendas = reportFilteredVendas, sourcePeriodLabel = reportPeriodLabel) => {
     const targetId = selectedTenantId || user?.uid;
     if (!targetId) {
-      Alert.alert('Erro', 'Usuário inválido para gerar relatório.');
+      Alert.alert('Erro', 'Usuario invalido para gerar relatorio.');
       return;
     }
 
     const currentTenant = availableTenants.find((t) => t.uid === targetId);
     const empresa = currentTenant?.ownerName || user?.name || 'Produtor';
 
-      sourceVendas.map((item) => {
-      const quantidade = getVendaQuantidade(item);
-      const unidade = getVendaUnidade(item);
-      const precoUnitario = getVendaPrecoUnitario(item);
-      const total = getVendaTotal(item);
-      const status = getFinancialStatus(item);
-      const clienteId = item.clienteId || null;
-      const produto = getVendaProdutoNome(item);
-      const lote = String((item as any).loteColheita || (item as any).codigoLote || item.plantioId || item.colheitaId || '-');
-      const recebidoPor = status === 'pago' ? getRecebidoPor(item) : '-';
-        return {
-          codigo: String(item.id || '-'),
-          data: formatDate(getVendaData(item)),
-          cliente: getClienteNome(clienteId),
-          documentoCliente: getClienteDocumento(clienteId) || undefined,
-        estufa: estufasMap[item.estufaId] || 'Estufa não identificada',
-        lote,
-        produto,
-        quantidade: `${quantidade} ${unidade}`,
-        quantidadeValor: quantidade,
-        quantidadeUnidade: unidade,
-        precoUnitario,
-          valorTotal: total,
-          metodoPagamento: String(item.metodoPagamento || item.formaPagamento || 'N/A').toUpperCase(),
-          status: status.toUpperCase(),
-          recebidoPor,
-          observacoes: item.observacoes || '',
-        };
-      });
-
     try {
-        await exportSalesAccountingExcel({
-          empresa,
-          periodo: sourcePeriodLabel,
-          itens: buildSalesAccountingItems(sourceVendas),
-        });
-    } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Não foi possível exportar o Excel contábil.');
+      await exportSalesAccountingExcel({
+        empresa,
+        periodo: sourcePeriodLabel,
+        itens: buildSalesAccountingItems(sourceVendas),
+      });
+    } catch (error: unknown) {
+      Alert.alert('Erro', resolveServiceErrorMessage(error, 'Nao foi possivel exportar o Excel contabil.'));
     }
   };
 
@@ -743,8 +668,8 @@ const VendasListScreen = ({ navigation }: any) => {
         totalPago: stats.totalRecebido,
         totalPendente: stats.totalReceber,
       });
-    } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Não foi possível gerar o extrato do cliente.');
+    } catch (error: unknown) {
+      Alert.alert('Erro', resolveServiceErrorMessage(error, 'Nao foi possivel gerar o extrato do cliente.'));
     }
   };
 
@@ -772,7 +697,7 @@ const VendasListScreen = ({ navigation }: any) => {
     );
   };
 
-  const renderItem = ({ item }: { item: any }) => {
+  const _renderItem = ({ item }: { item: any }) => {
     const total = getVendaTotal(item);
     const quantidade = getVendaQuantidade(item);
     const precoUnitario = getVendaPrecoUnitario(item);

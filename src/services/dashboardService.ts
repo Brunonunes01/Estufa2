@@ -7,6 +7,7 @@ import { Estufa, Plantio, TarefaAgricola } from '../types/domain';
 import { assertTenantId } from './tenantGuard';
 import { listTodayPendingTasks } from './tarefaAgricolaService';
 import { getSupabaseClient } from './supabaseClient';
+import { filterPlantiosByKnownEstufas, normalizeDashboardSummaryDoc } from './dashboardSummaryHelpers.ts';
 
 export interface DashboardSummary {
   estufas: Estufa[];
@@ -29,20 +30,7 @@ const getFinancialSummaryFromDoc = async (tenantId: string) => {
     .maybeSingle();
 
   if (error || !data) return null;
-
-  if (typeof data.total_receber !== 'number' || typeof data.total_pagar !== 'number') {
-    return null;
-  }
-
-  return {
-    totalReceber: data.total_receber,
-    totalRecebido: typeof data.total_recebido === 'number' ? data.total_recebido : undefined,
-    totalPagar: data.total_pagar,
-    tarefasHojePendentes:
-      typeof data.tarefas_hoje_pendentes === 'number' ? data.tarefas_hoje_pendentes : undefined,
-    updatedAt: data.updated_at ? Timestamp.fromDate(new Date(data.updated_at)) : null,
-    source: 'summary_doc' as const,
-  };
+  return normalizeDashboardSummaryDoc(data);
 };
 
 export const getDashboardSummary = async (userId: string): Promise<DashboardSummary> => {
@@ -57,8 +45,10 @@ export const getDashboardSummary = async (userId: string): Promise<DashboardSumm
 
   const estufas = estufasRes.status === 'fulfilled' ? estufasRes.value : [];
   const activePlantios = activePlantiosRes.status === 'fulfilled' ? activePlantiosRes.value : [];
-  const estufaIds = new Set(estufas.map((item) => item.id));
-  const activePlantiosValidos = activePlantios.filter((item) => !!item.estufaId && estufaIds.has(item.estufaId));
+  const activePlantiosValidos = filterPlantiosByKnownEstufas(
+    estufas.map((item) => item.id),
+    activePlantios
+  );
   const todayTasks = todayTasksRes.status === 'fulfilled' ? todayTasksRes.value : [];
   const summaryDoc = summaryDocRes.status === 'fulfilled' ? summaryDocRes.value : null;
 

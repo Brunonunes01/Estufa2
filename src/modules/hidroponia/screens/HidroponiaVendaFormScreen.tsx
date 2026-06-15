@@ -257,7 +257,7 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
         } else if (!params.loteId && lotesData.length === 1) {
           setSelectedLoteId(lotesData[0].id);
         }
-      } catch (error) {
+      } catch {
         Alert.alert('Erro', 'Não foi possível carregar os dados.');
       } finally {
         setLoadingData(false);

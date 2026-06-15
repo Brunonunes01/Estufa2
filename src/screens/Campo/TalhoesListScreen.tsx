@@ -65,7 +65,7 @@ const TalhoesListScreen = ({ navigation }: any) => {
         longitudeDelta: 0.01,
       };
       setRegion(nextRegion);
-    } catch (_error) {
+    } catch {
       Alert.alert('Localização indisponível', 'Não foi possível obter sua localização agora.');
     } finally {
       setLocating(false);

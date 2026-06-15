@@ -1,20 +1,16 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAuth } from '../../hooks/useAuth';
 import { useEstufaPerformance } from '../../hooks/useEstufaPerformance';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
-import { RootStackParamList } from '../../navigation/types';
 
 const formatCurrency = (value: number) =>
   value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const EstufaPerformanceScreen = () => {
   const { user, selectedTenantId } = useAuth();
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const targetId = selectedTenantId || user?.uid;
 
   const { data, isLoading, isFetching, refetch } = useEstufaPerformance(targetId);

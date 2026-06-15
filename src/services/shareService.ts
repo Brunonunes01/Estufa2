@@ -1,14 +1,29 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { Tenant } from '../types/domain';
+import {
+  listSharedTenantOwnerIds,
+  mapSharedTenantRows,
+  mapTenantMembers,
+  ProfileLookupRow,
+  SharedTenantMembershipRow,
+  TenantMembershipRow,
+} from './shareServiceHelpers.ts';
+import {
+  applyRedeemAttempt,
+  getRedeemCooldownSeconds,
+  normalizeShareCode,
+  RedeemRateState,
+  SHARE_CODE_MIN_LENGTH,
+  shouldResetRedeemWindow,
+  validateNormalizedShareCode,
+} from './shareRedeemHelpers.ts';
 import { getSupabaseClient } from './supabaseClient';
 
 const REDEEM_RATE_KEY = 'share_redeem_rate_v1';
 const REDEEM_WINDOW_MS = 10 * 60 * 1000;
 const REDEEM_MAX_ATTEMPTS = 8;
 const REDEEM_COOLDOWN_MS = 15 * 1000;
-
-export const SHARE_CODE_MIN_LENGTH = 20;
 export const SHARE_CODE_DEFAULT_LENGTH = 24;
 
 export type ShareAccessProfile = 'manager' | 'operator' | 'viewer';
@@ -28,11 +43,6 @@ export interface TenantMember {
 
 type TenantMemberRole = TenantMember['role'];
 
-type RedeemRateState = {
-  attempts: number;
-  windowStartedAt: number;
-  blockedUntil: number;
-};
 
 const shareProfileConfig: Record<
   ShareAccessProfile,
@@ -112,11 +122,11 @@ const enforceRedeemRateLimit = async () => {
   const now = Date.now();
   const state = await loadRedeemRateState();
   if (state.blockedUntil > now) {
-    const waitSeconds = Math.ceil((state.blockedUntil - now) / 1000);
+    const waitSeconds = getRedeemCooldownSeconds(state.blockedUntil, now);
     throw new Error(`Muitas tentativas. Aguarde ${waitSeconds}s para tentar novamente.`);
   }
 
-  if (now - state.windowStartedAt > REDEEM_WINDOW_MS) {
+  if (shouldResetRedeemWindow(state, now, REDEEM_WINDOW_MS)) {
     await saveRedeemRateState({ attempts: 0, windowStartedAt: now, blockedUntil: 0 });
   }
 };
@@ -124,15 +134,9 @@ const enforceRedeemRateLimit = async () => {
 const registerRedeemAttempt = async (success: boolean) => {
   const now = Date.now();
   const state = await loadRedeemRateState();
-  const withinWindow = now - state.windowStartedAt <= REDEEM_WINDOW_MS;
-  const attempts = success ? 0 : withinWindow ? state.attempts + 1 : 1;
-  const blockedUntil = !success && attempts >= REDEEM_MAX_ATTEMPTS ? now + REDEEM_COOLDOWN_MS : 0;
-
-  await saveRedeemRateState({
-    attempts,
-    windowStartedAt: withinWindow ? state.windowStartedAt : now,
-    blockedUntil,
-  });
+  await saveRedeemRateState(
+    applyRedeemAttempt(state, success, now, REDEEM_WINDOW_MS, REDEEM_MAX_ATTEMPTS, REDEEM_COOLDOWN_MS)
+  );
 };
 
 const ensureSupabaseSharePermission = async (tenantId: string, currentUid: string) => {
@@ -205,11 +209,8 @@ export const generateShareCode = async (
 export const redeemShareCode = async (code: string, userId: string): Promise<string> => {
   try {
     await enforceRedeemRateLimit();
-    const normalizedCode = code.trim().toUpperCase();
-    if (!normalizedCode) throw new Error('Codigo invalido.');
-    if (normalizedCode.length < SHARE_CODE_MIN_LENGTH) {
-      throw new Error(`Codigo invalido. Use o codigo completo (${SHARE_CODE_MIN_LENGTH}+ caracteres).`);
-    }
+    const normalizedCode = normalizeShareCode(code);
+    validateNormalizedShareCode(normalizedCode, SHARE_CODE_MIN_LENGTH);
 
     const supabase = getSupabaseClient();
     const authUser = (await supabase.auth.getUser()).data.user;
@@ -249,56 +250,39 @@ export const redeemShareCode = async (code: string, userId: string): Promise<str
 };
 
 export const getSharedTenants = async (userId: string): Promise<Tenant[]> => {
-  try {
-    const supabase = getSupabaseClient();
-    const { data: memberships, error } = await supabase
-      .from('tenant_memberships')
-      .select(
-        'tenant_id, role, can_read, can_write, can_delete, can_manage_sharing, created_at, tenants(id, name, owner_user_id)'
-      )
-      .eq('user_id', userId);
+  const supabase = getSupabaseClient();
+  const { data: memberships, error } = await supabase
+    .from('tenant_memberships')
+    .select(
+      'tenant_id, role, can_read, can_write, can_delete, can_manage_sharing, created_at, tenants(id, name, owner_user_id)'
+    )
+    .eq('user_id', userId);
 
-    if (error) {
-      console.error(error);
-      return [];
-    }
-
-    const filtered = (memberships || []).filter((item: any) => item.tenants?.owner_user_id !== userId);
-    const ownerIds = Array.from(new Set(filtered.map((item: any) => item.tenants?.owner_user_id).filter(Boolean))) as string[];
-
-    const ownerNamesMap = new Map<string, string>();
-    const ownerEmailsMap = new Map<string, string>();
-    if (ownerIds.length > 0) {
-      const { data: profiles } = await supabase.from('profiles').select('id, name, email').in('id', ownerIds);
-      (profiles || []).forEach((profile: any) => {
-        ownerNamesMap.set(profile.id, profile.name || 'Parceiro');
-        if (profile?.email) ownerEmailsMap.set(profile.id, profile.email);
-      });
-    }
-
-    return filtered.map((item: any) => {
-      const ownerId = item.tenants?.owner_user_id;
-      return {
-        uid: item.tenant_id,
-        name: item.tenants?.name || 'Estufa Compartilhada',
-        ownerId: ownerId || '',
-        sharedBy: ownerNamesMap.get(ownerId) || 'Parceiro',
-        sharedByEmail: ownerEmailsMap.get(ownerId) || null,
-        ownerEmail: ownerEmailsMap.get(ownerId) || null,
-        role: item.role || 'guest',
-        permissions: {
-          canRead: !!item.can_read,
-          canWrite: !!item.can_write,
-          canDelete: !!item.can_delete,
-          canManageSharing: !!item.can_manage_sharing,
-        },
-        sharedAt: item.created_at || null,
-      } as Tenant;
-    });
-  } catch (error) {
-    console.error(error);
-    return [];
+  if (error) {
+    throw new Error(`Falha ao listar tenants compartilhados. ${error.message}`);
   }
+
+  const rows = (memberships || []) as SharedTenantMembershipRow[];
+  const ownerIds = listSharedTenantOwnerIds(rows, userId);
+
+  const ownerNamesMap = new Map<string, string>();
+  const ownerEmailsMap = new Map<string, string>();
+  if (ownerIds.length > 0) {
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, name, email')
+      .in('id', ownerIds);
+    if (profilesError) {
+      throw new Error(`Falha ao carregar proprietarios dos tenants. ${profilesError.message}`);
+    }
+    (profiles || []).forEach((profile) => {
+      const row = profile as ProfileLookupRow;
+      ownerNamesMap.set(row.id, row.name || 'Parceiro');
+      if (row.email) ownerEmailsMap.set(row.id, row.email);
+    });
+  }
+
+  return mapSharedTenantRows(rows, userId, ownerNamesMap, ownerEmailsMap) as Tenant[];
 };
 
 export const listTenantMembers = async (tenantId: string, currentUserId: string): Promise<TenantMember[]> => {
@@ -315,28 +299,17 @@ export const listTenantMembers = async (tenantId: string, currentUserId: string)
     throw new Error(`Falha ao listar membros do tenant. ${error.message}`);
   }
 
-  const rows = (memberships || []) as any[];
+  const rows = (memberships || []) as TenantMembershipRow[];
   if (rows.length === 0) return [];
 
   const userIds = Array.from(new Set(rows.map((item) => item.user_id).filter(Boolean))) as string[];
   const { data: profiles } = await supabase.from('profiles').select('id, name, email').in('id', userIds);
-  const profilesMap = new Map((profiles || []).map((profile: any) => [profile.id, profile]));
+  const profilesMap = new Map((profiles || []).map((profile) => {
+    const row = profile as ProfileLookupRow;
+    return [row.id, row] as const;
+  }));
 
-  return rows.map((item) => {
-    const profile = profilesMap.get(item.user_id);
-    return {
-      userId: item.user_id,
-      name: profile?.name || 'Usuario',
-      email: profile?.email || null,
-      role: (item.role || 'guest') as TenantMember['role'],
-      sharedAt: item.created_at || null,
-      lastAccessAt: item.updated_at || item.created_at || null,
-      canRead: !!item.can_read,
-      canWrite: !!item.can_write,
-      canDelete: !!item.can_delete,
-      canManageSharing: !!item.can_manage_sharing,
-    };
-  });
+  return mapTenantMembers(rows, profilesMap) as TenantMember[];
 };
 
 export const updateTenantMemberProfile = async (

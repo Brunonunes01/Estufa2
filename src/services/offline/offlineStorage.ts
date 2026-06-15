@@ -1,11 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { isOfflineLikeError, shouldAllowQueue } from './offlineUtils';
+import { deserializeOfflinePayload, JsonValue, serializeOfflinePayload } from './offlinePayloadCodec';
+import { isOfflineLikeError } from './offlineUtils';
 
 const OFFLINE_QUEUE_KEY = '@sge/offline_queue_v1';
-
-type JsonPrimitive = string | number | boolean | null;
-type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
 export type OfflineActionName =
   | 'createEstufa'
@@ -50,53 +48,6 @@ type OfflineQueueItem = {
   attempts: number;
 };
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  !!value && typeof value === 'object' && !Array.isArray(value);
-
-const serializeValue = (value: any): JsonValue => {
-  if (value === null || value === undefined) return null;
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return value;
-  }
-  if (value instanceof Date) {
-    return { __type: 'date', value: value.toISOString() };
-  }
-  if (typeof value?.toDate === 'function' && typeof value?.toMillis === 'function') {
-    return { __type: 'timestamp', value: value.toMillis() };
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => serializeValue(item));
-  }
-  if (isObject(value)) {
-    const out: Record<string, JsonValue> = {};
-    Object.keys(value).forEach((key) => {
-      out[key] = serializeValue(value[key]);
-    });
-    return out;
-  }
-  return String(value);
-};
-
-const deserializeValue = (value: any): any => {
-  if (value === null || value === undefined) return value;
-  if (Array.isArray(value)) return value.map((item) => deserializeValue(item));
-  if (isObject(value)) {
-    if (value.__type === 'date' && typeof value.value === 'string') {
-      return new Date(value.value);
-    }
-    if (value.__type === 'timestamp' && typeof value.value === 'number') {
-      // Mantemos Date; os services já convertem para Timestamp quando necessário.
-      return new Date(value.value);
-    }
-    const out: Record<string, any> = {};
-    Object.keys(value).forEach((key) => {
-      out[key] = deserializeValue(value[key]);
-    });
-    return out;
-  }
-  return value;
-};
-
 const readQueue = async (): Promise<OfflineQueueItem[]> => {
   try {
     const raw = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
@@ -129,7 +80,7 @@ export const enqueueOfflineAction = async (
   const nextItem: OfflineQueueItem = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     action,
-    payload: serializeValue(payload),
+    payload: serializeOfflinePayload(payload),
     queuedAt: Date.now(),
     attempts: 0,
   };
@@ -159,7 +110,7 @@ export const flushOfflineQueue = async (): Promise<FlushResult> => {
   const queue = await readQueue();
   if (queue.length === 0) return { flushed: 0, pending: 0, failed: 0 };
 
-  // Import dinâmico para evitar ciclos no load inicial.
+  // Import dinamico para evitar ciclos no load inicial.
   const { executeOfflineAction } = await import('./offlineStorageHandlers');
 
   const remaining: OfflineQueueItem[] = [];
@@ -168,12 +119,12 @@ export const flushOfflineQueue = async (): Promise<FlushResult> => {
 
   for (const item of queue) {
     try {
-      await executeOfflineAction(item.action, deserializeValue(item.payload));
+      await executeOfflineAction(item.action, deserializeOfflinePayload(item.payload));
       flushed += 1;
     } catch (error) {
       failed += 1;
       if (isOfflineLikeError(error)) {
-        // Se caiu rede no meio, mantém este e os próximos.
+        // Se caiu rede no meio, mantem este e os proximos.
         remaining.push({ ...item, attempts: item.attempts + 1 });
         const startIndex = queue.findIndex((q) => q.id === item.id) + 1;
         remaining.push(...queue.slice(startIndex));
@@ -186,4 +137,3 @@ export const flushOfflineQueue = async (): Promise<FlushResult> => {
   await writeQueue(remaining);
   return { flushed, pending: remaining.length, failed };
 };
-

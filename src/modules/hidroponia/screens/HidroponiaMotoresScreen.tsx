@@ -20,7 +20,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { useAppSettings } from '../../../hooks/useAppSettings';
 import { getEstufaById, listEstufas } from '../../../services/estufaService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../../constants/theme';
-import { Estufa, HydroMotor, HydroSetor } from '../../../types/domain';
+import { Estufa, HydroMotor } from '../../../types/domain';
 import { RootStackParamList } from '../../../navigation/types';
 import {
   addHydroMotor,
@@ -101,7 +101,7 @@ const HidroponiaMotoresScreen = ({ navigation, route }: Props) => {
     try {
       const estufasRes = await listEstufas(targetId);
       setEstufas(estufasRes);
-    } catch (error) {
+    } catch {
       Alert.alert('Erro', 'Não foi possível carregar os motores.');
     } finally {
       setLoading(false);

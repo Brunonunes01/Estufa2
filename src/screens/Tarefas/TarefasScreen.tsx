@@ -106,7 +106,7 @@ const TarefasScreen = ({ navigation }: TarefasScreenProps) => {
       if (!plantioId && activePlantios.length > 0) {
         setPlantioId(activePlantios[0].id);
       }
-    } catch (error) {
+    } catch {
       Alert.alert('Erro', 'Não foi possível carregar as tarefas.');
     } finally {
       setLoading(false);

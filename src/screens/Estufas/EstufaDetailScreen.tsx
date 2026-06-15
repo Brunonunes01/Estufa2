@@ -26,6 +26,7 @@ import MetricCard from '../../components/ui/MetricCard';
 import { evaluateEstufaHealth } from '../../utils/estufaHealth';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { verifyCurrentUserPassword } from '../../services/securityService';
+import { getPasswordVerificationErrorMessage } from '../../services/securityUiHelpers';
 import { useEstufaDetailData } from '../../hooks/queries/useEstufaDetailData';
 import { useFeedback } from '../../hooks/useFeedback';
 import { queryKeys } from '../../lib/queryClient';
@@ -154,12 +155,8 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
         return;
       }
       deleteEstufaMutation.mutate(estufa.id);
-    } catch (error: any) {
-      if (error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential') {
-        setPasswordError('Senha incorreta. Tente novamente.');
-      } else {
-        showError('Falha ao validar senha de administrador.');
-      }
+    } catch (error: unknown) {
+      showError(getPasswordVerificationErrorMessage(error));
     }
   };
 
@@ -673,4 +670,3 @@ const styles = StyleSheet.create({
 });
 
 export default EstufaDetailScreen;
-

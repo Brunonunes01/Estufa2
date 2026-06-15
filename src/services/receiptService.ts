@@ -1,7 +1,6 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Platform } from 'react-native';
 import * as XLSX from 'xlsx';
 
 import { COLORS } from '../constants/theme';
@@ -248,13 +247,6 @@ const downloadPdfOnWeb = async (uri: string, fileName: string) => {
 
 const applyColumnWidths = (worksheet: XLSX.WorkSheet, widths: number[]) => {
   worksheet['!cols'] = widths.map((wch) => ({ wch }));
-};
-
-const buildMetadataSheet = (entries: Array<[string, string | number]>) => {
-  const rows = entries.map(([campo, valor]) => ({ Campo: campo, Valor: valor }));
-  const sheet = XLSX.utils.json_to_sheet(rows, { header: ['Campo', 'Valor'] });
-  applyColumnWidths(sheet, [28, 42]);
-  return sheet;
 };
 
 const buildSummarySheet = (entries: Array<[string, string | number]>) => {

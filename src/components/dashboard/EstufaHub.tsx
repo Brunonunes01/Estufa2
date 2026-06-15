@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { Estufa, Plantio } from '../../types/domain';
-import { COLORS, RADIUS, SHADOWS } from '../../constants/theme';
+import { COLORS, SHADOWS } from '../../constants/theme';
 
 interface EstufaHubProps {
   estufa: Estufa;

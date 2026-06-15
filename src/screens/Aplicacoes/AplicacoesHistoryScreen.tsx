@@ -31,7 +31,7 @@ const AplicacoesHistoryScreen = ({ route, navigation }: any) => {
     try {
       const listaAplicacoes = await listAplicacoesByPlantio(targetId, plantioId);
       setAplicacoes(listaAplicacoes);
-    } catch (_error) {
+    } catch {
       Alert.alert('Erro', 'Não foi possível carregar o histórico de aplicações.');
     } finally {
       setLoading(false);

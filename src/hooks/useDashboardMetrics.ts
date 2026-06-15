@@ -4,7 +4,7 @@ import { useAppSettings } from './useAppSettings';
 import { useDashboardSummary } from './queries/useDashboardSummary';
 import { evaluateEstufaHealth } from '../utils/estufaHealth';
 import { Plantio } from '../types/domain';
-import { selectPrimaryPlantioByEstufa } from './dashboardMetricsUtils';
+import { getDashboardPendingTaskCount, selectPrimaryPlantioByEstufa } from './dashboardMetricsUtils';
 import { useGlobalStats } from './useGlobalStats';
 
 export const useDashboardMetrics = () => {
@@ -18,6 +18,10 @@ export const useDashboardMetrics = () => {
   const estufas = query.data?.estufas || [];
   const plantios = query.data?.activePlantios || [];
   const todayTasks = query.data?.todayTasks || [];
+  const tarefasHojePendentes = getDashboardPendingTaskCount({
+    tarefasHojePendentes: query.data?.tarefasHojePendentes,
+    todayTasks,
+  });
 
   const activePlantioByEstufa = useMemo(() => {
     return selectPrimaryPlantioByEstufa(
@@ -64,7 +68,7 @@ export const useDashboardMetrics = () => {
     totalReceber: query.data?.totalReceber || 0,
     totalRecebido: query.data?.totalRecebido || 0,
     totalPagar: query.data?.totalPagar || 0,
-    tarefasHojePendentes: todayTasks.length,
+    tarefasHojePendentes,
     summarySource: query.data?.summarySource,
     summaryUpdatedAt: query.data?.summaryUpdatedAt,
     loadingResumo: query.isLoading || query.isFetching || globalStats.isFetching,

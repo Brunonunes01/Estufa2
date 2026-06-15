@@ -7,7 +7,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { listAllPlantios } from '../../services/plantioService';
 import { listVendasByPlantio } from '../../services/vendaService';
 import { getEstufaById } from '../../services/estufaService';
-import { Plantio, Venda, Estufa } from '../../types/domain';
+import { Plantio, Venda } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { exportOperationalCycleExcel, shareOperationalCyclePdf } from '../../services/receiptService';

@@ -31,6 +31,13 @@ import {
   TenantMember,
   updateTenantMemberProfile,
 } from '../../services/shareService';
+import {
+  formatDateTimeValue,
+  formatDateValue,
+  getTenantMembersPermissionMessage,
+  normalizeInviteCodeInput,
+  resolveShareScreenErrorMessage,
+} from '../../services/shareAccountHelpers';
 import { Tenant } from '../../types/domain';
 import { COLORS, RADIUS, SHADOWS, SPACING } from '../../constants/theme';
 import { useAppTheme } from '../../hooks/useAppTheme';
@@ -102,8 +109,9 @@ export default function ShareAccountScreen() {
     try {
       const list = await getSharedTenants(user.uid);
       setSharedTenants(list);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Erro ao buscar parceiros:', error);
+      Alert.alert('Erro', resolveShareScreenErrorMessage(error, 'Nao foi possivel carregar as contas vinculadas.'));
     } finally {
       setLoadingList(false);
     }
@@ -115,12 +123,14 @@ export default function ShareAccountScreen() {
     try {
       const members = await listTenantMembers(selectedTenantId, user.uid);
       setTenantMembers(members.filter((member) => member.userId !== user.uid));
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erro ao buscar membros do tenant:', error);
       setTenantMembers([]);
-      const msg = String(error?.message || '');
-      if (msg.toLowerCase().includes('somente administradores')) {
-        Alert.alert('Sem permissao', 'Apenas administradores deste tenant podem gerenciar parceiros.');
+      const permissionMessage = getTenantMembersPermissionMessage(error);
+      if (permissionMessage) {
+        Alert.alert('Sem permissao', permissionMessage);
+      } else {
+        Alert.alert('Erro', resolveShareScreenErrorMessage(error, 'Nao foi possivel carregar os parceiros desta conta.'));
       }
     } finally {
       setLoadingMembers(false);
@@ -131,7 +141,7 @@ export default function ShareAccountScreen() {
     if (!user) return;
     const tenantParaCompartilhar = selectedTenantId || '';
     if (!tenantParaCompartilhar) {
-      Alert.alert('Atenção', 'Selecione uma conta antes de gerar o convite.');
+      Alert.alert('Atencao', 'Selecione uma conta antes de gerar o convite.');
       return;
     }
 
@@ -142,8 +152,8 @@ export default function ShareAccountScreen() {
       const code = await generateShareCode(tenantParaCompartilhar, tenantName, user.name || 'Produtor', inviteProfile);
       setGeneratedCode(code);
       setGeneratedAt(new Date());
-    } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Falha ao gerar código.');
+    } catch (error: unknown) {
+      Alert.alert('Erro', resolveShareScreenErrorMessage(error, 'Falha ao gerar codigo.'));
     } finally {
       setLoadingGen(false);
     }
@@ -151,19 +161,23 @@ export default function ShareAccountScreen() {
 
   const handleRedeem = async () => {
     if (!inputCode) {
-      Alert.alert('Atenção', 'Digite o código de convite.');
+      Alert.alert('Atencao', 'Digite o codigo de convite.');
+      return;
+    }
+    if (!user?.uid) {
+      Alert.alert('Atencao', 'Sua sessao expirou. Entre novamente.');
       return;
     }
     setLoadingRedeem(true);
     try {
-      const tenantId = await redeemShareCode(inputCode, user!.uid);
+      const tenantId = await redeemShareCode(inputCode, user.uid);
       await refreshUserProfile();
       changeTenant(tenantId);
       Alert.alert('Sucesso', 'Acesso vinculado com sucesso.');
       setInputCode('');
       await loadSharedList();
-    } catch (error: any) {
-      Alert.alert('Erro ao vincular', error.message);
+    } catch (error: unknown) {
+      Alert.alert('Erro ao vincular', resolveShareScreenErrorMessage(error, 'Nao foi possivel vincular a conta.'));
     } finally {
       setLoadingRedeem(false);
     }
@@ -188,8 +202,8 @@ export default function ShareAccountScreen() {
             await removeTenantMember(selectedTenantId, member.userId, user.uid);
             await loadTenantMembers();
             Alert.alert('Sucesso', 'Parceiro removido.');
-          } catch (error: any) {
-            Alert.alert('Erro', error?.message || 'Não foi possível remover o parceiro.');
+          } catch (error: unknown) {
+            Alert.alert('Erro', resolveShareScreenErrorMessage(error, 'Nao foi possivel remover o parceiro.'));
           } finally {
             setRemovingMemberId(null);
           }
@@ -211,40 +225,14 @@ export default function ShareAccountScreen() {
             await updateTenantMemberProfile(selectedTenantId, member.userId, user.uid, profile);
             await loadTenantMembers();
             Alert.alert('Sucesso', `Perfil alterado para ${profileLabel}.`);
-          } catch (error: any) {
-            Alert.alert('Erro', error?.message || 'Não foi possível alterar o perfil do parceiro.');
+          } catch (error: unknown) {
+            Alert.alert('Erro', resolveShareScreenErrorMessage(error, 'Nao foi possivel alterar o perfil do parceiro.'));
           } finally {
             setUpdatingMemberProfile(null);
           }
         },
       },
     ]);
-  };
-
-  const formatDate = (value?: string | number | { toDate?: () => Date }) => {
-    if (!value) return 'Data desconhecida';
-    const date =
-      typeof value === 'number'
-        ? new Date(value)
-        : typeof value === 'string'
-          ? new Date(value)
-          : (value as any).toDate
-            ? (value as any).toDate()
-            : new Date();
-    return date.toLocaleDateString('pt-BR');
-  };
-
-  const formatDateTime = (value?: string | number | { toDate?: () => Date }) => {
-    if (!value) return 'Não informado';
-    const date =
-      typeof value === 'number'
-        ? new Date(value)
-        : typeof value === 'string'
-          ? new Date(value)
-          : (value as any).toDate
-            ? (value as any).toDate()
-            : new Date();
-    return date.toLocaleString('pt-BR');
   };
 
   const getShareProfileLabel = (profile: ShareAccessProfile) => {
@@ -297,8 +285,8 @@ export default function ShareAccountScreen() {
       `Email: ${member.email || 'Não informado'}`,
       `Perfil: ${member.role}`,
       `Permissões: leitura(${member.canRead ? 'sim' : 'não'}), escrita(${member.canWrite ? 'sim' : 'não'}), exclusão(${member.canDelete ? 'sim' : 'não'}), compartilhar(${member.canManageSharing ? 'sim' : 'não'})`,
-      `Vinculado em: ${formatDateTime(member.sharedAt)}`,
-      `Último acesso: ${formatDateTime(member.lastAccessAt)}`,
+      `Vinculado em: ${formatDateTimeValue(member.sharedAt)}`,
+      `Último acesso: ${formatDateTimeValue(member.lastAccessAt)}`,
     ].join('\n');
   };
 
@@ -355,7 +343,7 @@ export default function ShareAccountScreen() {
 
         <View style={styles.infoGrid}>
           <InfoItem icon="email-outline" label="E-mail do responsável" value={item.sharedByEmail || 'Não informado'} appTheme={appTheme} />
-          <InfoItem icon="calendar-check-outline" label="Vinculado em" value={formatDate(item.sharedAt)} appTheme={appTheme} />
+          <InfoItem icon="calendar-check-outline" label="Vinculado em" value={formatDateValue(item.sharedAt)} appTheme={appTheme} />
         </View>
 
         <Surface style={[styles.permissionsBox, { backgroundColor: appTheme.surfaceMuted }]} elevation={0}>
@@ -391,8 +379,8 @@ export default function ShareAccountScreen() {
           </View>
 
           <View style={styles.infoGrid}>
-            <InfoItem icon="calendar-check-outline" label="Vinculado em" value={formatDate(member.sharedAt)} appTheme={appTheme} />
-            <InfoItem icon="clock-outline" label="Último acesso" value={formatDate(member.lastAccessAt)} appTheme={appTheme} />
+            <InfoItem icon="calendar-check-outline" label="Vinculado em" value={formatDateValue(member.sharedAt)} appTheme={appTheme} />
+            <InfoItem icon="clock-outline" label="Último acesso" value={formatDateValue(member.lastAccessAt)} appTheme={appTheme} />
           </View>
 
           <Surface style={[styles.permissionsBox, { backgroundColor: appTheme.surfaceMuted }]} elevation={0}>
@@ -508,7 +496,7 @@ export default function ShareAccountScreen() {
                   label="Código de convite"
                   placeholder="Ex: 9F1A3B..."
                   value={inputCode}
-                  onChangeText={(text) => setInputCode(text.toUpperCase())}
+                  onChangeText={(text) => setInputCode(normalizeInviteCodeInput(text, SHARE_CODE_DEFAULT_LENGTH))}
                   maxLength={SHARE_CODE_DEFAULT_LENGTH}
                   autoCapitalize="characters"
                   style={styles.redeemInputFull}

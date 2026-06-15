@@ -34,3 +34,11 @@ export const selectPrimaryPlantioByEstufa = (estufaIds: string[], plantios: Plan
     return acc;
   }, {});
 };
+
+export const getDashboardPendingTaskCount = ({
+  tarefasHojePendentes,
+  todayTasks,
+}: {
+  tarefasHojePendentes?: number | null;
+  todayTasks: Array<unknown>;
+}) => (typeof tarefasHojePendentes === 'number' ? tarefasHojePendentes : todayTasks.length);

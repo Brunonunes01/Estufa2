@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeRentabilidade } from '../src/services/rentabilidadeService.ts';
+import { computeRentabilidade } from '../src/services/rentabilidadeCore.ts';
 
 test('computeRentabilidade - lucro positivo com todos os campos', () => {
   const result = computeRentabilidade({

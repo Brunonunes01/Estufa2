@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { COLORS, SHADOWS } from '../../constants/theme';
 import { useThemeMode } from '../../hooks/useThemeMode';
 
 interface MetricCardProps {

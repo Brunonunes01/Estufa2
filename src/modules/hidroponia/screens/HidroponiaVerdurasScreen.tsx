@@ -105,7 +105,7 @@ const HidroponiaVerdurasScreen = ({ navigation }: Props) => {
     try {
       const result = await listHydroVerduras(targetId, true);
       setVerduras(result);
-    } catch (error) {
+    } catch {
       Alert.alert('Erro', 'Não foi possível carregar o catálogo de verduras.');
     }
   }, [targetId]);

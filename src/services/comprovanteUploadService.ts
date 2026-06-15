@@ -97,7 +97,7 @@ export const uploadComprovanteToCloudinary = async (
     try {
       const errPayload = await response.json();
       details = String(errPayload?.error?.message || errPayload?.message || '').trim();
-    } catch (_error) {
+    } catch {
       details = '';
     }
     throw new Error(details ? `Falha no upload do comprovante: ${details}` : 'Falha no upload do comprovante.');

@@ -64,7 +64,7 @@ const HidroponiaLoteDetailScreen = ({ navigation, route }: Props) => {
             try {
               await encerrarHydroOcupacao(ocupId, targetId!);
               load();
-            } catch (error) {
+            } catch {
               Alert.alert('Erro', 'Não foi possível liberar a bancada.');
             }
           }

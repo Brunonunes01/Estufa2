@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { selectPrimaryPlantioByEstufa } from '../src/hooks/dashboardMetricsUtils.ts';
+import { getDashboardPendingTaskCount, selectPrimaryPlantioByEstufa } from '../src/hooks/dashboardMetricsUtils.ts';
 
 test('selectPrimaryPlantioByEstufa prioritizes harvest status over recency', () => {
   const result = selectPrimaryPlantioByEstufa(['estufa-1'], [
@@ -10,4 +10,24 @@ test('selectPrimaryPlantioByEstufa prioritizes harvest status over recency', () 
   ]);
 
   assert.equal(result['estufa-1']?.id, 'b');
+});
+
+test('getDashboardPendingTaskCount prioriza contador agregado quando existir', () => {
+  assert.equal(
+    getDashboardPendingTaskCount({
+      tarefasHojePendentes: 7,
+      todayTasks: [{ id: 'a' }, { id: 'b' }],
+    }),
+    7
+  );
+});
+
+test('getDashboardPendingTaskCount faz fallback para lista carregada', () => {
+  assert.equal(
+    getDashboardPendingTaskCount({
+      tarefasHojePendentes: null,
+      todayTasks: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
+    }),
+    3
+  );
 });

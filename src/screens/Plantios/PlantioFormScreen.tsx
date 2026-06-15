@@ -12,6 +12,10 @@ import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/th
 import { Timestamp } from '../../lib/timestamp'; 
 import { invalidatePlantioQueries } from '../../lib/queryInvalidation';
 import { verifyCurrentUserPassword } from '../../services/securityService';
+import {
+  getPasswordVerificationErrorMessage,
+  resolveServiceErrorMessage,
+} from '../../services/securityUiHelpers';
 import { useMutation } from '@tanstack/react-query';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { useTalhoesListData } from '../../hooks/queries/useTalhoesListData';
@@ -95,8 +99,8 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
         [{ text: "OK", onPress: () => navigation.goBack() }]
       );
     },
-    onError: (error: any) => {
-      Alert.alert("Erro", error.message || "Não consegui salvar o ciclo. Tente novamente.");
+    onError: (error: unknown) => {
+      Alert.alert("Erro", resolveServiceErrorMessage(error, "N??o consegui salvar o ciclo. Tente novamente."));
     },
   });
 
@@ -160,7 +164,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
       await updatePlantio(editingId as string, { status: 'cancelado' }, targetId);
       await invalidateQueries();
       navigation.goBack();
-    } catch (e) {
+    } catch {
       Alert.alert("Erro", "Falha ao cancelar o lote.");
     }
   };
@@ -225,8 +229,8 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
       setAdminPassword('');
       await invalidateQueries();
       navigation.goBack();
-    } catch (e: any) {
-      Alert.alert('Exclusão bloqueada', e?.message || 'Não foi possível excluir o ciclo.');
+    } catch (error: unknown) {
+      Alert.alert('Exclus??o bloqueada', getPasswordVerificationErrorMessage(error, 'N??o foi poss??vel excluir o ciclo.'));
     } finally {
       setDeleting(false);
     }
@@ -812,4 +816,3 @@ const styles = StyleSheet.create({
 });
 
 export default PlantioFormScreen;
-

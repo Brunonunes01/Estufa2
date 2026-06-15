@@ -1,5 +1,6 @@
 import NetInfo from '@react-native-community/netinfo';
 import { flushOfflineQueue, getOfflineQueueSize, isOnlineNow } from './offlineStorage';
+import { applyFlushResultToSyncState, isNetworkReadyForSync, toOfflineSyncErrorMessage } from './syncServiceHelpers';
 
 export type OfflineSyncState = {
   syncing: boolean;
@@ -47,14 +48,9 @@ const syncInternal = async () => {
     }
 
     const flushResult = await flushOfflineQueue();
-    state.flushed = flushResult.flushed;
-    state.failed = flushResult.failed;
-    state.queued = flushResult.pending;
-
-    state.lastSyncAt = Date.now();
-    state.lastError = null;
-  } catch (error: any) {
-    state.lastError = String(error?.message || 'Falha ao sincronizar dados pendentes.');
+    Object.assign(state, applyFlushResultToSyncState(state, flushResult, Date.now()));
+  } catch (error) {
+    state.lastError = toOfflineSyncErrorMessage(error);
   } finally {
     state.syncing = false;
     await refreshQueuedCount();
@@ -79,7 +75,7 @@ export const startOfflineSyncListener = () => {
   if (stopListener) return stopListener;
 
   const unsubscribe = NetInfo.addEventListener((net) => {
-    if (net.isConnected && net.isInternetReachable !== false) {
+    if (isNetworkReadyForSync(net)) {
       void syncInternal();
     }
   });

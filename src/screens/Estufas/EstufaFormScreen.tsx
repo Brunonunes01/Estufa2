@@ -13,6 +13,10 @@ import { createEstufa, updateEstufa, getEstufaById, deleteEstufa } from '../../s
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { Timestamp } from '../../lib/timestamp'; 
 import { verifyCurrentUserPassword } from '../../services/securityService';
+import {
+  getPasswordVerificationErrorMessage,
+  resolveServiceErrorMessage,
+} from '../../services/securityUiHelpers';
 import { HydroponicSystemType, ProductionMode } from '../../types/domain';
 import { HYDRO_SYSTEM_OPTIONS } from '../../modules/hidroponia/constants';
 import { useAppSettings } from '../../hooks/useAppSettings';
@@ -281,8 +285,8 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
       await deleteEstufa(editingId, targetId);
       setDeleteModalVisible(false);
       navigation.goBack();
-    } catch (e) {
-      Alert.alert('Erro', 'Falha ao excluir a estufa.');
+    } catch (error: unknown) {
+      Alert.alert('Erro', getPasswordVerificationErrorMessage(error, 'Falha ao excluir a estufa.'));
     } finally {
       setDeleting(false);
     }
@@ -334,8 +338,8 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
       ]);
 
       navigation.goBack();
-    } catch (e: any) {
-      Alert.alert("Erro", e.message || "Falha ao salvar.");
+    } catch (error: unknown) {
+      Alert.alert("Erro", resolveServiceErrorMessage(error, "Falha ao salvar."));
     } finally {
       setLoading(false);
     }

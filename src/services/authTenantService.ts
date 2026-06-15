@@ -1,17 +1,25 @@
 import { User } from '../types/domain';
 import { AvailableTenant } from '../contexts/authTypes';
+import {
+  AuthBootstrapUser,
+  mapMembershipsToAvailableTenants,
+  MembershipRow,
+  resolveBootstrapRole,
+  resolveTenantSelection,
+} from './authTenantHelpers.ts';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
-
-export type AuthBootstrapUser = {
-  id: string;
-  email?: string | null;
-  displayName?: string | null;
-};
 
 export type AuthBootstrapResult = {
   user: User;
   availableTenants: AvailableTenant[];
   resolvedTenantId: string;
+};
+
+type ProfileRow = {
+  id: string;
+  email?: string | null;
+  name?: string | null;
+  role?: User['role'] | null;
 };
 
 export const ensureSupabaseConfigured = () => {
@@ -40,8 +48,8 @@ export const bootstrapAuthTenantState = async (
       .eq('user_id', authUser.id),
   ]);
 
-  let profile = profileResult.data;
-  let memberships = membershipsResult.data || [];
+  let profile = (profileResult.data || null) as ProfileRow | null;
+  let memberships = (membershipsResult.data || []) as MembershipRow[];
 
   if (!profile || !profile.name || !profile.email) {
     const { data: upsertedProfile, error: profileError } = await supabase
@@ -79,48 +87,16 @@ export const bootstrapAuthTenantState = async (
         'tenant_id, role, can_read, can_write, can_delete, can_manage_sharing, tenants(id, name, owner_user_id)'
       )
       .eq('user_id', authUser.id);
-    memberships = reload.data || [];
+    memberships = (reload.data || []) as MembershipRow[];
   }
 
-  const availableTenants: AvailableTenant[] = (memberships || []).map((membership: any) => {
-    const tenant = membership.tenants;
-    const isOwner = tenant?.owner_user_id === authUser.id;
-
-    return {
-      uid: membership.tenant_id,
-      name: tenant?.name || (isOwner ? 'Minha Estufa' : 'Estufa Compartilhada'),
-      type: isOwner ? 'owner' : 'shared',
-      ownerName: isOwner ? fallbackName : undefined,
-      role: (membership.role || 'guest') as AvailableTenant['role'],
-      permissions: isOwner
-        ? {
-            canRead: true,
-            canWrite: true,
-            canDelete: true,
-            canManageSharing: true,
-          }
-        : {
-            canRead: !!membership.can_read,
-            canWrite: !!membership.can_write,
-            canDelete: !!membership.can_delete,
-            canManageSharing: !!membership.can_manage_sharing,
-          },
-    };
-  });
-
-  const ownerTenant = availableTenants.find((item) => item.type === 'owner');
-  const resolvedTenantId =
-    previousTenantId && availableTenants.some((item) => item.uid === previousTenantId)
-      ? previousTenantId
-      : ownerTenant?.uid || availableTenants[0]?.uid || '';
-
-  const role =
-    (profile?.role as User['role']) ||
-    ((memberships || []).some((membership: any) => membership.role === 'admin')
-      ? 'admin'
-      : (memberships || []).some((membership: any) => membership.role === 'operator')
-        ? 'operator'
-        : 'guest');
+  const availableTenants = mapMembershipsToAvailableTenants(
+    memberships,
+    authUser,
+    fallbackName
+  ) as AvailableTenant[];
+  const resolvedTenantId = resolveTenantSelection(availableTenants, previousTenantId);
+  const role = resolveBootstrapRole(profile?.role, memberships);
 
   return {
     availableTenants,

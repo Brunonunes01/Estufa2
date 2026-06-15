@@ -13,6 +13,7 @@ import { listCaixaPessoas } from '../../services/caixaPessoaService';
 import { listDespesasByMonth } from '../../services/despesaService';
 import { listAllPlantios } from '../../services/plantioService';
 import { exportFinancialOverviewExcel, shareFinancialOverviewPdf } from '../../services/receiptService';
+import { resolveServiceErrorMessage } from '../../services/securityUiHelpers';
 import { listVendasByMonth } from '../../services/vendaService';
 import { Despesa, Plantio, Venda } from '../../types/domain';
 
@@ -243,16 +244,16 @@ const RelatoriosScreen = () => {
   const handleExportPdf = async () => {
     try {
       await shareFinancialOverviewPdf(buildExportData());
-    } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Nao foi possivel exportar o PDF.');
+    } catch (error: unknown) {
+      Alert.alert('Erro', resolveServiceErrorMessage(error, 'Nao foi possivel exportar o PDF.'));
     }
   };
 
   const handleExportExcel = async () => {
     try {
       await exportFinancialOverviewExcel(buildExportData());
-    } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Nao foi possivel exportar o Excel.');
+    } catch (error: unknown) {
+      Alert.alert('Erro', resolveServiceErrorMessage(error, 'Nao foi possivel exportar o Excel.'));
     }
   };
 

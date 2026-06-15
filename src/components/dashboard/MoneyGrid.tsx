@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { SPACING, COLORS } from '../../constants/theme';
+import { SPACING } from '../../constants/theme';
 import MetricCard from '../ui/MetricCard';
 import SectionHeading from '../ui/SectionHeading';
 

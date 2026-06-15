@@ -8,7 +8,12 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "postinstall": "node scripts/patch-supabase-hermes.cjs",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
     "test": "node --test tests/*.test.ts",
+    "validate": "npm run typecheck && npm run lint && npm run test",
     "apk:build": "npx --yes eas-cli@latest build -p android --profile preview",
     "support:portal": "node support-portal/server.mjs 4173",
     "typecheck": "tsc --noEmit",
@@ -44,6 +49,7 @@
     "expo-status-bar": "~3.0.8",
     "lottie-react-native": "~7.3.1",
     "moti": "^0.30.0",
+    "pptxgenjs": "^4.0.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
@@ -58,7 +64,13 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/react": "~19.1.10",
+    "@typescript-eslint/eslint-plugin": "^8.61.0",
+    "@typescript-eslint/parser": "^8.61.0",
+    "eslint": "^10.5.0",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.4",
     "typescript": "~5.9.2"
   },
   "private": true

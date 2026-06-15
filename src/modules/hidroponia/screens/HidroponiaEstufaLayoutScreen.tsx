@@ -278,7 +278,7 @@ const HidroponiaEstufaLayoutScreen = ({ navigation, route }: Props) => {
       setEditingSetor(null);
       setNewSetorName('');
       await load();
-    } catch (error) {
+    } catch {
       Alert.alert('Erro', 'Falha ao salvar setor.');
     } finally {
       setSaving(false);
@@ -331,7 +331,7 @@ const HidroponiaEstufaLayoutScreen = ({ navigation, route }: Props) => {
       setEditingEstrutura(null);
       setNewEstruturaName('');
       await load();
-    } catch (error) {
+    } catch {
       Alert.alert('Erro', 'Falha ao salvar bancada.');
     } finally {
       setSaving(false);
@@ -354,7 +354,7 @@ const HidroponiaEstufaLayoutScreen = ({ navigation, route }: Props) => {
             await deleteHydroSetor(estufaId, setor.id, targetId);
             setSelectedSetorId('');
             await load();
-          } catch (error) {
+          } catch {
             Alert.alert('Erro', 'Falha ao excluir setor.');
           }
         },
@@ -384,7 +384,7 @@ const HidroponiaEstufaLayoutScreen = ({ navigation, route }: Props) => {
           try {
             await deleteHydroEstrutura(estufaId, estrutura.id, targetId);
             await load();
-          } catch (error) {
+          } catch {
             Alert.alert('Erro', 'Falha ao excluir bancada.');
           }
         },
@@ -413,7 +413,7 @@ const HidroponiaEstufaLayoutScreen = ({ navigation, route }: Props) => {
                 setMovingFromOcupacao(null);
               }
               await load();
-            } catch (error) {
+            } catch {
               Alert.alert('Erro', 'Falha ao encerrar ocupacao.');
             }
           },
@@ -614,7 +614,6 @@ const HidroponiaEstufaLayoutScreen = ({ navigation, route }: Props) => {
             <View style={styles.structureList}>
               {filteredEstruturas.map((estrutura) => {
                 const ocupsAtivas = getEstruturaOcupacoesAtivas(estrutura.id, ocupacoes);
-                const ocupacao = ocupsAtivas[0] || null;
                 const ocupado = ocupsAtivas.reduce(
                   (sum, item) => sum + Number(item.quantidadeAlocada || 0),
                   0

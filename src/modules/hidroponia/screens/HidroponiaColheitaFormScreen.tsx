@@ -14,7 +14,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../../../hooks/useAuth';
 import { useClientesList } from '../../../hooks/useClientesList';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../../constants/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING } from '../../../constants/theme';
 import { RootStackParamList } from '../../../navigation/types';
 import { HydroOcupacao } from '../types';
 import { registrarColheitaHidroponica } from '../services/hidroponiaColheitaService';
@@ -43,7 +43,7 @@ const HidroponiaColheitaFormScreen = ({ navigation, route }: Props) => {
   const targetId = selectedTenantId || user?.uid;
   const { ocupacaoId, isSeedlingResale } = route.params;
 
-  const { clientes, loading: loadingClientes } = useClientesList();
+  const { clientes } = useClientesList();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -72,7 +72,7 @@ const HidroponiaColheitaFormScreen = ({ navigation, route }: Props) => {
           setOcupacao(data);
           setQuantidade(String(data.quantidadeAlocada || ''));
         }
-      } catch (error) {
+      } catch {
         Alert.alert('Erro', 'Não foi possível carregar a ocupação.');
       } finally {
         setLoading(false);

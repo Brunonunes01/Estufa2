@@ -40,7 +40,7 @@ export const triggerExternalDashboardSync = async (input: DashboardSyncTriggerIn
       }),
       signal: controller?.signal,
     });
-  } catch (_error) {
+  } catch {
     // Intencionalmente silencioso para não quebrar o fluxo principal da operação.
   } finally {
     clearTimeout(timeoutId);

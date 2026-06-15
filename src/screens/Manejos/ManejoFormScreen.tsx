@@ -79,7 +79,7 @@ const ManejoFormScreen = ({ route, navigation }: any) => {
     try {
       await createManejo(manejoData as any, targetId);
       navigation.goBack();
-    } catch (e) {
+    } catch {
       Alert.alert("Erro", "Falha ao salvar o registro de manejo.");
     } finally {
       setLoading(false);

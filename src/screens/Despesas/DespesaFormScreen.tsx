@@ -58,7 +58,7 @@ const DespesaFormScreen = ({ navigation }: any) => {
       try {
         const pessoas = await listCaixaPessoas(targetId);
         setCaixaPessoas(pessoas);
-      } catch (_error) {
+      } catch {
         setCaixaPessoas([]);
       }
     };

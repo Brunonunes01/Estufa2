@@ -67,7 +67,7 @@ export default function PerfilScreen({ navigation }: any) {
       setLongitude(String(location.coords.longitude));
       
       Alert.alert('Sucesso', 'Localização capturada via Satélite! 🛰️');
-    } catch (error) {
+    } catch {
       Alert.alert('Erro', 'Não foi possível obter a localização. Verifique se o GPS está ligado.');
     } finally {
       setLoadingGps(false);
@@ -89,8 +89,8 @@ export default function PerfilScreen({ navigation }: any) {
       await Share.share({
         message: mensagem,
       });
-    } catch (error) {
-      console.error('Erro ao partilhar', error);
+    } catch {
+      console.error('Erro ao partilhar a localizacao');
     }
   };
 
@@ -114,7 +114,7 @@ export default function PerfilScreen({ navigation }: any) {
       if (error) throw error;
       Alert.alert('Sucesso', 'Dados da propriedade atualizados com sucesso!');
       navigation.goBack();
-    } catch (error) {
+    } catch {
       Alert.alert('Erro', 'Falha ao guardar o perfil.');
     } finally {
       setSaving(false);

@@ -1,8 +1,14 @@
 export type QueueOptions = { syncMode?: 'allow_queue' | 'online_only' };
 
-export const isOfflineLikeError = (error: any) => {
-  const code = String(error?.code || '').toLowerCase();
-  const message = String(error?.message || '').toLowerCase();
+type ErrorLike = {
+  code?: string | number | null;
+  message?: string | null;
+};
+
+export const isOfflineLikeError = (error: unknown) => {
+  const errorLike = (error && typeof error === 'object' ? error : {}) as ErrorLike;
+  const code = String(errorLike.code || '').toLowerCase();
+  const message = String(errorLike.message || '').toLowerCase();
   return (
     code.includes('unavailable') ||
     code.includes('deadline-exceeded') ||

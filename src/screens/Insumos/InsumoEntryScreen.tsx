@@ -59,7 +59,7 @@ const InsumoEntryScreen = ({ route, navigation }: any) => {
                     const validPreselected = preselectedInsumoId && insumos.some((item) => item.id === preselectedInsumoId);
                     setSelectedInsumoId(validPreselected ? preselectedInsumoId : insumos[0].id);
                 }
-            } catch (error) {
+            } catch {
                 Alert.alert("Erro", "Não foi possível carregar os dados iniciais.");
             } finally {
                 setLoadingData(false);

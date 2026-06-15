@@ -1,5 +1,4 @@
 import { Timestamp } from '../../lib/timestamp';
-import { HydroponicSystemType } from '../../types/domain';
 
 export type HydroLoteStatus = 'ativo' | 'concluido' | 'cancelado';
 

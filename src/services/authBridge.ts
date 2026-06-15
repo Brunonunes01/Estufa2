@@ -1,10 +1,5 @@
+import { mapSessionUserToAuthBridgeUser, AuthBridgeUser } from './authBridgeHelpers.ts';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
-
-export type AuthBridgeUser = {
-  id: string;
-  email?: string | null;
-  displayName?: string | null;
-};
 
 const ensureSupabaseReady = () => {
   if (!isSupabaseConfigured()) {
@@ -59,16 +54,7 @@ export const onAuthStateChangedBridge = (
   ensureSupabaseReady();
   const supabase = getSupabaseClient();
   const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-    const user = session?.user;
-    callback(
-      user
-        ? {
-            id: user.id,
-            email: user.email,
-            displayName: (user.user_metadata?.display_name as string | undefined) || null,
-          }
-        : null
-    );
+    callback(mapSessionUserToAuthBridgeUser(session?.user));
   });
 
   return () => data.subscription.unsubscribe();
@@ -79,11 +65,5 @@ export const getCurrentAuthUserBridge = async (): Promise<AuthBridgeUser | null>
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
-  const user = data.session?.user;
-  if (!user) return null;
-  return {
-    id: user.id,
-    email: user.email,
-    displayName: (user.user_metadata?.display_name as string | undefined) || null,
-  };
+  return mapSessionUserToAuthBridgeUser(data.session?.user);
 };

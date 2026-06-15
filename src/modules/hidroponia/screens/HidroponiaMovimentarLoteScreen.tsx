@@ -7,7 +7,7 @@ import { getEstufaById } from '../../../services/estufaService';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../../constants/theme';
 import { RootStackParamList } from '../../../navigation/types';
 import { Estufa, HydroEstrutura, HydroSetor } from '../../../types/domain';
-import { HYDRO_STAGE_OPTIONS, getHydroStageLabel } from '../constants';
+import { HYDRO_STAGE_OPTIONS } from '../constants';
 import { createHydroMovimentacao } from '../services/hidroponiaMovimentacaoService';
 import { getHydroLoteById } from '../services/hidroponiaLoteService';
 import { listHydroOcupacoesByEstufa } from '../services/hidroponiaOcupacaoService';
@@ -36,7 +36,7 @@ const HidroponiaMovimentarLoteScreen = ({ navigation, route }: Props) => {
   const [perdaNoMovimento, setPerdaNoMovimento] = useState('');
   const [culturaBancada, setCulturaBancada] = useState('');
   const [variedadeBancada, setVariedadeBancada] = useState('');
-  const [motivoPerda, setMotivoPerda] = useState('');
+  const [motivoPerda] = useState('');
   const [responsavel, setResponsavel] = useState('');
   const [observacoes, setObservacoes] = useState('');
 

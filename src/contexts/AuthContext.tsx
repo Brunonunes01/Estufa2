@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useEffect, useMemo, useState, ReactNode } from 'react';
+import React, { createContext, useCallback, useEffect, useMemo, useRef, useState, ReactNode } from 'react';
 
 import { onAuthStateChangedBridge, signInWithPasswordBridge } from '../services/authBridge';
 import { bootstrapAuthTenantState } from '../services/authTenantService';
@@ -11,47 +11,67 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
   const [availableTenants, setAvailableTenants] = useState<AuthContextData['availableTenants']>([]);
+  const selectedTenantIdRef = useRef('');
+  const authBootstrapRef = useRef(0);
 
   const ensureSupabaseProfileAndTenants = useCallback(
     async (authUser: { id: string; email?: string | null; displayName?: string | null }) => {
-      const bootstrap = await bootstrapAuthTenantState(authUser, selectedTenantId);
+      const bootstrapId = authBootstrapRef.current + 1;
+      authBootstrapRef.current = bootstrapId;
+      const bootstrap = await bootstrapAuthTenantState(authUser, selectedTenantIdRef.current);
+      if (authBootstrapRef.current !== bootstrapId) return;
       setAvailableTenants(bootstrap.availableTenants);
       setSelectedTenantId(bootstrap.resolvedTenantId);
+      selectedTenantIdRef.current = bootstrap.resolvedTenantId;
       setUser(bootstrap.user);
     },
-    [selectedTenantId]
+    []
   );
 
   useEffect(() => {
     let authUnsubscribe: (() => void) | null = null;
+    let isMounted = true;
 
     const bootstrap = async () => {
       authUnsubscribe = onAuthStateChangedBridge(async (authUser) => {
+        if (!isMounted) return;
         if (authUser) {
           try {
             await ensureSupabaseProfileAndTenants(authUser);
-          } catch (error) {
-            console.error('AuthContext Error:', error);
+          } catch {
+            if (!isMounted) return;
             setUser(null);
+            setAvailableTenants([]);
+            setSelectedTenantId('');
+            selectedTenantIdRef.current = '';
           }
         } else {
           setUser(null);
           setAvailableTenants([]);
           setSelectedTenantId('');
+          selectedTenantIdRef.current = '';
         }
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       });
     };
 
     bootstrap();
 
     return () => {
+      isMounted = false;
       if (authUnsubscribe) authUnsubscribe();
     };
   }, [ensureSupabaseProfileAndTenants]);
 
   const changeTenant = (uid: string) => {
-    setSelectedTenantId(uid);
+    const trimmedUid = uid.trim();
+    if (!trimmedUid || !availableTenants.some((tenant) => tenant.uid === trimmedUid)) {
+      return;
+    }
+    selectedTenantIdRef.current = trimmedUid;
+    setSelectedTenantId(trimmedUid);
   };
 
   const signIn = async (email: string, password: string) => {

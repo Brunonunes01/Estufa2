@@ -1,4 +1,4 @@
-name: Typecheck
+name: Quality
 
 on:
   pull_request:
@@ -8,7 +8,7 @@ on:
       - master
 
 jobs:
-  typecheck:
+  quality:
     runs-on: ubuntu-latest
 
     steps:
@@ -26,3 +26,9 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test

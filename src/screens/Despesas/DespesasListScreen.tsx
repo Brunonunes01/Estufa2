@@ -51,7 +51,7 @@ const DespesasListScreen = ({ navigation }: any) => {
           map[p.id] = p.nome;
         });
         setCaixaPessoasMap(map);
-      } catch (_error) {
+      } catch {
         setCaixaPessoasMap({});
       }
     };
@@ -128,7 +128,7 @@ const DespesasListScreen = ({ navigation }: any) => {
         return;
       }
       await Linking.openURL(url);
-    } catch (_error) {
+    } catch {
       Alert.alert('Comprovante', 'Falha ao abrir o comprovante.');
     }
   }, []);

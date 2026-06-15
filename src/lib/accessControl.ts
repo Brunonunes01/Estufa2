@@ -1,13 +1,13 @@
-type SharedTenantRole = 'admin' | 'operator' | 'guest';
+export type SharedTenantRole = 'admin' | 'operator' | 'guest';
 
-type TenantPermissions = {
+export type TenantPermissions = {
   canRead?: boolean;
   canWrite?: boolean;
   canDelete?: boolean;
   canManageSharing?: boolean;
 };
 
-type TenantContext = {
+export type TenantContext = {
   type?: 'owner' | 'shared';
   role?: SharedTenantRole;
   permissions?: TenantPermissions;
@@ -58,6 +58,45 @@ const sharedRoleDefaults: Record<SharedTenantRole, Required<TenantPermissions>> 
   },
 };
 
+export const resolveSharedTenantRole = (role?: string | null): SharedTenantRole => {
+  if (role === 'admin' || role === 'operator') return role;
+  return 'guest';
+};
+
+export const getDefaultTenantPermissions = (role: SharedTenantRole): Required<TenantPermissions> =>
+  sharedRoleDefaults[role];
+
+export const resolveTenantPermissions = (tenant: TenantContext): Required<TenantPermissions> => {
+  if (tenant?.type === 'owner') {
+    return {
+      canRead: true,
+      canWrite: true,
+      canDelete: true,
+      canManageSharing: true,
+    };
+  }
+
+  const sharedRole = resolveSharedTenantRole(tenant?.role);
+  const defaults = getDefaultTenantPermissions(sharedRole);
+  const permissions = tenant?.permissions;
+
+  return {
+    canRead: Boolean(permissions?.canRead ?? defaults.canRead),
+    canWrite: Boolean(permissions?.canWrite ?? defaults.canWrite),
+    canDelete: Boolean(permissions?.canDelete ?? defaults.canDelete),
+    canManageSharing: Boolean(permissions?.canManageSharing ?? defaults.canManageSharing),
+  };
+};
+
+export const resolveAccessRole = (tenant: TenantContext): AccessRole => {
+  if (tenant?.type === 'owner') return 'owner';
+
+  const sharedRole = resolveSharedTenantRole(tenant?.role);
+  if (sharedRole === 'admin') return 'manager';
+  if (sharedRole === 'operator') return 'operator';
+  return 'viewer';
+};
+
 export const getRoleLabel = (role: AccessRole) => {
   if (role === 'owner') return 'Proprietário';
   if (role === 'manager') return 'Gerente';
@@ -67,22 +106,13 @@ export const getRoleLabel = (role: AccessRole) => {
 
 export const getAccessSnapshot = (tenant: TenantContext): AccessSnapshot => {
   const isOwner = tenant?.type === 'owner';
-  const sharedRole = (tenant?.role || 'guest') as SharedTenantRole;
-  const defaults = sharedRoleDefaults[sharedRole];
-  const permissions = tenant?.permissions || defaults;
-
-  const canRead = isOwner ? true : Boolean(permissions.canRead ?? defaults.canRead);
-  const canWrite = isOwner ? true : Boolean(permissions.canWrite ?? defaults.canWrite);
-  const canDelete = isOwner ? true : Boolean(permissions.canDelete ?? defaults.canDelete);
-  const canManageSharing = isOwner ? true : Boolean(permissions.canManageSharing ?? defaults.canManageSharing);
-
-  const accessRole: AccessRole = isOwner
-    ? 'owner'
-    : sharedRole === 'admin'
-      ? 'manager'
-      : sharedRole === 'operator'
-        ? 'operator'
-        : 'viewer';
+  const sharedRole = resolveSharedTenantRole(tenant?.role);
+  const permissions = resolveTenantPermissions(tenant);
+  const canRead = permissions.canRead;
+  const canWrite = permissions.canWrite;
+  const canDelete = permissions.canDelete;
+  const canManageSharing = permissions.canManageSharing;
+  const accessRole = resolveAccessRole(tenant);
 
   const isManager = accessRole === 'manager';
   const isOperator = accessRole === 'operator';

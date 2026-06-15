@@ -42,7 +42,7 @@ export const useGeofenceValidation = (targetCoords?: Coordinates, radiusInMeters
         );
 
         setIsWithinRange(distance <= radiusInMeters);
-      } catch (err) {
+      } catch {
         setError('Erro ao obter localização.');
       } finally {
         setLoading(false);

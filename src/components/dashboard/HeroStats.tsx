@@ -1,6 +1,5 @@
 import React from 'react';
 import { Text, View, StyleSheet } from 'react-native';
-import { COLORS } from '../../constants/theme';
 
 interface HeroStatsProps {
   estufas: number;

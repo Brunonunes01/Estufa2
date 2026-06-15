@@ -18,8 +18,12 @@ import { Plantio, Cliente, PlantioCaixaPerfil } from '../../types/domain';
 import { COLORS } from '../../constants/theme';
 import { invalidateClientesQuery, invalidateVendasQueries } from '../../lib/queryInvalidation';
 import { verifyCurrentUserPassword } from '../../services/securityService';
+import {
+  getPasswordVerificationErrorMessage,
+  resolveServiceErrorMessage,
+} from '../../services/securityUiHelpers';
 import { useAppSettings } from '../../hooks/useAppSettings';
-import { sanitizeDecimalInput, sanitizeIntegerInput } from '../../utils/numericFields';
+import { sanitizeDecimalInput } from '../../utils/numericFields';
 import {
   clearColheitaDraft,
   loadColheitaDraft,
@@ -27,7 +31,6 @@ import {
 } from '../../services/colheitaDraftStorage';
 import {
   buildColheitaEditSnapshot,
-  loadColheitaFormBootstrap,
   MetodoPagamento,
   UnidadeColheita,
 } from './colheitaFormUtils';
@@ -197,8 +200,8 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                     throw new Error('Colheita vinculada à venda não encontrada.');
                 }
             }
-        } catch (e: any) {
-            Alert.alert("Erro", e?.message || "Falha ao carregar dados.");
+        } catch (error: unknown) {
+            Alert.alert("Erro", resolveServiceErrorMessage(error, "Falha ao carregar dados."));
         } finally {
             setLoadingData(false);
         }
@@ -520,26 +523,22 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   };
 
   const handleSavePerfilCaixa = async () => {
-    if (!targetId) return;
-    if (!selectedPlantioId) {
-      Alert.alert('Atenção', 'Selecione o ciclo antes de cadastrar perfis de caixa.');
-      return;
-    }
+    if (!targetId || !selectedPlantioId) return;
 
     const nome = perfilCaixaNome.trim();
     const pesoBrutoNum = parseFloat(perfilCaixaPesoBruto.replace(',', '.'));
     const pesoLiquidoNum = parseFloat(perfilCaixaPesoLiquido.replace(',', '.'));
 
     if (!nome) {
-      Alert.alert('Atenção', 'Digite o nome do tipo de caixa.');
+      Alert.alert('Aten????o', 'Digite o nome do tipo de caixa.');
       return;
     }
     if (!pesoBrutoNum || pesoBrutoNum <= 0) {
-      Alert.alert('Atenção', 'Informe um peso bruto válido.');
+      Alert.alert('Aten????o', 'Informe um peso bruto v??lido.');
       return;
     }
     if (!pesoLiquidoNum || pesoLiquidoNum <= 0) {
-      Alert.alert('Atenção', 'Informe um peso líquido válido.');
+      Alert.alert('Aten????o', 'Informe um peso l??quido v??lido.');
       return;
     }
 
@@ -570,8 +569,8 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
         setSelectedCaixaPerfilId(editingPerfilCaixaId);
       }
       resetPerfilCaixaForm();
-    } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Não foi possível salvar o perfil de caixa.');
+    } catch (error: unknown) {
+      Alert.alert('Erro', resolveServiceErrorMessage(error, 'Nao foi possivel salvar o perfil de caixa.'));
     } finally {
       setSalvandoPerfilCaixa(false);
     }
@@ -593,8 +592,8 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
       if (editingPerfilCaixaId === perfilId) {
         resetPerfilCaixaForm();
       }
-    } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Não foi possível excluir o perfil de caixa.');
+    } catch (error: unknown) {
+      Alert.alert('Erro', resolveServiceErrorMessage(error, 'Nao foi possivel excluir o perfil de caixa.'));
     } finally {
       setSalvandoPerfilCaixa(false);
     }
@@ -603,19 +602,25 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const handleDelete = () => {
     if (!targetId) return;
     if (!editingColheitaId) {
-      Alert.alert('Erro', 'Não foi possível identificar a colheita desta venda.');
+      Alert.alert('Erro', 'N??o foi poss??vel identificar a colheita desta venda.');
       return;
     }
 
     Alert.alert("Excluir Venda", "Deseja remover este registro permanentemente?", [
       { text: "Cancelar", style: "cancel" },
-      { text: "Excluir", style: "destructive", onPress: async () => {
+      {
+        text: "Excluir",
+        style: "destructive",
+        onPress: async () => {
           try {
             await deleteColheita(editingColheitaId, targetId);
             await invalidateQueries();
             navigation.goBack();
-          } catch (e: any) { Alert.alert("Erro", e?.message || "Falha ao excluir."); }
-      }}
+          } catch (error: unknown) {
+            Alert.alert("Erro", resolveServiceErrorMessage(error, "Falha ao excluir."));
+          }
+        },
+      },
     ]);
   };
 
@@ -636,7 +641,11 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
         setModalVisible(false);
         setNovoClienteNome('');
         await invalidateClientesQuery(targetId);
-    } catch (error) { Alert.alert("Erro", "Falha ao cadastrar."); } finally { setSalvandoNovoCliente(false); }
+    } catch (error: unknown) {
+      Alert.alert("Erro", resolveServiceErrorMessage(error, "Falha ao cadastrar."));
+    } finally {
+      setSalvandoNovoCliente(false);
+    }
   };
 
   const handleQuickRegisterCaixaPessoa = async () => {
@@ -679,10 +688,10 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   };
 
   const persistColheita = async (allowBeforeCycleDays = false, reason?: string) => {
-      if (!targetId) return Alert.alert("Atenção", "Sua sessão expirou. Entre novamente.");
-      if (!selectedPlantioId) return Alert.alert("Atenção", "Escolha o ciclo para registrar a venda.");
-      if (!quantidade) return Alert.alert("Atenção", "Digite a quantidade da venda.");
-      if (metodoPagamento !== 'prazo' && caixaPessoas.length > 0 && !pagamentoPara) return Alert.alert("Atenção", "Selecione quem recebeu no caixa.");
+      if (!targetId) return Alert.alert("Aten????o", "Sua sess??o expirou. Entre novamente.");
+      if (!selectedPlantioId) return Alert.alert("Aten????o", "Escolha o ciclo para registrar a venda.");
+      if (!quantidade) return Alert.alert("Aten????o", "Digite a quantidade da venda.");
+      if (metodoPagamento !== "prazo" && caixaPessoas.length > 0 && !pagamentoPara) return Alert.alert("Aten????o", "Selecione quem recebeu no caixa.");
 
       setLoading(true);
       try {
@@ -690,7 +699,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
           const qtdNum = parseFloat(quantidade.replace(',', '.'));
           const precoNum = parseFloat(preco.replace(',', '.')) || 0;
           if (!qtdNum || qtdNum <= 0) {
-            Alert.alert("Atenção", "A quantidade precisa ser maior que zero.");
+            Alert.alert("Aten????o", "A quantidade precisa ser maior que zero.");
             return;
           }
 
@@ -713,7 +722,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
 
           if (isEditMode) {
               if (!editingColheitaId) {
-                throw new Error('Não foi possível identificar a colheita vinculada para edição.');
+                throw new Error('N??o foi poss??vel identificar a colheita vinculada para edi????o.');
               }
               await updateColheita(editingColheitaId, data, targetId, {
                 allowBeforeCycleDays: allowBeforeCycleDays || shouldSaveWithCycleUnlock,
@@ -742,7 +751,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
           const totalVenda = (qtdNum || 0) * (precoNum || 0);
           Alert.alert(
             isEditMode ? "Venda atualizada" : "Venda registrada",
-            `${qtdNum} ${unidade} • R$ ${totalVenda.toFixed(2)}${plantioObj?.codigoLote ? `\nLote: ${plantioObj.codigoLote}` : ''}`,
+            `${qtdNum} ${unidade} - R$ ${totalVenda.toFixed(2)}${plantioObj?.codigoLote ? `\nLote: ${plantioObj.codigoLote}` : ''}`,
             [{
               text: "OK",
               onPress: () => {
@@ -753,20 +762,24 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
               },
             }]
           );
-      } catch (e: any) { Alert.alert("Erro", e.message || "Não consegui salvar a venda. Tente novamente."); } finally { setLoading(false); }
+      } catch (error: unknown) {
+        Alert.alert("Erro", resolveServiceErrorMessage(error, "Nao consegui salvar a venda. Tente novamente."));
+      } finally {
+        setLoading(false);
+      }
   };
 
   const handleUnlockWithAdmin = async () => {
     if (!adminPassword.trim()) {
-      Alert.alert('Atenção', 'Digite a senha de administrador.');
+      Alert.alert('Aten????o', 'Digite a senha de administrador.');
       return;
     }
     if (!unlockReason.trim()) {
-      Alert.alert('Atenção', 'Informe o motivo do desbloqueio.');
+      Alert.alert('Aten????o', 'Informe o motivo do desbloqueio.');
       return;
     }
     if (!targetId || !selectedPlantioId) {
-      Alert.alert('Atenção', 'Escolha o ciclo para desbloquear.');
+      Alert.alert('Aten????o', 'Escolha o ciclo para desbloquear.');
       return;
     }
 
@@ -774,7 +787,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
     try {
       const valid = await verifyCurrentUserPassword(adminPassword.trim());
       if (!valid) {
-        Alert.alert('Senha inválida', 'A senha de administrador está incorreta.');
+        Alert.alert('Senha inv??lida', 'A senha de administrador est?? incorreta.');
         return;
       }
       const reason = unlockReason.trim();
@@ -790,22 +803,22 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
             : plantio
         )
       );
-      
+
       // Ao desbloquear com admin, ja autorizamos a edicao tambem para evitar segundo prompt
       setIsEditAuthorized(true);
       setSaleUnlockedByAdmin(true);
       setUnlockModalVisible(false);
       setAdminPassword('');
-	      setUnlockReason(reason);
-	      
-	      if (validationErrors.length > 0) {
-	        Alert.alert('Revise os campos', validationErrors[0]);
-	        return;
-	      }
-	      // Salva direto apos autorizacao de admin
-	      await persistColheita(true, reason);
-	    } catch {
-      Alert.alert('Erro', 'Não foi possível desbloquear o ciclo.');
+      setUnlockReason(reason);
+
+      if (validationErrors.length > 0) {
+        Alert.alert('Revise os campos', validationErrors[0]);
+        return;
+      }
+      // Salva direto apos autorizacao de admin
+      await persistColheita(true, reason);
+    } catch (error: unknown) {
+      Alert.alert('Erro', getPasswordVerificationErrorMessage(error, 'Nao foi possivel desbloquear o ciclo.'));
     } finally {
       setUnlocking(false);
     }
@@ -1426,25 +1439,22 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                 style={styles.modalBtn}
                 disabled={editAuthorizing}
                 onPress={async () => {
-                  if (!editPassword.trim()) {
-                    Alert.alert('Atenção', 'Digite a senha para continuar.');
-                    return;
-                  }
-                  setEditAuthorizing(true);
                   try {
                     const ok = await verifyCurrentUserPassword(editPassword.trim());
                     if (!ok) {
                       Alert.alert('Senha invalida', 'A senha informada esta incorreta.');
                       return;
                     }
-	                    setIsEditAuthorized(true);
-	                    setEditAuthModalVisible(false);
-	                    if (validationErrors.length > 0) {
-	                      Alert.alert('Revise os campos', validationErrors[0]);
-	                      return;
-	                    }
-	                    // Salva direto para evitar o delay do estado assincrono que faria o handleSave abrir o modal de novo
-	                    await persistColheita(isCycleUnlockedForSale, cycleUnlockReason);
+                    setIsEditAuthorized(true);
+                    setEditAuthModalVisible(false);
+                    if (validationErrors.length > 0) {
+                      Alert.alert('Revise os campos', validationErrors[0]);
+                      return;
+                    }
+                    // Salva direto para evitar o delay do estado assincrono que faria o handleSave abrir o modal de novo
+                    await persistColheita(isCycleUnlockedForSale, cycleUnlockReason);
+                  } catch (error: unknown) {
+                    Alert.alert('Erro', getPasswordVerificationErrorMessage(error, 'Nao foi possivel autorizar a edicao da venda.'));
                   } finally {
                     setEditAuthorizing(false);
                   }

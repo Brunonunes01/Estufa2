@@ -114,7 +114,7 @@ const HidroponiaLoteFormScreen = ({ navigation, route }: Props) => {
             setVariedadeBase(lote.variedadeBase || '');
           }
         }
-      } catch (error) {
+      } catch {
         Alert.alert('Erro', 'Não foi possível carregar os dados.');
       } finally {
         setLoading(false);

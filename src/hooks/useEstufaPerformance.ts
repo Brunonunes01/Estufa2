@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { listAllEstufasPerformance } from '../services/estufaFinanceService';
-import { queryKeys } from '../lib/queryClient';
 
 export const useEstufaPerformance = (tenantId?: string) => {
   return useQuery({

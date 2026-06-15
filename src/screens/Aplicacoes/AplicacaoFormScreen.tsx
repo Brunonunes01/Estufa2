@@ -33,7 +33,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
   const [tipoAplicacao, setTipoAplicacao] = useState<'defensivo' | 'fertilizacao'>('defensivo');
   const [volumeTanque, setVolumeTanque] = useState('');
   const [numTanques, setNumTanques] = useState('1');
-  const [observacoes, setObservacoes] = useState('');
+  const [observacoes] = useState('');
   
   const [itens, setItens] = useState<AplicacaoItemData[]>([]);
   const [tempInsumoId, setTempInsumoId] = useState('');
@@ -60,7 +60,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
 
         if (!plantioId && ativos.length > 0) setPlantioId(ativos[0].id);
         if (listaInsumos.length > 0) setTempInsumoId(listaInsumos[0].id);
-      } catch (e) { Alert.alert("Erro", "Falha ao carregar os dados."); } 
+      } catch { Alert.alert("Erro", "Falha ao carregar os dados."); } 
       finally { setLoadingData(false); }
     };
     load();

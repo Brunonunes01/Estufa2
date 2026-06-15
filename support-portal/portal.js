@@ -1695,7 +1695,7 @@ function parseValueByType(type, raw) {
     if (!txt) return null;
     try {
       return JSON.parse(txt);
-    } catch (_error) {
+    } catch {
       throw new Error('Campo JSON invalido. Revise a estrutura antes de salvar.');
     }
   }
@@ -2963,7 +2963,7 @@ async function bootstrapAuth() {
         }
       });
       return;
-    } catch (_error) {
+    } catch {
       state.allowed = false;
     }
   }
