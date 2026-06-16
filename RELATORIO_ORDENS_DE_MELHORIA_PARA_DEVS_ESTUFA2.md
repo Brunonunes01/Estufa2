@@ -1089,3 +1089,50 @@ Proximos passos atualizados:
 1. Entrar no endurecimento gradual de `strict` no TypeScript, comecando por flags seguras e areas ja estabilizadas
 2. Depois disso, ampliar testes de integracao para auth, tenant, share e offline sync
 3. Na sequencia, quebrar telas e services grandes em modulos menores
+
+Atualizacao da rodada seguinte:
+- Ajuste do script oficial de testes em `package.json` para usar `node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.ts`, removendo o warning recorrente do runner sem forcar mudanca ampla de modulo no app
+- Primeiro endurecimento seguro do TypeScript em `tsconfig.json` com `useUnknownInCatchVariables: true`
+- Validacao exploratoria de `noImplicitReturns` descartada por enquanto, porque a flag hoje estoura em codigo de dependencia dentro de `expo-file-system`, o que nao gera retorno imediato para a base do app
+
+Evidencias validadas apos esta rodada:
+- `npm run test` verde com `66` testes passando e sem warnings de `MODULE_TYPELESS_PACKAGE_JSON`
+- `npm run typecheck` verde com `useUnknownInCatchVariables` habilitado
+- `npm run lint` verde
+
+Proximos passos atualizados:
+1. Avancar no endurecimento gradual de TypeScript em flags e dominios que ja estao estabilizados, sem ativar `strict` total de uma vez
+2. Entrar em testes de integracao para `auth`, `tenant`, `share` e `offline sync`
+3. Depois disso, modularizar telas e services maiores com foco em `ShareAccountScreen`, `VendasListScreen` e fluxos financeiros
+
+Atualizacao da rodada seguinte:
+- Extracao de nucleos testaveis sem dependencias de runtime mobile em `src/services/authTenantBootstrapCore.ts`, `src/services/shareServiceCore.ts` e `src/services/offline/syncServiceCore.ts`
+- Adequacao dos adapters de runtime em `src/services/authTenantService.ts`, `src/services/shareService.ts` e `src/services/offline/syncService.ts` para consumir esses nucleos
+- Inclusao de testes de integracao/composicao para `auth`, `tenant`, `share` e `offline sync` em `tests/authTenantIntegration.test.ts`, `tests/tenantSelectionStorage.test.ts`, `tests/shareServiceIntegration.test.ts` e `tests/syncServiceIntegration.test.ts`
+- Ajuste fino de imports ESM/type-only para permitir execucao limpa da suite Node sem carregar `react-native` acidentalmente
+
+Evidencias validadas apos esta rodada:
+- `npm.cmd run test` verde com `73` testes passando
+- `npm.cmd run typecheck` verde
+- `npm.cmd run lint` verde
+
+Proximos passos atualizados:
+1. Continuar o endurecimento gradual de TypeScript em dominios sensiveis, agora com a base de integracao ja blindada
+2. Modularizar telas e services maiores, comecando por `ShareAccountScreen`, `VendasListScreen` e fluxos financeiros
+3. Revisar contratos de erro e dados nos services restantes que ainda misturam infraestrutura com regra de negocio
+
+Atualizacao da rodada seguinte:
+- Substituicao do layout generico do comprovante individual por um template novo em `src/services/pdfService.ts`, alinhado ao modelo visual de referencia de comprovante de venda
+- Integracao do fluxo de pos-venda para abrir o comprovante imediatamente apos cadastro de venda em `src/screens/Colheitas/ColheitaFormScreen.tsx` e `src/modules/hidroponia/screens/HidroponiaVendaFormScreen.tsx`
+- Inclusao da busca de venda por colheita em `src/services/vendaService.ts` para permitir emissao automatica do comprovante no fluxo agricola tradicional
+- Limpeza do warning residual de lint no service de PDF apos a troca do template ativo
+
+Evidencias validadas apos esta rodada:
+- `npm.cmd run typecheck` verde
+- `npm.cmd run lint` verde com `0 warnings` e `0 errors`
+- Fluxo novo de venda agora exibe acao `Comprovante` no sucesso, reutilizando a geracao de PDF do app
+
+Proximos passos atualizados:
+1. Refinar o template novo para aproximacao visual final com o comprovante de referencia, incluindo textos comerciais, rodape e identidade definitiva do nome do app quando voce concluir a troca de marca
+2. Validar o fluxo real no aparelho com uma venda completa e confirmar compartilhamento/impressao em Android
+3. Depois disso, seguir na modularizacao das telas grandes e no endurecimento adicional de contratos e tipagem

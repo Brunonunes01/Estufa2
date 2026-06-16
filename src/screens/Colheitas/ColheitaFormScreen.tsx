@@ -18,6 +18,8 @@ import { Plantio, Cliente, PlantioCaixaPerfil } from '../../types/domain';
 import { COLORS } from '../../constants/theme';
 import { invalidateClientesQuery, invalidateVendasQueries } from '../../lib/queryInvalidation';
 import { verifyCurrentUserPassword } from '../../services/securityService';
+import { compartilharPDF } from '../../services/pdfService';
+import { getVendaByColheitaId } from '../../services/vendaService';
 import {
   getPasswordVerificationErrorMessage,
   resolveServiceErrorMessage,
@@ -720,6 +722,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
           };
           const shouldSaveWithCycleUnlock = isBeforeMinimumSaleDate && isCycleUnlockedForSale;
 
+          let createdColheitaId: string | null = null;
           if (isEditMode) {
               if (!editingColheitaId) {
                 throw new Error('N??o foi poss??vel identificar a colheita vinculada para edi????o.');
@@ -735,7 +738,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                   : null,
               });
           } else {
-              await createColheita(data, targetId, selectedPlantioId, plantioObj!.estufaId, {
+              createdColheitaId = await createColheita(data, targetId, selectedPlantioId, plantioObj!.estufaId, {
                 allowBeforeCycleDays: allowBeforeCycleDays || shouldSaveWithCycleUnlock,
                 overrideAudit: allowBeforeCycleDays
                   ? {
@@ -749,18 +752,48 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
 
           await invalidateQueries();
           const totalVenda = (qtdNum || 0) * (precoNum || 0);
+          const openReceipt = async () => {
+            if (!createdColheitaId) return;
+            const venda = await getVendaByColheitaId(createdColheitaId, targetId);
+            if (!venda) return;
+            const cliente = clientesList.find((item) => item.id === venda.clienteId) || null;
+            await compartilharPDF({
+              colheita: venda as any,
+              cliente,
+              plantio: plantioObj || null,
+              nomeFazenda: user?.name || user?.displayName || 'Produtor',
+              nomeEstufa: estufasMap[plantioObj?.estufaId || ''] || 'Estufa',
+              cultura: plantioObj?.cultura || 'Produto agrícola',
+            });
+          };
+
           Alert.alert(
             isEditMode ? "Venda atualizada" : "Venda registrada",
             `${qtdNum} ${unidade} - R$ ${totalVenda.toFixed(2)}${plantioObj?.codigoLote ? `\nLote: ${plantioObj.codigoLote}` : ''}`,
-            [{
-              text: "OK",
-              onPress: () => {
-                if (!isEditMode && targetId) {
-                  void clearColheitaDraft(targetId);
-                }
-                navigation.goBack();
+            [
+              !isEditMode
+                ? {
+                    text: 'Comprovante',
+                    onPress: () => {
+                      void openReceipt().finally(() => {
+                        if (targetId) {
+                          void clearColheitaDraft(targetId);
+                        }
+                        navigation.goBack();
+                      });
+                    },
+                  }
+                : null,
+              {
+                text: "OK",
+                onPress: () => {
+                  if (!isEditMode && targetId) {
+                    void clearColheitaDraft(targetId);
+                  }
+                  navigation.goBack();
+                },
               },
-            }]
+            ].filter(Boolean) as any
           );
       } catch (error: unknown) {
         Alert.alert("Erro", resolveServiceErrorMessage(error, "Nao consegui salvar a venda. Tente novamente."));

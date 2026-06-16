@@ -29,6 +29,8 @@ const isShareLocked = () => Boolean((globalThis as any)[SHARE_LOCK_KEY]);
 const setShareLocked = (value: boolean) => {
   (globalThis as any)[SHARE_LOCK_KEY] = value;
 };
+const RECEIPT_BRAND_NAME = 'ESTUFA VERDE VIVO';
+const RECEIPT_BRAND_SUBTITLE = 'PRODUTOS PARA ESTUFAS E AGRICULTURA PROTEGIDA';
 
 const sanitizeFilenameSegment = (value: string) =>
   value
@@ -41,6 +43,9 @@ const sanitizeFilenameSegment = (value: string) =>
 
 const formatCurrency = (value: number) =>
   value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+const formatReceiptNumber = (value: number) =>
+  Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const escapeHtml = (value?: string | null) => {
   if (!value) return '';
@@ -488,7 +493,7 @@ export const buildHtmlTemplate = (input: ComprovantePDFInput, logoBase64: string
   `;
 };
 
-const buildHtmlTemplateV2 = (input: ComprovantePDFInput, logoBase64: string) => {
+const _buildHtmlTemplateV2 = (input: ComprovantePDFInput, logoBase64: string) => {
   const { colheita, cliente, plantio, nomeEstufa, nomeFazenda, cultura, contatoFazenda } = input;
   const dataOperacao = formatDateTime(colheita.dataVenda || colheita.dataColheita);
   const dataEmissao = formatDateTime(new Date());
@@ -723,12 +728,234 @@ const buildHtmlTemplateV2 = (input: ComprovantePDFInput, logoBase64: string) => 
   `;
 };
 
+const buildEstufaVerdeVivoReceiptHtml = (input: ComprovantePDFInput, logoBase64: string) => {
+  const { colheita, cliente, plantio, nomeEstufa, nomeFazenda, cultura, contatoFazenda } = input;
+  const dataOperacao = formatDateTime(colheita.dataVenda || colheita.dataColheita);
+  const culturaNome = plantio?.cultura || cultura || colheita.cultura || 'Produto agrícola';
+  const variedadeNome = plantio?.variedade || colheita.variedade || '';
+  const produtoLabel = variedadeNome ? `${culturaNome} - ${variedadeNome}` : culturaNome;
+  const itens = normalizeSaleItems(colheita, produtoLabel);
+  const quantidadeTotal = itens.reduce((acc, item) => acc + toNumber(item.quantidade, 0), 0);
+  const unidadeTotal = normalizeUnitLabel(itens[0]?.unidade || colheita.unidade || colheita.unidadeMedida || 'un');
+  const valorTotalItens = itens.reduce((acc, item) => acc + toNumber(item.subtotal, 0), 0);
+  const valorTotal = toNumber(colheita.valorTotal, valorTotalItens);
+  const clienteNome = cliente?.nome || 'Cliente avulso';
+  const clienteDocumento = cliente?.documento || 'Nao informado';
+  const clienteTelefone = cliente?.telefone || 'Nao informado';
+  const clienteCidade = cliente?.cidade || 'Nao informada';
+  const clienteEstado = cliente?.estado || '';
+  const clienteCep = cliente?.cep || 'Nao informado';
+  const clienteEndereco = formatAddress(cliente || {});
+  const metodoPagamento = colheita.metodoPagamento || colheita.formaPagamento || 'Nao informado';
+  const formaPagamentoLabel = String(metodoPagamento).toLowerCase() === 'prazo' ? '30 DIAS' : 'A VISTA';
+  const vendedorLabel = nomeFazenda || 'Nao informado';
+  const freteLabel = 'Por conta do cliente';
+  const quantidadeLabel = `${formatQuantity(quantidadeTotal)} ${String(unidadeTotal).toUpperCase()}`;
+  const statusPagamento = (colheita.statusPagamento || 'pago') as PaymentStatus;
+  const valorPago = statusPagamento === 'pago' ? valorTotal : 0;
+  const valorPendente = statusPagamento === 'pago' || statusPagamento === 'cancelado' ? 0 : valorTotal;
+  const dataPagamentoLabel = statusPagamento === 'pago' ? dataOperacao.date : '-';
+  const vencimentoDate = colheita.dataVencimento
+    ? toDate(colheita.dataVencimento)
+    : new Date(toDate(colheita.dataVenda || colheita.dataColheita).getTime() + 30 * 24 * 60 * 60 * 1000);
+  const vencimentoLabel = statusPagamento === 'pago' ? '-' : vencimentoDate.toLocaleDateString('pt-BR');
+  const codigoDocumento = String(colheita.id || '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .slice(-6)
+    .padStart(6, '0');
+  const observacoesVenda = String(colheita.observacoes || '').trim();
+  const contactEmail = contatoFazenda || 'contato@estufaverdevivo.com.br';
+  const website = String(colheita.traceabilityPublicUrl || '').trim() || 'www.estufaverdevivo.com.br';
+
+  const itensRows = itens
+    .map(
+      (item, index) => `
+        <tr>
+          <td class="idx-cell">${index + 1}</td>
+          <td class="desc-cell">${escapeHtml(item.descricao)}</td>
+          <td class="center">${escapeHtml(formatQuantity(item.quantidade))}</td>
+          <td class="center">${escapeHtml(String(item.unidade || unidadeTotal).toUpperCase())}</td>
+          <td class="amount">${formatReceiptNumber(item.valorUnitario)}</td>
+          <td class="amount">${formatReceiptNumber(item.subtotal)}</td>
+        </tr>
+      `
+    )
+    .join('');
+
+  return `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <style>
+          * { box-sizing: border-box; }
+          body { margin: 0; padding: 16px; font-family: Arial, Helvetica, sans-serif; color: #1d1d1d; background: #f4f6f5; }
+          .sheet { max-width: 1020px; margin: 0 auto; background: #ffffff; border: 3px solid #0c5f2f; border-radius: 22px; padding: 20px; }
+          .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 18px; }
+          .brand-wrap { display: flex; align-items: center; gap: 16px; }
+          .logo { width: 118px; height: 118px; object-fit: contain; display: block; }
+          .brand-name { margin: 0; font-size: 48px; line-height: 0.95; font-weight: 900; color: #0b5a2c; text-transform: uppercase; }
+          .brand-sub { margin: 10px 0 0; font-size: 15px; line-height: 1.3; color: #143324; text-transform: uppercase; }
+          .doc-title-wrap { flex: 1; text-align: right; }
+          .doc-title { margin: 12px 0 26px; font-size: 36px; line-height: 1; font-weight: 900; color: #0b5a2c; text-transform: uppercase; }
+          .doc-code { display: inline-block; min-width: 220px; border: 2px solid #7aa38a; border-radius: 14px; padding: 14px 18px; font-size: 24px; font-weight: 800; color: #14452a; background: #fff; }
+          .row-2 { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 18px; margin-bottom: 18px; }
+          .box { border: 2px solid #7aa38a; border-radius: 14px; overflow: hidden; background: #fff; }
+          .box-header { background: linear-gradient(90deg, #0b5a2c 0%, #0f6f35 100%); color: #fff; font-size: 16px; font-weight: 800; text-transform: uppercase; padding: 12px 16px; }
+          .box-content { padding: 16px 16px 14px; }
+          .kv-grid { display: grid; grid-template-columns: 175px 1fr; gap: 10px 14px; font-size: 15px; line-height: 1.4; }
+          .kv-grid .label { font-weight: 800; color: #18281d; }
+          .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 18px; font-size: 15px; }
+          .meta-item { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; }
+          .meta-label { font-weight: 800; color: #143324; text-transform: uppercase; }
+          .items-table { width: 100%; border-collapse: separate; border-spacing: 0; border: 2px solid #7aa38a; border-radius: 14px; overflow: hidden; margin-bottom: 18px; }
+          .items-table thead th { background: linear-gradient(90deg, #0b5a2c 0%, #0f6f35 100%); color: #fff; padding: 14px 10px; font-size: 13px; text-transform: uppercase; font-weight: 800; text-align: center; }
+          .items-table tbody td { border-right: 1px dashed #b8c7bd; border-bottom: 1px dashed #b8c7bd; padding: 14px 12px; font-size: 15px; vertical-align: middle; }
+          .items-table tbody tr:last-child td { border-bottom: 0; }
+          .items-table tbody td:last-child, .items-table thead th:last-child { border-right: 0; }
+          .idx-cell { width: 70px; text-align: center; font-size: 18px; font-weight: 700; }
+          .desc-cell { line-height: 1.45; }
+          .center { text-align: center; }
+          .amount { text-align: center; font-variant-numeric: tabular-nums; }
+          .summary-row { display: grid; grid-template-columns: 1.35fr 0.95fr; gap: 18px; margin-bottom: 18px; }
+          .summary-box { border: 2px solid #7aa38a; border-radius: 14px; padding: 16px 18px; background: #fff; }
+          .summary-title { margin: 0 0 14px; font-size: 17px; font-weight: 900; color: #0b5a2c; text-transform: uppercase; }
+          .summary-grid { display: grid; grid-template-columns: 1fr auto; gap: 12px 14px; font-size: 15px; line-height: 1.5; }
+          .summary-grid .value { font-weight: 800; }
+          .grand-total { text-align: center; }
+          .grand-total strong { display: block; font-size: 58px; line-height: 1; color: #0b5a2c; font-weight: 900; }
+          .payment-box { border: 2px solid #7aa38a; border-radius: 14px; overflow: hidden; margin-bottom: 18px; background: #fff; }
+          .payment-grid { display: grid; grid-template-columns: 1fr 1fr; }
+          .payment-cell { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 13px 16px; font-size: 15px; border-right: 1px dashed #b8c7bd; border-bottom: 1px dashed #b8c7bd; }
+          .payment-cell:nth-child(2n) { border-right: 0; }
+          .payment-cell:nth-last-child(-n+2) { border-bottom: 0; }
+          .payment-cell .label { font-weight: 800; color: #183521; text-transform: uppercase; }
+          .payment-cell .value.negative { color: #d81313; font-weight: 900; }
+          .obs-box { border: 2px solid #7aa38a; border-radius: 14px; padding: 18px 22px 22px; background: #fff; }
+          .obs-title { margin: 0 0 18px; font-size: 16px; font-weight: 900; color: #143324; text-transform: uppercase; }
+          .obs-row { display: grid; grid-template-columns: 1.3fr 0.9fr; gap: 20px; align-items: start; min-height: 120px; }
+          .obs-text { font-size: 15px; line-height: 1.55; color: #242424; white-space: pre-line; }
+          .sign-area { padding-top: 22px; text-align: center; }
+          .sign-line { width: 100%; border-top: 2px solid #8a8a8a; margin-bottom: 8px; }
+          .sign-label { font-size: 15px; color: #2b2b2b; }
+          .sign-date { margin-top: 18px; font-size: 15px; color: #2b2b2b; }
+          .footer-note { text-align: center; margin: 22px 0 12px; color: #22563b; font-size: 18px; font-style: italic; }
+          .contact-bar { border-top: 2px solid #a7b9ad; padding-top: 12px; display: flex; justify-content: space-between; gap: 14px; font-size: 14px; color: #143324; flex-wrap: wrap; }
+        </style>
+      </head>
+      <body>
+        <div class="sheet">
+          <div class="topbar">
+            <div class="brand-wrap">
+              ${logoBase64 ? `<img class="logo" src="data:image/png;base64,${logoBase64}" alt="Logo" />` : ''}
+              <div>
+                <h1 class="brand-name">${escapeHtml(RECEIPT_BRAND_NAME)}</h1>
+                <p class="brand-sub">${escapeHtml(RECEIPT_BRAND_SUBTITLE)}</p>
+              </div>
+            </div>
+            <div class="doc-title-wrap">
+              <div class="doc-title">COMPROVANTE DE VENDA</div>
+              <div class="doc-code">Nº ${escapeHtml(codigoDocumento)}</div>
+            </div>
+          </div>
+
+          <div class="row-2">
+            <div class="box">
+              <div class="box-header">Dados do Cliente</div>
+              <div class="box-content">
+                <div class="kv-grid">
+                  <div class="label">Nome / Razão Social:</div><div>${escapeHtml(clienteNome)}</div>
+                  <div class="label">CNPJ:</div><div>${escapeHtml(clienteDocumento)}</div>
+                  <div class="label">Endereço:</div><div>${escapeHtml(clienteEndereco)}</div>
+                  <div class="label">Cidade/UF:</div><div>${escapeHtml(`${clienteCidade}${clienteEstado ? ` - ${clienteEstado}` : ''}`)}&nbsp;&nbsp;&nbsp;&nbsp;<strong>CEP:</strong> ${escapeHtml(clienteCep)}</div>
+                  <div class="label">Telefone:</div><div>${escapeHtml(clienteTelefone)}</div>
+                </div>
+              </div>
+            </div>
+            <div class="box">
+              <div class="box-content" style="padding-top:18px;">
+                <div class="meta-grid">
+                  <div class="meta-item"><div class="meta-label">Data da venda:</div><div>${escapeHtml(dataOperacao.date)}</div></div>
+                  <div class="meta-item"><div class="meta-label">Condição de pagamento:</div><div>${escapeHtml(formaPagamentoLabel)}</div></div>
+                  <div class="meta-item"><div class="meta-label">Vendedor:</div><div>${escapeHtml(vendedorLabel)}</div></div>
+                  <div class="meta-item"><div class="meta-label">Frete:</div><div>${escapeHtml(freteLabel)}</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th style="width:70px;">Produto</th>
+                <th>Descrição</th>
+                <th style="width:120px;">Quant.</th>
+                <th style="width:100px;">Unid.</th>
+                <th style="width:150px;">Preço CX (R$)</th>
+                <th style="width:170px;">Valor Total (R$)</th>
+              </tr>
+            </thead>
+            <tbody>${itensRows}</tbody>
+          </table>
+
+          <div class="summary-row">
+            <div class="summary-box">
+              <h3 class="summary-title">Resumo da Venda</h3>
+              <div class="summary-grid">
+                <div>Quantidade total:</div><div class="value">${escapeHtml(quantidadeLabel)}</div>
+                <div>Valor total da venda:</div><div class="value">${formatCurrency(valorTotal)}</div>
+              </div>
+            </div>
+            <div class="summary-box grand-total">
+              <h3 class="summary-title">Valor Total da Venda</h3>
+              <strong>${formatCurrency(valorTotal)}</strong>
+            </div>
+          </div>
+
+          <div class="payment-box">
+            <div class="box-header">Condições de Pagamento</div>
+            <div class="payment-grid">
+              <div class="payment-cell"><div class="label">Valor pago:</div><div class="value">${formatCurrency(valorPago)}</div></div>
+              <div class="payment-cell"><div class="label">Data do pagamento:</div><div class="value">${escapeHtml(dataPagamentoLabel)}</div></div>
+              <div class="payment-cell"><div class="label">Valor pendente:</div><div class="value ${valorPendente > 0 ? 'negative' : ''}">${formatCurrency(valorPendente)}</div></div>
+              <div class="payment-cell"><div class="label">Quantidade a pagar:</div><div class="value">${escapeHtml(quantidadeLabel)}</div></div>
+              <div class="payment-cell"><div class="label">Vencimento:</div><div class="value ${valorPendente > 0 ? 'negative' : ''}">${escapeHtml(valorPendente > 0 ? `${vencimentoLabel} (${formaPagamentoLabel})` : '-')}</div></div>
+              <div class="payment-cell"><div class="label">Forma de pagamento:</div><div class="value">${escapeHtml(String(metodoPagamento).replace(/_/g, ' ').toUpperCase())}</div></div>
+            </div>
+          </div>
+
+          <div class="obs-box">
+            <h3 class="obs-title">Observações:</h3>
+            <div class="obs-row">
+              <div class="obs-text">${escapeHtml(observacoesVenda || `Mercadorias entregues conforme pedido.\nOrigem: ${nomeEstufa || nomeFazenda}.\nProduto: ${produtoLabel}.`)}</div>
+              <div class="sign-area">
+                <div class="sign-line"></div>
+                <div class="sign-label">Assinatura do Cliente</div>
+                <div class="sign-date">Data: ____/____/______</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="footer-note">Obrigado por escolher a ${escapeHtml(RECEIPT_BRAND_NAME)}!</div>
+          <div class="contact-bar">
+            <div>${escapeHtml(clienteTelefone)}</div>
+            <div>${escapeHtml(contactEmail)}</div>
+            <div>${escapeHtml(website)}</div>
+            <div>${escapeHtml(`${clienteCidade}${clienteEstado ? ` - ${clienteEstado}` : ''}`)}</div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
+
 export const gerarComprovantePDF = async (input: ComprovantePDFInput) => {
   const logoBase64 = await resolveLogoBase64(
     input.logoAssetModule ?? require('../../assets/icon.png'),
     input.logoBase64
   );
-  const htmlString = buildHtmlTemplateV2(input, logoBase64);
+  const htmlString = buildEstufaVerdeVivoReceiptHtml(input, logoBase64);
   const { uri } = await Print.printToFileAsync({ html: htmlString });
   return uri;
 };

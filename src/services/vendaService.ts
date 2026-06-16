@@ -337,6 +337,21 @@ export const getVendaById = async (id: string, userId: string): Promise<Venda | 
   return data ? mapSupabaseVendaToDomain(data) : null;
 };
 
+export const getVendaByColheitaId = async (colheitaId: string, userId: string): Promise<Venda | null> => {
+  const tenantId = assertTenantId(userId);
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('vendas')
+    .select('*, venda_itens(*)')
+    .eq('colheita_id', colheitaId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`Erro ao buscar venda da colheita: ${error.message}`);
+  }
+  return data ? mapSupabaseVendaToDomain(data) : null;
+};
+
 export const updateVenda = async (id: string, data: VendaFormData, userId: string, options?: OfflineWriteOptions) => {
   const tenantId = assertTenantId(userId);
   return runOfflineWrite({

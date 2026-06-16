@@ -37,6 +37,7 @@ import {
   loadHidroponiaVendaDraft,
   saveHidroponiaVendaDraft,
 } from '../services/hidroponiaVendaDraftStorage';
+import { compartilharPDF } from '../../../services/pdfService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'HidroponiaVendaForm'>;
 type UnidadeVenda = 'kg' | 'caixas' | 'un' | 'maços';
@@ -517,10 +518,11 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
         cultura: descricaoDefault,
       };
 
+      let createdVendaId: string | null = null;
       if (isEditMode && params.vendaId) {
         await updateVenda(params.vendaId, payload, targetId);
       } else {
-        await registrarVendaHidroponicaPorLote(
+        createdVendaId = await registrarVendaHidroponicaPorLote(
           {
             loteId: selectedLoteId,
             quantidadeColhida: qtd,
@@ -538,18 +540,46 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
       }
 
       await invalidateQueries();
+      const openReceipt = async () => {
+        if (!createdVendaId) return;
+        const venda = await getVendaById(createdVendaId, targetId);
+        if (!venda) return;
+        const cliente = clientes.find((item) => item.id === venda.clienteId) || null;
+        await compartilharPDF({
+          colheita: venda as any,
+          cliente,
+          nomeFazenda: user?.name || user?.displayName || 'Produtor',
+          nomeEstufa: lote?.nomeOperacional || lote?.codigoLote || 'Estufa',
+          cultura: descricaoDefault,
+        });
+      };
       Alert.alert(
         isEditMode ? 'Venda atualizada' : 'Venda registrada',
         `${qtd} ${unidade} • R$ ${(qtd * preco).toFixed(2)}`,
-        [{
-          text: 'OK',
-          onPress: () => {
-            if (!isEditMode && targetId) {
-              void clearHidroponiaVendaDraft(targetId);
-            }
-            navigation.goBack();
+        [
+          !isEditMode
+            ? {
+                text: 'Comprovante',
+                onPress: () => {
+                  void openReceipt().finally(() => {
+                    if (targetId) {
+                      void clearHidroponiaVendaDraft(targetId);
+                    }
+                    navigation.goBack();
+                  });
+                },
+              }
+            : null,
+          {
+            text: 'OK',
+            onPress: () => {
+              if (!isEditMode && targetId) {
+                void clearHidroponiaVendaDraft(targetId);
+              }
+              navigation.goBack();
+            },
           },
-        }]
+        ].filter(Boolean) as any
       );
     } catch (error: any) {
       Alert.alert('Erro', error?.message || 'Não foi possível salvar a venda.');
