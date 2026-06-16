@@ -93,6 +93,8 @@ const InsumoFormScreen = ({ route, navigation }: any) => {
     } finally { setLoading(false); }
   };
 
+  if (!canWrite) return null;
+
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <ScrollView

@@ -3,6 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeMode } from '../../hooks/useThemeMode';
+import { SHADOWS } from '../../constants/theme';
 
 interface ScreenHeaderCardProps {
   title: string;
@@ -27,22 +28,36 @@ const ScreenHeaderCard = ({
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.wrapper, { backgroundColor: theme.panelBackground, paddingTop: Math.max(12, insets.top * 0.35 + 12) }]}>
+    <View 
+      style={[
+        styles.wrapper, 
+        { 
+          backgroundColor: theme.panelBackground, 
+          paddingTop: Math.max(12, insets.top * 0.4 + 16),
+          borderBottomLeftRadius: 36,
+          borderBottomRightRadius: 36,
+        }
+      ]}
+    >
       <View style={styles.topRow}>
         <View style={styles.titleArea}>
           {badgeLabel ? (
-            <View style={[styles.badge, { backgroundColor: 'rgba(16, 185, 129, 0.25)' }]}>
-              <Text style={[styles.badgeText, { color: '#10B981' }]}>{badgeLabel}</Text>
+            <View style={[styles.badge, { backgroundColor: theme.rawColors.whiteAlpha20 }]}>
+              <Text style={[styles.badgeText, { color: theme.rawColors.textLight }]}>{badgeLabel}</Text>
             </View>
           ) : null}
-          <Text style={styles.title}>{title}</Text>
-          <Text style={[styles.subtitle, { color: 'rgba(255,255,255,0.7)' }]}>{subtitle}</Text>
+          <Text style={[styles.title, { color: theme.rawColors.textLight }]}>{title}</Text>
+          <Text style={[styles.subtitle, { color: theme.rawColors.whiteAlpha60 }]}>{subtitle}</Text>
         </View>
 
         {actionLabel && onPressAction ? (
-          <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#10B981' }]} onPress={onPressAction} activeOpacity={0.85}>
-            <MaterialCommunityIcons name={actionIcon as any} size={18} color="#FFFFFF" />
-            <Text style={styles.actionLabel}>{actionLabel}</Text>
+          <TouchableOpacity 
+            style={[styles.actionButton, { backgroundColor: theme.rawColors.primary }]} 
+            onPress={onPressAction} 
+            activeOpacity={0.8}
+          >
+            <MaterialCommunityIcons name={actionIcon as any} size={18} color={theme.rawColors.textLight} />
+            <Text style={[styles.actionLabel, { color: theme.rawColors.textLight }]}>{actionLabel}</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -54,15 +69,9 @@ const ScreenHeaderCard = ({
 
 const styles = StyleSheet.create({
   wrapper: {
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
     paddingHorizontal: 24,
-    paddingBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 15,
-    elevation: 10,
+    paddingBottom: 28,
+    ...SHADOWS.floating,
   },
   topRow: {
     flexDirection: 'row',
@@ -76,45 +85,48 @@ const styles = StyleSheet.create({
   badge: {
     alignSelf: 'flex-start',
     borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
     marginBottom: 10,
   },
   badgeText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '900',
-    letterSpacing: 1,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
   title: {
-    color: '#FFFFFF',
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: '900',
-    lineHeight: 34,
-    letterSpacing: -0.5,
+    lineHeight: 36,
+    letterSpacing: -0.8,
   },
   subtitle: {
     marginTop: 4,
-    fontSize: 15,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
   },
   actionButton: {
-    height: 44,
-    borderRadius: 14,
-    paddingHorizontal: 14,
+    height: 48,
+    borderRadius: 16,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    borderWidth: 0,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
   },
   actionLabel: {
-    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '800',
   },
   bottomArea: {
-    marginTop: 16,
+    marginTop: 20,
   },
 });
 
 export default ScreenHeaderCard;
+

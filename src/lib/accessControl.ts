@@ -117,7 +117,7 @@ export const getAccessSnapshot = (tenant: TenantContext): AccessSnapshot => {
   const isManager = accessRole === 'manager';
   const isOperator = accessRole === 'operator';
   const isReadOnly = accessRole === 'viewer';
-  const canViewCash = isOwner || isManager;
+  const canViewCash = canRead;
   const canViewFinancialDashboard = canRead;
 
   return {

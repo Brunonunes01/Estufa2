@@ -138,6 +138,8 @@ const InsumoEntryScreen = ({ route, navigation }: any) => {
         }
     };
 
+    if (!canWrite) return null;
+
     if (loadingData) {
         return <ActivityIndicator size="large" style={styles.centered} />;
     }

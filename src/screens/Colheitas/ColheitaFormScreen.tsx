@@ -12,6 +12,7 @@ import { listEstufas } from '../../services/estufaService';
 import { listClientes, createCliente } from '../../services/clienteService';
 import { createCaixaPessoa, listCaixaPessoas, CaixaPessoa } from '../../services/caixaPessoaService';
 import { useAuth } from '../../hooks/useAuth';
+import { useWriteGuard } from '../../hooks/useWriteGuard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Plantio, Cliente, PlantioCaixaPerfil } from '../../types/domain';
@@ -45,6 +46,7 @@ const startOfDay = (date: Date) => {
 
 const ColheitaFormScreen = ({ route, navigation }: any) => {
   const { user, selectedTenantId, canDeleteEstufa } = useAuth();
+  const canWrite = useWriteGuard(navigation, 'Registro de venda');
   const { settings } = useAppSettings();
   const insets = useSafeAreaInsets();
   const targetId = selectedTenantId || user?.uid;
@@ -112,6 +114,8 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
       ) : null,
     });
   }, [navigation, isEditMode]);
+
+  if (!canWrite) return null;
 
   useEffect(() => {
     const carregarTudo = async () => {

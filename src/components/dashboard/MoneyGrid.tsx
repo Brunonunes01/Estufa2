@@ -42,6 +42,15 @@ const MoneyGrid = ({ totalReceber, totalRecebido, totalPagar, lucroTotal, roiGer
       />
     </View>
 
+    <View style={styles.summaryStrip}>
+      <MetricCard
+        tone={totalRecebido + totalReceber - totalPagar >= 0 ? 'info' : 'danger'}
+        label="Saldo previsto"
+        value={currencyFormatter.format(totalRecebido + totalReceber - totalPagar)}
+        icon="scale-balance"
+      />
+    </View>
+
     {lucroTotal !== undefined && (
       <View style={[styles.grid, { marginTop: -10 }]}>
         <MetricCard 
@@ -66,6 +75,7 @@ const MoneyGrid = ({ totalReceber, totalRecebido, totalPagar, lucroTotal, roiGer
 const styles = StyleSheet.create({
   container: { marginTop: 8 },
   grid: { flexDirection: 'row', gap: 10, marginBottom: SPACING.lg },
+  summaryStrip: { marginTop: -10, marginBottom: SPACING.lg },
 });
 
 export default React.memo(MoneyGrid);

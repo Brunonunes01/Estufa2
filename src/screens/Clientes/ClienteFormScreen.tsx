@@ -166,6 +166,8 @@ const ClienteFormScreen = ({ route, navigation }: any) => {
     } catch { Alert.alert('Erro', 'Falha ao salvar.'); } finally { setLoading(false); }
   };
 
+  if (!canWrite) return null;
+
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <ScrollView

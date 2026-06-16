@@ -245,6 +245,52 @@ const downloadPdfOnWeb = async (uri: string, fileName: string) => {
   return true;
 };
 
+const injectHtmlTitle = (html: string, title: string) => {
+  const safeTitle = escapeHtml(title);
+  if (/<title>.*<\/title>/i.test(html)) {
+    return html.replace(/<title>.*<\/title>/i, `<title>${safeTitle}</title>`);
+  }
+
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/<head([^>]*)>/i, `<head$1><title>${safeTitle}</title>`);
+  }
+
+  return `<!DOCTYPE html><html lang="pt-BR"><head><title>${safeTitle}</title></head><body>${html}</body></html>`;
+};
+
+const printHtmlOnWeb = async (html: string, title: string) => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return false;
+  }
+
+  const printWindow = window.open('', '_blank', 'width=1200,height=900');
+  if (!printWindow) {
+    throw new Error('Nao foi possivel abrir a janela de impressao no navegador.');
+  }
+
+  const fullHtml = injectHtmlTitle(html, title);
+  printWindow.document.open();
+  printWindow.document.write(fullHtml);
+  printWindow.document.close();
+
+  await new Promise<void>((resolve) => {
+    const finish = () => printWindow.setTimeout(resolve, 500);
+    if (printWindow.document.readyState === 'complete' && printWindow.document.body?.children.length) {
+      finish();
+      return;
+    }
+
+    printWindow.onload = finish;
+  });
+
+  printWindow.focus();
+  printWindow.print();
+  printWindow.onafterprint = () => {
+    printWindow.close();
+  };
+  return true;
+};
+
 const applyColumnWidths = (worksheet: XLSX.WorkSheet, widths: number[]) => {
   worksheet['!cols'] = widths.map((wch) => ({ wch }));
 };
@@ -530,6 +576,11 @@ const sharePdfHtml = async (html: string, fileName: string) => {
   setShareLocked(true);
 
   try {
+    if (typeof document !== 'undefined') {
+      await printHtmlOnWeb(html, fileName);
+      return;
+    }
+
     const { uri } = await Print.printToFileAsync({ html });
     const normalizedFileName = fileName.toLowerCase().endsWith('.pdf') ? fileName : `${fileName}.pdf`;
     const destination = `${FileSystem.cacheDirectory}${normalizedFileName}`;
@@ -587,105 +638,492 @@ const appendSheet = (workbook: XLSX.WorkBook, name: string, sheet: XLSX.WorkShee
   XLSX.utils.book_append_sheet(workbook, sheet, name);
 };
 
-export const shareSalesReportPdf = async (data: SalesReportPdfData) => {
-  const rows = data.itens
-    .map(
-      (item) => `
+const parseQuantidadeFromReportItem = (item: SalesReportItem) => {
+  if (typeof item.quantidadeValor === 'number' && Number.isFinite(item.quantidadeValor)) {
+    return Number(item.quantidadeValor);
+  }
+
+  const raw = String(item.quantidade || '')
+    .replace(',', '.')
+    .match(/-?\d+(\.\d+)?/);
+  return raw ? Number(raw[0]) : 0;
+};
+
+const buildBrandedSalesReportHtml = (data: SalesReportPdfData) => {
+  const paidItems = data.itens.filter((item) => item.status === 'PAGO');
+  const pendingItems = data.itens.filter((item) => item.status === 'PENDENTE');
+  const cancelledItems = data.itens.filter((item) => item.status === 'CANCELADO');
+  const paidCount = paidItems.length;
+  const pendingCount = pendingItems.length;
+  const cancelledCount = cancelledItems.length;
+  const paidValue = paidItems.reduce((acc, item) => acc + Number(item.valor || 0), 0);
+  const pendingValue = pendingItems.reduce((acc, item) => acc + Number(item.valor || 0), 0);
+  const soldBoxes = data.itens.reduce((acc, item) => acc + parseQuantidadeFromReportItem(item), 0);
+  const paymentRatio = data.totais.totalVendido > 0 ? paidValue / data.totais.totalVendido : 0;
+  const pendingRatio = Math.max(0, 1 - paymentRatio);
+  const paymentDegrees = Math.round(paymentRatio * 360);
+  const logoSvg = `
+    <svg viewBox="0 0 86 86" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g fill="none" stroke="#0f5a2e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M43 8c-15.9 0-28.8 12.9-28.8 28.8V63h57.6V36.8C71.8 20.9 58.9 8 43 8Z"/>
+        <path d="M23 20.5h40"/>
+        <path d="M43 8v55"/>
+        <path d="M14.2 36.8h57.6"/>
+        <path d="M24.5 63c0-10.2 8.3-18.5 18.5-18.5S61.5 52.8 61.5 63"/>
+      </g>
+      <path d="M34.5 55c0-6.7 3.8-12.8 8.5-12.8S51.5 48.3 51.5 55" fill="#2f7d32"/>
+      <path d="M16 55.5c3.9-14.1 16.2-22.6 27-22.6-8.2 4.8-12.1 13.6-11.6 26.1-5.7-1.7-10.8-3.5-15.4-3.5Z" fill="#2f7d32"/>
+      <path d="M70 55.5c-3.9-14.1-16.2-22.6-27-22.6 8.2 4.8 12.1 13.6 11.6 26.1 5.7-1.7 10.8-3.5 15.4-3.5Z" fill="#0f5a2e"/>
+      <path d="M28.6 27.8c0-4.2 2.8-7.7 6.8-9.1-1.1 4.6 1 8.6 4.6 11.5-4.9 1.9-11.4 1.1-11.4-2.4Z" fill="#0f5a2e"/>
+    </svg>
+  `;
+  const detailRows = data.itens
+    .map((item) => {
+      const pendingAmount = item.status === 'PENDENTE' ? Number(item.valor || 0) : 0;
+      const paidAmount = item.status === 'PAGO' ? Number(item.valor || 0) : 0;
+      const dueDate = item.status === 'PENDENTE' ? item.observacoes || '-' : item.data;
+      const quantityLabel = item.quantidade || '-';
+
+      return `
         <tr>
           <td>${escapeHtml(item.codigo || '-')}</td>
           <td>${escapeHtml(item.data)}</td>
           <td>${escapeHtml(item.cliente)}</td>
-          <td>${escapeHtml(item.documentoCliente || '-')}</td>
-          <td>${escapeHtml(item.origem || '-')}</td>
-          <td>${escapeHtml(item.local || item.estufa || '-')}</td>
-          <td>${escapeHtml(item.lote || '-')}</td>
-          <td>${escapeHtml(item.produto || '-')}</td>
-          <td class="align-right">${escapeHtml(item.quantidade || '-')}</td>
-          <td class="align-right">${fmtMoeda(item.precoUnitario || 0)}</td>
-          <td>${escapeHtml(item.metodoPagamento)}</td>
-          <td><span class="status ${getStatusClass(item.status)}">${escapeHtml(item.status)}</span></td>
-          <td>${escapeHtml(item.recebidoPor || '-')}</td>
+          <td class="align-center">${escapeHtml(quantityLabel)}</td>
           <td class="align-right">${fmtMoeda(item.valor)}</td>
+          <td class="align-right">${fmtMoeda(paidAmount)}</td>
+          <td class="align-right pending-text">${pendingAmount > 0 ? fmtMoeda(pendingAmount) : 'R$ 0,00'}</td>
+          <td class="align-center ${item.status === 'PAGO' ? 'paid-text' : item.status === 'PENDENTE' ? 'pending-text' : ''}">${escapeHtml(item.status)}</td>
+          <td class="align-center">${escapeHtml(dueDate)}</td>
+          <td>${escapeHtml(item.metodoPagamento)}</td>
+          <td>${escapeHtml(item.recebidoPor || '-')}</td>
         </tr>
-      `
-    )
+      `;
+    })
     .join('');
 
-  const notesRows = data.itens
-    .filter((item) => item.observacoes && item.observacoes.trim())
-    .map(
-      (item) => `
-        <tr>
-          <td>${escapeHtml(item.codigo || '-')}</td>
-          <td>${escapeHtml(item.cliente)}</td>
-          <td>${escapeHtml(item.data)}</td>
-          <td>${escapeHtml(item.observacoes)}</td>
-        </tr>
-      `
-    )
-    .join('');
+  return `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <style>
+          * { box-sizing: border-box; }
+          @page { size: A4 landscape; margin: 10mm; }
+          body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            color: #1b1b1b;
+            background: #ffffff;
+          }
+          .page {
+            width: 100%;
+            min-height: 100%;
+            border: 1px solid #c8d8cc;
+            background:
+              radial-gradient(circle at 10% 20%, rgba(26, 92, 46, 0.06), transparent 22%),
+              radial-gradient(circle at 90% 25%, rgba(26, 92, 46, 0.05), transparent 18%),
+              linear-gradient(180deg, #ffffff 0%, #fcfdfc 100%);
+            padding: 16px 18px 0;
+          }
+          .header {
+            display: grid;
+            grid-template-columns: 330px 1fr 340px;
+            gap: 12px;
+            align-items: start;
+            margin-bottom: 14px;
+          }
+          .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+          }
+          .brand-icon {
+            width: 86px;
+            height: 86px;
+            flex-shrink: 0;
+          }
+          .brand-title {
+            margin: 0;
+            font-size: 31px;
+            line-height: 0.9;
+            font-weight: 900;
+            color: #0f5a2e;
+            text-transform: uppercase;
+            letter-spacing: -0.8px;
+          }
+          .brand-subtitle {
+            margin: 8px 0 0;
+            font-size: 10px;
+            line-height: 1.25;
+            color: #194128;
+            text-transform: uppercase;
+          }
+          .report-title-wrap {
+            text-align: center;
+            padding-top: 10px;
+          }
+          .report-title {
+            margin: 0;
+            font-size: 31px;
+            line-height: 1;
+            font-weight: 900;
+            color: #0f5a2e;
+            text-transform: uppercase;
+            letter-spacing: -0.8px;
+          }
+          .report-subtitle {
+            margin: 12px 0 0;
+            font-size: 11px;
+            font-weight: 800;
+            color: #194128;
+            text-transform: uppercase;
+            letter-spacing: 0.2px;
+          }
+          .meta-box {
+            border: 1px solid #1a5c2e;
+            border-radius: 10px;
+            padding: 10px 14px;
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: inset 0 0 0 1px rgba(15, 90, 46, 0.06);
+          }
+          .meta-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 11px;
+            padding: 7px 0;
+          }
+          .meta-label {
+            font-weight: 800;
+            color: #123923;
+          }
+          .cards {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+            margin-bottom: 12px;
+          }
+          .card {
+            border: 1px solid #2d6b46;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.95);
+            min-height: 84px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 12px;
+            box-shadow: inset 0 0 0 1px rgba(15, 90, 46, 0.04);
+          }
+          .card-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(180deg, #0f5a2e 0%, #1f7d42 100%);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 19px;
+            font-weight: 900;
+            flex-shrink: 0;
+            border: 1px solid rgba(255,255,255,0.4);
+          }
+          .card-label {
+            font-size: 10px;
+            font-weight: 800;
+            color: #194128;
+            text-transform: uppercase;
+            line-height: 1.12;
+          }
+          .card-value {
+            margin-top: 4px;
+            font-size: 16px;
+            font-weight: 900;
+            color: #123923;
+          }
+          .card-value.danger {
+            color: #ff1d14;
+          }
+          .section {
+            border: 1px solid #2d6b46;
+            border-radius: 6px;
+            overflow: hidden;
+            background: rgba(255,255,255,0.97);
+            margin-bottom: 10px;
+            box-shadow: inset 0 0 0 1px rgba(15, 90, 46, 0.03);
+          }
+          .section-title {
+            display: inline-block;
+            background: linear-gradient(180deg, #0f5a2e 0%, #145a31 100%);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+            padding: 6px 18px 7px;
+            border-bottom-right-radius: 6px;
+            min-width: 155px;
+            letter-spacing: 0.3px;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+          }
+          thead th {
+            background: linear-gradient(180deg, #0f5a2e 0%, #145a31 100%);
+            color: #fff;
+            font-size: 10px;
+            font-weight: 800;
+            padding: 7px 6px;
+            border-right: 1px solid rgba(255,255,255,0.25);
+            text-transform: uppercase;
+          }
+          tbody td {
+            padding: 6px 8px;
+            font-size: 10px;
+            color: #222;
+            border-right: 1px solid #dbe5dd;
+            border-bottom: 1px solid #dbe5dd;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+          tbody tr:last-child td {
+            border-bottom: 0;
+          }
+          thead th:last-child,
+          tbody td:last-child {
+            border-right: 0;
+          }
+          .align-right { text-align: right; }
+          .align-center { text-align: center; }
+          .paid-text { color: #0f7a2f; font-weight: 800; }
+          .pending-text { color: #ff1d14; font-weight: 800; }
+          .summary-table tbody td,
+          .summary-table thead th {
+            text-align: center;
+          }
+          .summary-table .row-label {
+            font-weight: 900;
+          }
+          .bottom-grid {
+            display: grid;
+            grid-template-columns: 1.1fr 1.35fr;
+            gap: 14px;
+            margin-bottom: 14px;
+          }
+          .notes-box,
+          .finance-box {
+            border: 1px solid #2d6b46;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.97);
+            padding: 10px 14px;
+            min-height: 128px;
+          }
+          .box-title {
+            margin: 0 0 8px;
+            font-size: 12px;
+            font-weight: 900;
+            color: #1c1c1c;
+            text-transform: uppercase;
+          }
+          .note-item {
+            font-size: 11px;
+            line-height: 1.7;
+            margin: 8px 0;
+          }
+          .finance-content {
+            display: grid;
+            grid-template-columns: 1fr 155px 160px;
+            gap: 12px;
+            align-items: center;
+          }
+          .finance-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 11px;
+            margin: 10px 0;
+          }
+          .finance-row strong {
+            color: #111;
+          }
+          .donut {
+            width: 106px;
+            height: 106px;
+            border-radius: 50%;
+            margin: 0 auto;
+            background: conic-gradient(#2f7d32 0deg ${paymentDegrees}deg, #ff1d14 ${paymentDegrees}deg 360deg);
+            position: relative;
+          }
+          .donut::after {
+            content: '';
+            position: absolute;
+            inset: 26px;
+            border-radius: 50%;
+            background: #fff;
+          }
+          .legend-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            margin: 8px 0;
+          }
+          .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="page">
+          <div class="header">
+            <div class="brand">
+              <div class="brand-icon">${logoSvg}</div>
+              <div>
+                <h1 class="brand-title">ESTUFA<br/>VERDE VIVO</h1>
+                <p class="brand-subtitle">PRODUTOS PARA ESTUFAS<br/>E AGRICULTURA PROTEGIDA</p>
+              </div>
+            </div>
+            <div class="report-title-wrap">
+              <h2 class="report-title">RELATÓRIO DE VENDAS</h2>
+              <div class="report-subtitle">TODAS AS VENDAS (PAGAS E PENDENTES)</div>
+            </div>
+            <div class="meta-box">
+              <div class="meta-row"><span class="meta-label">Período:</span><span>${escapeHtml(data.periodo)}</span></div>
+              <div class="meta-row"><span class="meta-label">Data do Relatório:</span><span>${escapeHtml(new Date().toLocaleDateString('pt-BR'))}</span></div>
+              <div class="meta-row"><span class="meta-label">Emitido por:</span><span>${escapeHtml(data.nomeEstufa || data.nomeProdutor)}</span></div>
+            </div>
+          </div>
 
-  const html = wrapHtmlDocument({
-    title: data.tituloRelatorio,
-    subtitle: `Produtor: ${data.nomeProdutor}`,
-    company: data.nomeEstufa || data.nomeProdutor,
-    period: data.periodo,
-    summaryCards: [
-      { label: 'Total vendido', value: fmtMoeda(data.totais.totalVendido) },
-      { label: 'Total recebido', value: fmtMoeda(data.totais.totalRecebido), tone: 'success' },
-      { label: 'A receber', value: fmtMoeda(data.totais.totalReceber), tone: 'info' },
-      { label: 'A pagar', value: fmtMoeda(data.totais.totalPagar), tone: 'danger' },
-      { label: 'Saldo', value: fmtMoeda(data.totais.saldo), tone: data.totais.saldo >= 0 ? 'success' : 'danger' },
-      { label: 'Registros', value: String(data.totais.totalRegistros) },
-      { label: 'Ticket medio', value: fmtMoeda(data.totais.ticketMedio) },
-      { label: 'Periodo', value: data.periodo },
-    ],
-    sections: [
-      buildSection(
-        'Detalhamento',
-        `
-          <table>
-            <thead>
-              <tr>
-                <th>Codigo</th>
-                <th>Data</th>
-                <th>Cliente</th>
-                <th>Documento</th>
-                <th>Origem</th>
-                <th>Local</th>
-                <th>Lote</th>
-                <th>Produto</th>
-                <th class="align-right">Quantidade</th>
-                <th class="align-right">Vlr unit.</th>
-                <th>Metodo</th>
-                <th>Status</th>
-                <th>Recebido por</th>
-                <th class="align-right">Valor</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows || '<tr><td colspan="14">Sem registros no periodo selecionado.</td></tr>'}
-            </tbody>
-          </table>
-        `
-      ),
-      buildSection(
-        'Observacoes',
-        data.observacoes
-          ? `<div class="panel">${escapeHtml(data.observacoes)}</div>`
-          : `
-            <table>
+          <div class="cards">
+            <div class="card">
+              <div class="card-icon">🛒</div>
+              <div><div class="card-label">TOTAL DE VENDAS</div><div class="card-value">${data.itens.length} pedidos</div></div>
+            </div>
+            <div class="card">
+              <div class="card-icon">$</div>
+              <div><div class="card-label">VALOR TOTAL DAS VENDAS</div><div class="card-value">${fmtMoeda(data.totais.totalVendido)}</div></div>
+            </div>
+            <div class="card">
+              <div class="card-icon">✓</div>
+              <div><div class="card-label">VALOR TOTAL PAGO</div><div class="card-value">${fmtMoeda(paidValue)}</div></div>
+            </div>
+            <div class="card">
+              <div class="card-icon">◔</div>
+              <div><div class="card-label">VALOR TOTAL PENDENTE</div><div class="card-value danger">${fmtMoeda(pendingValue)}</div></div>
+            </div>
+            <div class="card">
+              <div class="card-icon">▤</div>
+              <div><div class="card-label">QUANTIDADE TOTAL DE CAIXAS VENDIDAS</div><div class="card-value">${fmtNumero(soldBoxes, soldBoxes % 1 === 0 ? 0 : 2)} CX</div></div>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">RESUMO GERAL</div>
+            <table class="summary-table">
               <thead>
-                <tr><th>Codigo</th><th>Cliente</th><th>Data</th><th>Observacao</th></tr>
+                <tr>
+                  <th>STATUS</th>
+                  <th>QTDE DE VENDAS</th>
+                  <th>QTDE DE CAIXAS</th>
+                  <th>VALOR TOTAL</th>
+                  <th>VALOR PAGO</th>
+                  <th>VALOR PENDENTE</th>
+                </tr>
               </thead>
               <tbody>
-                ${notesRows || '<tr><td colspan="4">Sem observacoes registradas.</td></tr>'}
+                <tr>
+                  <td class="row-label paid-text">PAGAS</td>
+                  <td>${paidCount}</td>
+                  <td>${fmtNumero(paidItems.reduce((acc, item) => acc + parseQuantidadeFromReportItem(item), 0), 0)} CX</td>
+                  <td>${fmtMoeda(paidValue)}</td>
+                  <td>${fmtMoeda(paidValue)}</td>
+                  <td>R$ 0,00</td>
+                </tr>
+                <tr>
+                  <td class="row-label pending-text">PENDENTES</td>
+                  <td>${pendingCount}</td>
+                  <td>${fmtNumero(pendingItems.reduce((acc, item) => acc + parseQuantidadeFromReportItem(item), 0), 0)} CX</td>
+                  <td>${fmtMoeda(pendingValue)}</td>
+                  <td>R$ 0,00</td>
+                  <td class="pending-text">${fmtMoeda(pendingValue)}</td>
+                </tr>
+                <tr>
+                  <td class="row-label">TOTAL</td>
+                  <td>${data.itens.length}</td>
+                  <td>${fmtNumero(soldBoxes, 0)} CX</td>
+                  <td><strong>${fmtMoeda(data.totais.totalVendido)}</strong></td>
+                  <td><strong>${fmtMoeda(paidValue)}</strong></td>
+                  <td class="pending-text">${fmtMoeda(pendingValue)}</td>
+                </tr>
               </tbody>
             </table>
-          `
-      ),
-    ],
-  });
+          </div>
+
+          <div class="section">
+            <div class="section-title">DETALHAMENTO DAS VENDAS</div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:72px;">Nº VENDA</th>
+                  <th style="width:86px;">DATA</th>
+                  <th>CLIENTE</th>
+                  <th style="width:86px;">QTD. CAIXAS</th>
+                  <th style="width:94px;">VALOR TOTAL</th>
+                  <th style="width:94px;">VALOR PAGO</th>
+                  <th style="width:104px;">VALOR PENDENTE</th>
+                  <th style="width:78px;">STATUS</th>
+                  <th style="width:84px;">VENCIMENTO</th>
+                  <th style="width:112px;">FORMA DE PAGAMENTO</th>
+                  <th style="width:110px;">RECEBIDO POR</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${detailRows || '<tr><td colspan="11">Sem vendas no período selecionado.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="bottom-grid">
+            <div class="notes-box">
+              <h3 class="box-title">OBSERVAÇÕES:</h3>
+              <div class="note-item">• Valores expressos em Reais (R$).</div>
+              <div class="note-item">• Relatório gerado de forma automática pelo sistema.</div>
+              ${cancelledCount > 0 ? `<div class="note-item">• ${cancelledCount} venda(s) cancelada(s) não entram no valor pendente.</div>` : ''}
+            </div>
+            <div class="finance-box">
+              <h3 class="box-title">RESUMO FINANCEIRO</h3>
+              <div class="finance-content">
+                <div>
+                  <div class="finance-row"><strong>Valor Total das Vendas:</strong><span>${fmtMoeda(data.totais.totalVendido)}</span></div>
+                  <div class="finance-row"><strong>Valor Total Pago:</strong><span>${fmtMoeda(paidValue)}</span></div>
+                  <div class="finance-row"><strong>Valor Total Pendente:</strong><span class="pending-text">${fmtMoeda(pendingValue)}</span></div>
+                </div>
+                <div class="donut"></div>
+                <div>
+                  <div class="legend-row"><span class="legend-color" style="background:#2f7d32;"></span><span>Pago (${fmtNumero(paymentRatio * 100, 2)}%)</span></div>
+                  <div class="legend-row" style="padding-left:20px;">${fmtMoeda(paidValue)}</div>
+                  <div class="legend-row"><span class="legend-color" style="background:#ff1d14;"></span><span>Pendente (${fmtNumero(pendingRatio * 100, 2)}%)</span></div>
+                  <div class="legend-row" style="padding-left:20px;">${fmtMoeda(pendingValue)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </body>
+    </html>
+  `;
+};
+
+export const shareSalesReportPdf = async (data: SalesReportPdfData) => {
+  const html = buildBrandedSalesReportHtml(data);
 
   const fileName =
     data.nomeArquivo ||
@@ -745,10 +1183,76 @@ export const shareVendaReceipt = async (data: ReceiptData) => {
 export const shareSalesAccountingPdf = async (data: SalesAccountingPdfData) => {
   const { totalGeral, totalPago, totalPendente, totalCancelado, ticketMedio, recorteLabel } =
     buildSalesAccountingInsights(data);
+  const groupedByCliente = data.itens.reduce<Record<string, SalesAccountingItem[]>>((acc, item) => {
+    const key = item.cliente || 'Cliente avulso';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
+
+  const clientSections = Object.entries(groupedByCliente)
+    .sort(([clienteA], [clienteB]) => clienteA.localeCompare(clienteB, 'pt-BR'))
+    .map(([cliente, items]) => {
+      const totalCliente = items.reduce((acc, item) => acc + Number(item.valorTotal || 0), 0);
+      const totalPagoCliente = items
+        .filter((item) => normalizeAccountingStatus(item.status) === 'PAGO')
+        .reduce((acc, item) => acc + Number(item.valorTotal || 0), 0);
+      const totalPendenteCliente = items
+        .filter((item) => normalizeAccountingStatus(item.status) === 'PENDENTE')
+        .reduce((acc, item) => acc + Number(item.valorTotal || 0), 0);
+
+      return buildSection(
+        `Cliente: ${cliente}`,
+        `
+          <div class="chip-grid">
+            <div class="chip"><div class="chip-label">Pedidos</div><div class="chip-value">${items.length}</div></div>
+            <div class="chip"><div class="chip-label">Total</div><div class="chip-value">${fmtMoeda(totalCliente)}</div></div>
+            <div class="chip"><div class="chip-label">Pago</div><div class="chip-value">${fmtMoeda(totalPagoCliente)}</div></div>
+            <div class="chip"><div class="chip-label">Pendente</div><div class="chip-value">${fmtMoeda(totalPendenteCliente)}</div></div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Codigo</th>
+                <th>Estufa</th>
+                <th>Lote</th>
+                <th>Produto</th>
+                <th class="align-right">Qtd</th>
+                <th class="align-right">Total</th>
+                <th>Metodo</th>
+                <th>Status</th>
+                <th>Recebido por</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items
+                .map(
+                  (v) => `
+                    <tr>
+                      <td>${escapeHtml(v.data)}</td>
+                      <td>${escapeHtml(v.codigo)}</td>
+                      <td>${escapeHtml(v.estufa)}</td>
+                      <td>${escapeHtml(v.lote)}</td>
+                      <td>${escapeHtml(v.produto)}</td>
+                      <td class="align-right">${escapeHtml(v.quantidade)}</td>
+                      <td class="align-right">${fmtMoeda(v.valorTotal)}</td>
+                      <td>${escapeHtml(v.metodoPagamento)}</td>
+                      <td><span class="status ${getStatusClass(v.status)}">${escapeHtml(v.status)}</span></td>
+                      <td>${escapeHtml(v.recebidoPor || '-')}</td>
+                    </tr>
+                  `
+                )
+                .join('')}
+            </tbody>
+          </table>
+        `
+      );
+    });
 
   const html = wrapHtmlDocument({
     title: 'Relatorio contabil de vendas',
-    subtitle: 'Analise detalhada de recebimentos e pendencias',
+    subtitle: 'Analise detalhada agrupada por cliente',
     company: data.empresa,
     period: data.periodo,
     summaryCards: [
@@ -761,51 +1265,7 @@ export const shareSalesAccountingPdf = async (data: SalesAccountingPdfData) => {
       { label: 'Recorte', value: recorteLabel },
       { label: 'Periodo', value: data.periodo },
     ],
-    sections: [
-      buildSection(
-        'Vendas detalhadas',
-        `
-          <table>
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Codigo</th>
-                <th>Cliente</th>
-                <th>Origem</th>
-                <th>Local</th>
-                <th>Lote</th>
-                <th>Produto</th>
-                <th class="align-right">Qtd</th>
-                <th class="align-right">Total</th>
-                <th>Metodo</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${data.itens
-                .map(
-                  (v) => `
-                <tr>
-                  <td>${escapeHtml(v.data)}</td>
-                  <td>${escapeHtml(v.codigo)}</td>
-                  <td>${escapeHtml(v.cliente)}</td>
-                  <td>${escapeHtml(v.origem)}</td>
-                  <td>${escapeHtml(v.estufa)}</td>
-                  <td>${escapeHtml(v.lote)}</td>
-                  <td>${escapeHtml(v.produto)}</td>
-                  <td class="align-right">${escapeHtml(v.quantidade)}</td>
-                  <td class="align-right">${fmtMoeda(v.valorTotal)}</td>
-                  <td>${escapeHtml(v.metodoPagamento)}</td>
-                  <td><span class="status ${getStatusClass(v.status)}">${escapeHtml(v.status)}</span></td>
-                </tr>
-              `
-                )
-                .join('')}
-            </tbody>
-          </table>
-        `
-      ),
-    ],
+    sections: clientSections.length > 0 ? clientSections : [buildSection('Clientes', '<div class="panel">Sem registros no periodo selecionado.</div>')],
   });
 
   const fileName = `Relatorio_Contabil_Vendas_${sanitizeFilenameSegment(data.empresa)}_${reportDateToken()}.pdf`;
@@ -813,54 +1273,232 @@ export const shareSalesAccountingPdf = async (data: SalesAccountingPdfData) => {
 };
 
 export const shareCustomerSalesStatement = async (data: CustomerSalesStatementData) => {
+  const paidOrders = data.vendas.filter((v) => normalizeAccountingStatus(v.status) === 'PAGO');
+  const pendingOrders = data.vendas.filter((v) => normalizeAccountingStatus(v.status) === 'PENDENTE');
+  const totalCaixas = data.vendas.reduce((acc, item) => acc + Number(item.quantidadeValor || 0), 0);
+  const paymentRatio = data.totalVendido > 0 ? data.totalPago / data.totalVendido : 0;
+  const pendingRatio = Math.max(0, 1 - paymentRatio);
+  const paymentDegrees = Math.round(paymentRatio * 360);
+  const logoSvg = `
+    <svg viewBox="0 0 86 86" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g fill="none" stroke="#0f5a2e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M43 8c-15.9 0-28.8 12.9-28.8 28.8V63h57.6V36.8C71.8 20.9 58.9 8 43 8Z"/>
+        <path d="M23 20.5h40"/>
+        <path d="M43 8v55"/>
+        <path d="M14.2 36.8h57.6"/>
+        <path d="M24.5 63c0-10.2 8.3-18.5 18.5-18.5S61.5 52.8 61.5 63"/>
+      </g>
+      <path d="M34.5 55c0-6.7 3.8-12.8 8.5-12.8S51.5 48.3 51.5 55" fill="#2f7d32"/>
+      <path d="M16 55.5c3.9-14.1 16.2-22.6 27-22.6-8.2 4.8-12.1 13.6-11.6 26.1-5.7-1.7-10.8-3.5-15.4-3.5Z" fill="#2f7d32"/>
+      <path d="M70 55.5c-3.9-14.1-16.2-22.6-27-22.6 8.2 4.8 12.1 13.6 11.6 26.1 5.7-1.7 10.8-3.5 15.4-3.5Z" fill="#0f5a2e"/>
+      <path d="M28.6 27.8c0-4.2 2.8-7.7 6.8-9.1-1.1 4.6 1 8.6 4.6 11.5-4.9 1.9-11.4 1.1-11.4-2.4Z" fill="#0f5a2e"/>
+    </svg>
+  `;
   const rows = data.vendas
     .map(
       (v) => `
-      <tr>
-        <td>${escapeHtml(v.data)}</td>
-        <td>${escapeHtml(v.produto)}</td>
-        <td class="align-right">${escapeHtml(v.quantidade)}</td>
-        <td class="align-right">${fmtMoeda(v.valorTotal)}</td>
-        <td><span class="status ${getStatusClass(v.status)}">${escapeHtml(v.status)}</span></td>
-      </tr>
-    `
+        <tr>
+          <td>${escapeHtml(v.data)}</td>
+          <td>${escapeHtml(v.codigo || '-')}</td>
+          <td>${escapeHtml(v.estufa || '-')}</td>
+          <td>${escapeHtml(v.produto || '-')}</td>
+          <td class="align-center">${escapeHtml(v.quantidade || '-')}</td>
+          <td class="align-right">${fmtMoeda(v.valorTotal)}</td>
+          <td class="align-center ${normalizeAccountingStatus(v.status) === 'PAGO' ? 'paid-text' : 'pending-text'}">${escapeHtml(v.status)}</td>
+          <td>${escapeHtml(v.metodoPagamento || '-')}</td>
+          <td>${escapeHtml(v.recebidoPor || '-')}</td>
+        </tr>
+      `
     )
     .join('');
 
-  const html = wrapHtmlDocument({
-    title: 'Extrato de Vendas por Cliente',
-    subtitle: `Cliente: ${data.clienteNome}`,
-    company: data.empresa,
-    period: data.periodo,
-    summaryCards: [
-      { label: 'Total Comprado', value: fmtMoeda(data.totalVendido) },
-      { label: 'Total Pago', value: fmtMoeda(data.totalPago), tone: 'success' },
-      { label: 'Saldo Devedor', value: fmtMoeda(data.totalPendente), tone: 'danger' },
-      { label: 'Qtd. Pedidos', value: String(data.vendas.length) },
-    ],
-    sections: [
-      buildSection(
-        'Historico de Lancamentos',
-        `
-          <table>
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Produto</th>
-                <th class="align-right">Qtd</th>
-                <th class="align-right">Valor</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows || '<tr><td colspan="5">Nenhuma venda registrada para este cliente.</td></tr>'}
-            </tbody>
-          </table>
-        `
-      ),
-    ],
-    footer: 'Este documento e um extrato de conferencia simples para acerto de contas.',
-  });
+  const html = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <style>
+          * { box-sizing: border-box; }
+          @page { size: A4 landscape; margin: 10mm; }
+          body { margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; color: #1b1b1b; background: #ffffff; }
+          .page {
+            width: 100%;
+            min-height: 100%;
+            border: 1px solid #c8d8cc;
+            background:
+              radial-gradient(circle at 10% 20%, rgba(26, 92, 46, 0.06), transparent 22%),
+              radial-gradient(circle at 90% 25%, rgba(26, 92, 46, 0.05), transparent 18%),
+              linear-gradient(180deg, #ffffff 0%, #fcfdfc 100%);
+            padding: 16px 18px 14px;
+          }
+          .header { display: grid; grid-template-columns: 330px 1fr 340px; gap: 12px; align-items: start; margin-bottom: 14px; }
+          .brand { display: flex; align-items: center; gap: 12px; }
+          .brand-icon { width: 86px; height: 86px; flex-shrink: 0; }
+          .brand-title { margin: 0; font-size: 31px; line-height: 0.9; font-weight: 900; color: #0f5a2e; text-transform: uppercase; letter-spacing: -0.8px; }
+          .brand-subtitle { margin: 8px 0 0; font-size: 10px; line-height: 1.25; color: #194128; text-transform: uppercase; }
+          .report-title-wrap { text-align: center; padding-top: 10px; }
+          .report-title { margin: 0; font-size: 31px; line-height: 1; font-weight: 900; color: #0f5a2e; text-transform: uppercase; letter-spacing: -0.8px; }
+          .report-subtitle { margin: 12px 0 0; font-size: 11px; font-weight: 800; color: #194128; text-transform: uppercase; letter-spacing: 0.2px; }
+          .meta-box { border: 1px solid #1a5c2e; border-radius: 10px; padding: 10px 14px; background: rgba(255, 255, 255, 0.95); box-shadow: inset 0 0 0 1px rgba(15, 90, 46, 0.06); }
+          .meta-row { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; padding: 7px 0; }
+          .meta-label { font-weight: 800; color: #123923; }
+          .cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 12px; }
+          .card { border: 1px solid #2d6b46; border-radius: 8px; background: rgba(255,255,255,0.95); min-height: 84px; display: flex; align-items: center; gap: 12px; padding: 12px 12px; box-shadow: inset 0 0 0 1px rgba(15, 90, 46, 0.04); }
+          .card-icon { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(180deg, #0f5a2e 0%, #1f7d42 100%); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 900; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.4); }
+          .card-label { font-size: 10px; font-weight: 800; color: #194128; text-transform: uppercase; line-height: 1.12; }
+          .card-value { margin-top: 4px; font-size: 16px; font-weight: 900; color: #123923; }
+          .card-value.danger { color: #ff1d14; }
+          .section { border: 1px solid #2d6b46; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,0.97); margin-bottom: 10px; box-shadow: inset 0 0 0 1px rgba(15, 90, 46, 0.03); }
+          .section-title { display: inline-block; background: linear-gradient(180deg, #0f5a2e 0%, #145a31 100%); color: #fff; font-size: 12px; font-weight: 800; text-transform: uppercase; padding: 6px 18px 7px; border-bottom-right-radius: 6px; min-width: 185px; letter-spacing: 0.3px; }
+          .summary-table tbody td, .summary-table thead th { text-align: center; }
+          .summary-table .row-label { font-weight: 900; }
+          table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+          thead th { background: linear-gradient(180deg, #0f5a2e 0%, #145a31 100%); color: #fff; font-size: 10px; font-weight: 800; padding: 7px 6px; border-right: 1px solid rgba(255,255,255,0.25); text-transform: uppercase; }
+          tbody td { padding: 6px 8px; font-size: 10px; color: #222; border-right: 1px solid #dbe5dd; border-bottom: 1px solid #dbe5dd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          tbody tr:last-child td { border-bottom: 0; }
+          thead th:last-child, tbody td:last-child { border-right: 0; }
+          .align-right { text-align: right; }
+          .align-center { text-align: center; }
+          .paid-text { color: #0f7a2f; font-weight: 800; }
+          .pending-text { color: #ff1d14; font-weight: 800; }
+          .bottom-grid { display: grid; grid-template-columns: 1.05fr 1.35fr; gap: 14px; margin-top: 10px; }
+          .notes-box, .finance-box { border: 1px solid #2d6b46; border-radius: 8px; background: rgba(255,255,255,0.97); padding: 10px 14px; min-height: 128px; }
+          .box-title { margin: 0 0 8px; font-size: 12px; font-weight: 900; color: #1c1c1c; text-transform: uppercase; }
+          .note-item { font-size: 11px; line-height: 1.7; margin: 8px 0; }
+          .finance-content { display: grid; grid-template-columns: 1fr 155px 150px; gap: 12px; align-items: center; }
+          .finance-row { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; margin: 10px 0; }
+          .finance-row strong { color: #111; }
+          .donut { width: 106px; height: 106px; border-radius: 50%; margin: 0 auto; background: conic-gradient(#2f7d32 0deg ${paymentDegrees}deg, #ff1d14 ${paymentDegrees}deg 360deg); position: relative; }
+          .donut::after { content: ''; position: absolute; inset: 26px; border-radius: 50%; background: #fff; }
+          .legend-row { display: flex; align-items: center; gap: 8px; font-size: 11px; margin: 8px 0; }
+          .legend-color { width: 12px; height: 12px; border-radius: 2px; }
+        </style>
+      </head>
+      <body>
+        <div class="page">
+          <div class="header">
+            <div class="brand">
+              <div class="brand-icon">${logoSvg}</div>
+              <div>
+                <h1 class="brand-title">ESTUFA<br/>VERDE VIVO</h1>
+                <p class="brand-subtitle">PRODUTOS PARA ESTUFAS<br/>E AGRICULTURA PROTEGIDA</p>
+              </div>
+            </div>
+            <div class="report-title-wrap">
+              <h2 class="report-title">EXTRATO DE COMPRAS</h2>
+              <div class="report-subtitle">TODAS AS COMPRAS DO CLIENTE</div>
+            </div>
+            <div class="meta-box">
+              <div class="meta-row"><span class="meta-label">Cliente:</span><span>${escapeHtml(data.clienteNome)}</span></div>
+              <div class="meta-row"><span class="meta-label">Período:</span><span>${escapeHtml(data.periodo)}</span></div>
+              <div class="meta-row"><span class="meta-label">Emitido por:</span><span>${escapeHtml(data.empresa)}</span></div>
+            </div>
+          </div>
+
+          <div class="cards">
+            <div class="card"><div class="card-icon">🛒</div><div><div class="card-label">TOTAL DE COMPRAS</div><div class="card-value">${data.vendas.length} pedidos</div></div></div>
+            <div class="card"><div class="card-icon">$</div><div><div class="card-label">TOTAL COMPRADO</div><div class="card-value">${fmtMoeda(data.totalVendido)}</div></div></div>
+            <div class="card"><div class="card-icon">✓</div><div><div class="card-label">TOTAL PAGO</div><div class="card-value">${fmtMoeda(data.totalPago)}</div></div></div>
+            <div class="card"><div class="card-icon">◔</div><div><div class="card-label">SALDO PENDENTE</div><div class="card-value danger">${fmtMoeda(data.totalPendente)}</div></div></div>
+            <div class="card"><div class="card-icon">▤</div><div><div class="card-label">VOLUME COMPRADO</div><div class="card-value">${fmtNumero(totalCaixas, totalCaixas % 1 === 0 ? 0 : 2)} CX</div></div></div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">RESUMO GERAL</div>
+            <table class="summary-table">
+              <thead>
+                <tr>
+                  <th>STATUS</th>
+                  <th>QTDE DE PEDIDOS</th>
+                  <th>QTDE DE CAIXAS</th>
+                  <th>VALOR TOTAL</th>
+                  <th>VALOR PAGO</th>
+                  <th>VALOR PENDENTE</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="row-label paid-text">PAGAS</td>
+                  <td>${paidOrders.length}</td>
+                  <td>${fmtNumero(paidOrders.reduce((acc, item) => acc + Number(item.quantidadeValor || 0), 0), 0)} CX</td>
+                  <td>${fmtMoeda(data.totalPago)}</td>
+                  <td>${fmtMoeda(data.totalPago)}</td>
+                  <td>R$ 0,00</td>
+                </tr>
+                <tr>
+                  <td class="row-label pending-text">PENDENTES</td>
+                  <td>${pendingOrders.length}</td>
+                  <td>${fmtNumero(pendingOrders.reduce((acc, item) => acc + Number(item.quantidadeValor || 0), 0), 0)} CX</td>
+                  <td>${fmtMoeda(data.totalPendente)}</td>
+                  <td>R$ 0,00</td>
+                  <td class="pending-text">${fmtMoeda(data.totalPendente)}</td>
+                </tr>
+                <tr>
+                  <td class="row-label">TOTAL</td>
+                  <td>${data.vendas.length}</td>
+                  <td>${fmtNumero(totalCaixas, 0)} CX</td>
+                  <td><strong>${fmtMoeda(data.totalVendido)}</strong></td>
+                  <td><strong>${fmtMoeda(data.totalPago)}</strong></td>
+                  <td class="pending-text">${fmtMoeda(data.totalPendente)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="section">
+            <div class="section-title">DETALHAMENTO DAS COMPRAS</div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:84px;">DATA</th>
+                  <th style="width:84px;">CÓDIGO</th>
+                  <th style="width:110px;">LOCAL</th>
+                  <th>PRODUTO</th>
+                  <th style="width:92px;">QUANTIDADE</th>
+                  <th style="width:94px;">VALOR</th>
+                  <th style="width:80px;">STATUS</th>
+                  <th style="width:110px;">PAGAMENTO</th>
+                  <th style="width:110px;">RECEBIDO POR</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows || '<tr><td colspan="9">Nenhuma compra registrada para este cliente.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="bottom-grid">
+            <div class="notes-box">
+              <h3 class="box-title">OBSERVAÇÕES:</h3>
+              <div class="note-item">• Este extrato reúne todas as compras vinculadas ao cliente selecionado.</div>
+              <div class="note-item">• Valores expressos em Reais (R$).</div>
+              <div class="note-item">• Documento útil para conferência, cobrança e histórico comercial.</div>
+            </div>
+            <div class="finance-box">
+              <h3 class="box-title">RESUMO FINANCEIRO</h3>
+              <div class="finance-content">
+                <div>
+                  <div class="finance-row"><strong>Total Comprado:</strong><span>${fmtMoeda(data.totalVendido)}</span></div>
+                  <div class="finance-row"><strong>Total Pago:</strong><span>${fmtMoeda(data.totalPago)}</span></div>
+                  <div class="finance-row"><strong>Saldo Pendente:</strong><span class="pending-text">${fmtMoeda(data.totalPendente)}</span></div>
+                  <div class="finance-row"><strong>Pedidos Pagos:</strong><span>${paidOrders.length}</span></div>
+                  <div class="finance-row"><strong>Pedidos Pendentes:</strong><span>${pendingOrders.length}</span></div>
+                </div>
+                <div class="donut"></div>
+                <div>
+                  <div class="legend-row"><span class="legend-color" style="background:#2f7d32;"></span><span>Pago (${fmtNumero(paymentRatio * 100, 2)}%)</span></div>
+                  <div class="legend-row" style="padding-left:20px;">${fmtMoeda(data.totalPago)}</div>
+                  <div class="legend-row"><span class="legend-color" style="background:#ff1d14;"></span><span>Pendente (${fmtNumero(pendingRatio * 100, 2)}%)</span></div>
+                  <div class="legend-row" style="padding-left:20px;">${fmtMoeda(data.totalPendente)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
 
   const fileName = `Extrato_Vendas_${sanitizeFilenameSegment(data.clienteNome)}_${reportDateToken()}.pdf`;
   await sharePdfHtml(html, fileName);

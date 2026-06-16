@@ -9,7 +9,7 @@ interface MetricCardProps {
   value: string;
   hint?: string;
   style?: ViewStyle;
-  tone?: 'default' | 'success' | 'warning' | 'danger' | 'info';
+  tone?: 'default' | 'success' | 'warning' | 'danger' | 'info' | 'neutral';
   icon?: string;
   iconColor?: string;
   onPress?: () => void;
@@ -20,6 +20,7 @@ const MetricCard = ({ label, value, hint, style, tone = 'default', icon, iconCol
   
   const tonePalette = {
     default: { bg: mode.surfaceBackground, value: mode.textPrimary, border: mode.border, icon: mode.textSecondary },
+    neutral: { bg: mode.surfaceMuted, value: mode.textSecondary, border: mode.border, icon: mode.textMuted },
     success: { bg: COLORS.successSoft, value: COLORS.success, border: COLORS.success, icon: COLORS.success },
     warning: { bg: COLORS.warningSoft, value: COLORS.warning, border: COLORS.warning, icon: COLORS.warning },
     danger: { bg: COLORS.dangerSoft, value: COLORS.danger, border: COLORS.danger, icon: COLORS.danger },
@@ -33,7 +34,7 @@ const MetricCard = ({ label, value, hint, style, tone = 'default', icon, iconCol
     styles.card,
     {
       backgroundColor: palette.bg,
-      borderColor: tone === 'default' ? mode.border : palette.bg, // Cleaner look with same-color border
+      borderColor: tone === 'default' || tone === 'neutral' ? mode.border : palette.bg,
     },
     style,
   ];
@@ -41,13 +42,24 @@ const MetricCard = ({ label, value, hint, style, tone = 'default', icon, iconCol
   const content = (
     <>
       <View style={styles.topRow}>
-        <Text style={[styles.label, { color: tone === 'default' ? mode.textSecondary : palette.value, opacity: 0.8 }]}>{label}</Text>
-        {icon ? <MaterialCommunityIcons name={icon as any} size={20} color={effectiveIconColor} /> : null}
+        <Text 
+          style={[
+            styles.label, 
+            { color: tone === 'default' || tone === 'neutral' ? mode.textSecondary : palette.value }
+          ]}
+        >
+          {label}
+        </Text>
+        {icon ? <MaterialCommunityIcons name={icon as any} size={18} color={effectiveIconColor} /> : null}
       </View>
       <Text style={[styles.value, { color: palette.value }]} numberOfLines={1}>
         {value}
       </Text>
-      {hint ? <Text style={[styles.hint, { color: palette.value, opacity: 0.7 }]}>{hint}</Text> : null}
+      {hint ? (
+        <Text style={[styles.hint, { color: tone === 'default' || tone === 'neutral' ? mode.textMuted : palette.value }]}>
+          {hint}
+        </Text>
+      ) : null}
     </>
   );
 
@@ -65,9 +77,9 @@ const MetricCard = ({ label, value, hint, style, tone = 'default', icon, iconCol
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    minHeight: 100,
+    minHeight: 110,
     borderWidth: 1.5,
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 16,
     justifyContent: 'center',
     ...SHADOWS.card,
@@ -76,24 +88,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   label: {
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: '900',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   value: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '900',
-    letterSpacing: -0.5,
+    letterSpacing: -0.6,
   },
   hint: {
-    marginTop: 4,
+    marginTop: 6,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });
 
 export default MetricCard;
+

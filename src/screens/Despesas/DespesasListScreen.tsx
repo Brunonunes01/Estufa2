@@ -5,18 +5,18 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../hooks/useAuth';
 import { Despesa } from '../../types/domain';
-import { COLORS, RADIUS, SHADOWS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING } from '../../constants/theme';
 import { useThemeMode } from '../../hooks/useThemeMode';
 import { useFeedback } from '../../hooks/useFeedback';
 import { useDespesasList } from '../../hooks/useDespesasList';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import EmptyState from '../../components/ui/EmptyState';
 import SkeletonBlock from '../../components/ui/SkeletonBlock';
-import LoadingButton from '../../components/ui/LoadingButton';
 import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 import MetricCard from '../../components/ui/MetricCard';
 import { listCaixaPessoas } from '../../services/caixaPessoaService';
-import { formatDateSafe } from '../../utils/date';
+
+import DespesaItemCard from './components/DespesaItemCard';
 
 const DespesasListScreen = ({ navigation }: any) => {
   const { isOwner, canWrite, user, selectedTenantId } = useAuth();
@@ -47,9 +47,7 @@ const DespesasListScreen = ({ navigation }: any) => {
       try {
         const pessoas = await listCaixaPessoas(targetId);
         const map: Record<string, string> = {};
-        pessoas.forEach((p) => {
-          map[p.id] = p.nome;
-        });
+        pessoas.forEach((p) => { map[p.id] = p.nome; });
         setCaixaPessoasMap(map);
       } catch {
         setCaixaPessoasMap({});
@@ -88,7 +86,7 @@ const DespesasListScreen = ({ navigation }: any) => {
           onPress: async () => {
             try {
               await deleteDespesa(item.id);
-              showSuccess('Despesa excluida.');
+              showSuccess('Despesa excluída.');
             } catch {
               showError('Não foi possível excluir a despesa.');
             }
@@ -133,28 +131,11 @@ const DespesasListScreen = ({ navigation }: any) => {
     }
   }, []);
 
-  const getIcon = (cat: string) => {
-    switch (cat) {
-      case 'energia':
-        return 'lightning-bolt';
-      case 'agua':
-        return 'water';
-      case 'mao_de_obra':
-        return 'account-hard-hat';
-      case 'combustivel':
-        return 'gas-station';
-      case 'manutencao':
-        return 'tools';
-      default:
-        return 'cash-minus';
-    }
-  };
-
-  const renderListHeader = () => (
+  const renderHeader = () => (
     <>
       <ScreenHeaderCard
-        title="Financeiro de Saida"
-        subtitle="Gerencie vencimentos e pagamentos com foco no que precisa de baixa."
+        title="Financeiro"
+        subtitle="Controle de saídas e vencimentos."
         badgeLabel="Despesas"
         actionLabel="Nova Despesa"
         actionIcon="plus"
@@ -163,81 +144,59 @@ const DespesasListScreen = ({ navigation }: any) => {
         <View style={styles.headerStats}>
           <View style={styles.headerStatChip}>
             <Text style={styles.headerStatValue}>R$ {totalGasto.toFixed(0)}</Text>
-            <Text style={styles.headerStatLabel}>Total do periodo</Text>
+            <Text style={styles.headerStatLabel}>Total Saídas</Text>
           </View>
           <View style={styles.headerStatChip}>
             <Text style={styles.headerStatValue}>R$ {totalPendente.toFixed(0)}</Text>
-            <Text style={styles.headerStatLabel}>A pagar</Text>
+            <Text style={styles.headerStatLabel}>A Pagar</Text>
           </View>
         </View>
       </ScreenHeaderCard>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.financeLinksRow}>
-        <TouchableOpacity
-          style={[styles.financeLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
-          onPress={() => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' })}
-        >
-          <MaterialCommunityIcons name="cash-multiple" size={16} color={theme.textSecondary} />
-          <Text style={[styles.financeLinkText, { color: theme.textSecondary }]}>Vendas</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.financeLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
-          onPress={() => navigation.navigate('ContasReceber')}
-        >
-          <MaterialCommunityIcons name="cash-clock" size={16} color={theme.textSecondary} />
-          <Text style={[styles.financeLinkText, { color: theme.textSecondary }]}>Contas</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.financeLink, styles.financeLinkActive, { borderColor: COLORS.modDespesas }]}>
-          <MaterialCommunityIcons name="cash-minus" size={16} color={COLORS.modDespesas} />
-          <Text style={[styles.financeLinkText, { color: COLORS.modDespesas }]}>Despesas</Text>
-        </TouchableOpacity>
+        {[
+          { label: 'Vendas', icon: 'cash-multiple', screen: 'VendasList' },
+          { label: 'Contas', icon: 'cash-clock', screen: 'ContasReceber' },
+          { label: 'Despesas', icon: 'cash-minus', active: true, screen: 'DespesasList' },
+        ].map(link => (
+          <TouchableOpacity
+            key={link.label}
+            style={[styles.financeLink, link.active && { borderColor: COLORS.modDespesas, backgroundColor: `${COLORS.modDespesas}15` }]}
+            onPress={() => link.active ? null : navigation.navigate(link.screen)}
+          >
+            <MaterialCommunityIcons name={link.icon as any} size={16} color={link.active ? COLORS.modDespesas : theme.textSecondary} />
+            <Text style={[styles.financeLinkText, { color: link.active ? COLORS.modDespesas : theme.textSecondary }]}>{link.label}</Text>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
 
-      <View style={[styles.overviewCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
-        <View style={styles.overviewTopRow}>
-          <View>
-            <Text style={[styles.overviewLabel, { color: theme.textSecondary }]}>Saidas no periodo</Text>
-            <Text style={[styles.overviewValue, { color: theme.textPrimary }]}>R$ {totalGasto.toFixed(2)}</Text>
-            <Text style={[styles.overviewCaption, { color: theme.textSecondary }]}>
-              {filteredDespesas.length} despesa(s) na visao atual
-            </Text>
-          </View>
-          <View style={[styles.overviewBadge, { backgroundColor: theme.dangerBackground, borderColor: COLORS.danger }]}>
-            <Text style={[styles.overviewBadgeText, { color: COLORS.danger }]}>Saida</Text>
-          </View>
-        </View>
-
-        <View style={styles.metricsGrid}>
-          <MetricCard label="Total gasto" value={`R$ ${totalGasto.toFixed(2)}`} icon="cash-minus" tone="danger" />
-          <MetricCard label="A pagar" value={`R$ ${totalPendente.toFixed(2)}`} icon="cash-clock" tone="warning" />
-        </View>
+      <View style={styles.metricsWrapper}>
+        <MetricCard label="Saídas Totais" value={`R$ ${totalGasto.toFixed(2)}`} icon="cash-minus" tone="danger" />
+        <MetricCard label="Em Aberto" value={`R$ ${totalPendente.toFixed(2)}`} icon="cash-clock" tone="warning" />
       </View>
 
-      <View style={[styles.toolbarCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
-        <View style={[styles.searchBox, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
-          <MaterialCommunityIcons name="magnify" size={18} color={theme.textSecondary} />
-          <TextInput
-            style={[styles.searchInput, { color: theme.textPrimary }]}
-            placeholder="Buscar por descrição, categoria ou destino"
-            placeholderTextColor={theme.textSecondary}
-            value={searchText}
-            onChangeText={setSearchText}
-          />
-          {searchText ? (
-            <TouchableOpacity onPress={() => setSearchText('')}>
-              <MaterialCommunityIcons name="close-circle" size={16} color={theme.textSecondary} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
+      <View style={[styles.searchWrapper, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
+        <MaterialCommunityIcons name="magnify" size={20} color={theme.textSecondary} />
+        <TextInput
+          style={[styles.searchInput, { color: theme.textPrimary }]}
+          placeholder="Buscar descrição, categoria ou destino..."
+          placeholderTextColor={theme.textMuted}
+          value={searchText}
+          onChangeText={setSearchText}
+        />
+        {searchText ? (
+          <TouchableOpacity onPress={() => setSearchText('')}>
+            <MaterialCommunityIcons name="close-circle" size={18} color={theme.textSecondary} />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
-      {loading ? (
-        <View style={styles.skeletonWrapper}>
-          <SkeletonBlock style={styles.skeletonCard} />
-          <SkeletonBlock style={styles.skeletonCard} />
-          <SkeletonBlock style={styles.skeletonCard} />
+      {loading && (
+        <View style={styles.loadingWrapper}>
+          <SkeletonBlock style={styles.skeleton} />
+          <SkeletonBlock style={styles.skeleton} />
         </View>
-      ) : null}
+      )}
     </>
   );
 
@@ -246,278 +205,101 @@ const DespesasListScreen = ({ navigation }: any) => {
       <FlatList
         data={filteredDespesas}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={[styles.listContent, { paddingBottom: (settings.uiV2Enabled ? 138 : 96) + insets.bottom }]}
-        ListHeaderComponent={renderListHeader}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 100 }]}
+        ListHeaderComponent={renderHeader}
         refreshing={refreshing && !loading}
         onRefresh={refetch}
-        ListEmptyComponent={
-          !loading ? (
-            <EmptyState
-              icon="receipt-text-outline"
-              title="Nenhuma despesa registrada"
-              description="Registre sua primeira despesa para acompanhar contas pendentes."
-              actionLabel="Adicionar despesa"
-              onAction={canWrite ? () => navigation.navigate('DespesaForm') : undefined}
-            />
-          ) : null
-        }
-        renderItem={({ item }) => {
-          const isPendente = item.status === 'pendente';
-          const isDeleting = deletingId === item.id;
-          const isPaying = payingId === item.id;
-
-          return (
-            <View style={[styles.card, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
-              <View style={styles.cardTopRow}>
-                <View style={[styles.iconBox, { backgroundColor: `${COLORS.danger}1A` }]}>
-                  <MaterialCommunityIcons name={getIcon(item.categoria) as any} size={20} color={COLORS.danger} />
-                </View>
-                <View style={styles.cardTitleArea}>
-                  <Text style={[styles.title, { color: theme.textPrimary }]}>{item.descricao}</Text>
-                  <Text style={[styles.categoryText, { color: theme.textSecondary }]}>{item.categoria.replace(/_/g, ' ')}</Text>
-                  <Text style={[styles.date, { color: theme.textSecondary }]}>
-                    {formatDateSafe(item.dataDespesa)}
-                  </Text>
-                </View>
-                <View style={[styles.statusPill, { backgroundColor: isPendente ? theme.warningBackground : theme.successBackground }]}>
-                  <Text style={[styles.statusPillText, { color: isPendente ? COLORS.warning : COLORS.success }]}>
-                    {isPendente ? 'PENDENTE' : 'PAGO'}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.infoGrid}>
-                <View style={[styles.infoCard, { backgroundColor: theme.surfaceMuted }]}>
-                  <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Valor</Text>
-                  <Text style={[styles.infoValueStrong, { color: COLORS.danger }]}>R$ {item.valor.toFixed(2)}</Text>
-                </View>
-                <View style={[styles.infoCard, { backgroundColor: theme.surfaceMuted }]}>
-                  <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Destino</Text>
-                  <Text style={[styles.infoValue, { color: theme.textPrimary }]} numberOfLines={1}>
-                    {caixaPessoasMap[item.pagamentoPara || ''] || 'Não informado'}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={[styles.metaPanel, { backgroundColor: theme.surfaceMuted }]}>
-                {isPendente && item.dataVencimento ? (
-                  <Text style={[styles.metaText, { color: theme.textSecondary }]}>
-                    Vencimento: {formatDateSafe(item.dataVencimento)}
-                  </Text>
-                ) : (
-                  <Text style={[styles.metaText, { color: theme.textSecondary }]}>Pagamento ja registrado</Text>
-                )}
-                {item.comprovanteUrl ? (
-                  <TouchableOpacity style={styles.comprovanteRow} onPress={() => void handleOpenComprovante(item.comprovanteUrl)}>
-                    <MaterialCommunityIcons name="eye-outline" size={15} color={theme.info} />
-                    <Text style={[styles.metaText, { color: theme.info }]}>Ver comprovante</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-
-              <View style={[styles.actionsRow, { borderTopColor: theme.divider }]}>
-                {isOwner && canWrite ? (
-                  <LoadingButton
-                    label="Excluir"
-                    variant="neutral"
-                    loading={isDeleting}
-                    onPress={() => handleDelete(item)}
-                    style={styles.deleteButton}
-                    textStyle={styles.deleteText}
-                  />
-                ) : (
-                  <View />
-                )}
-
-                {isPendente ? (
-                  <LoadingButton
-                    label="Dar baixa"
-                    loading={isPaying}
-                    onPress={() => handleDarBaixa(item)}
-                    style={styles.payButton}
-                  />
-                ) : null}
-              </View>
-            </View>
-          );
-        }}
+        ListEmptyComponent={!loading ? (
+          <EmptyState 
+            icon="receipt-text-outline" 
+            title="Nenhuma despesa" 
+            description="Registre saídas para acompanhar seu fluxo." 
+          />
+        ) : null}
+        renderItem={({ item }) => (
+          <DespesaItemCard
+            item={item}
+            theme={theme}
+            isOwner={isOwner}
+            canWrite={canWrite}
+            deletingId={deletingId}
+            payingId={payingId}
+            onDelete={handleDelete}
+            onPay={handleDarBaixa}
+            onOpenComprovante={handleOpenComprovante}
+            caixaPessoaNome={caixaPessoasMap[item.pagamentoPara || ''] || 'Não informado'}
+          />
+        )}
       />
 
-      <TouchableOpacity
-        style={[styles.fab, { bottom: (settings.uiV2Enabled ? 132 : 20) + insets.bottom }]}
-        onPress={canWrite ? () => navigation.navigate('DespesaForm') : undefined}
-      >
-        <MaterialCommunityIcons name="plus" size={30} color={COLORS.textLight} />
-      </TouchableOpacity>
+      {canWrite && (
+        <TouchableOpacity
+          style={[styles.fab, { bottom: (settings.uiV2Enabled ? 130 : 20) + insets.bottom }]}
+          onPress={() => navigation.navigate('DespesaForm')}
+        >
+          <MaterialCommunityIcons name="plus" size={32} color="#FFFFFF" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  listContent: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.md },
+  listContent: { paddingHorizontal: SPACING.lg },
   headerStats: { flexDirection: 'row', gap: 8 },
   headerStatChip: {
     flex: 1,
-    backgroundColor: COLORS.whiteAlpha12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
     borderWidth: 1,
-    borderColor: COLORS.whiteAlpha20,
+    borderColor: 'rgba(255,255,255,0.2)',
     borderRadius: 12,
     paddingVertical: 10,
     alignItems: 'center',
   },
-  headerStatValue: { color: COLORS.textLight, fontSize: 15, fontWeight: '900' },
-  headerStatLabel: { color: COLORS.whiteAlpha80, marginTop: 2, fontSize: 10, fontWeight: '700' },
-
-  skeletonWrapper: { paddingHorizontal: SPACING.lg, marginTop: SPACING.md, marginBottom: 6, gap: 10 },
-  skeletonCard: { width: '100%', height: 150, borderRadius: RADIUS.lg },
-
-  financeLinksRow: {
-    gap: 8,
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.xs,
-    paddingTop: SPACING.md,
-  },
+  headerStatValue: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
+  headerStatLabel: { color: 'rgba(255,255,255,0.8)', marginTop: 2, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+  financeLinksRow: { gap: 10, marginTop: 16, paddingRight: 20 },
   financeLink: {
-    borderWidth: 1,
-    borderRadius: RADIUS.pill,
-    paddingHorizontal: 14,
+    borderWidth: 1.5,
+    borderRadius: 20,
+    paddingHorizontal: 16,
     paddingVertical: 10,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
-    minWidth: 96,
-  },
-  financeLinkActive: {
-    backgroundColor: `${COLORS.modDespesas}1A`,
-  },
-  financeLinkText: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-
-  overviewCard: {
-    marginHorizontal: SPACING.lg,
-    marginTop: SPACING.md,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    padding: SPACING.md,
-    ...SHADOWS.card,
-  },
-  overviewTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  overviewLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-  overviewValue: { fontSize: 28, fontWeight: '900', marginTop: 4 },
-  overviewCaption: { fontSize: 12, fontWeight: '600', marginTop: 4 },
-  overviewBadge: {
-    alignSelf: 'flex-start',
-    borderRadius: RADIUS.pill,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  overviewBadgeText: { fontSize: 11, fontWeight: '800' },
-  metricsGrid: {
-    flexDirection: 'row',
     gap: 8,
-    marginTop: SPACING.md,
+    minWidth: 100,
+    borderColor: '#E2E8F0',
   },
-
-  toolbarCard: {
-    marginHorizontal: SPACING.lg,
-    marginTop: SPACING.md,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    padding: SPACING.md,
-    ...SHADOWS.card,
-  },
-  searchBox: {
-    borderWidth: 1,
-    borderRadius: RADIUS.md,
-    minHeight: 46,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 14,
-    paddingVertical: 8,
-  },
-
-  card: {
-    borderRadius: 18,
+  financeLinkText: { fontSize: 13, fontWeight: '800' },
+  metricsWrapper: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  searchWrapper: {
+    marginTop: 16,
     marginBottom: 12,
-    borderWidth: 1,
-    padding: 14,
-    ...SHADOWS.card,
-  },
-  cardTopRow: { flexDirection: 'row', alignItems: 'center' },
-  iconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  cardTitleArea: { flex: 1 },
-  title: { fontSize: 15, fontWeight: '900' },
-  categoryText: { marginTop: 2, fontSize: 12, fontWeight: '700', textTransform: 'capitalize' },
-  date: { marginTop: 2, fontSize: 12, fontWeight: '600' },
-  statusPill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  statusPillText: { fontSize: 10, fontWeight: '800' },
-
-  infoGrid: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  infoCard: { flex: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
-  infoLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-  infoValue: { marginTop: 4, fontSize: 12, fontWeight: '700' },
-  infoValueStrong: { marginTop: 4, fontSize: 22, fontWeight: '900' },
-
-  metaPanel: {
-    marginTop: 10,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  metaText: { fontSize: 11, fontWeight: '600' },
-  comprovanteRow: {
-    marginTop: 6,
+    borderWidth: 1.5,
+    borderRadius: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
+    minHeight: 52,
   },
-
-  actionsRow: {
-    marginTop: 12,
-    borderTopWidth: 1,
-    paddingTop: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 10,
-  },
-  deleteButton: { backgroundColor: 'transparent', minHeight: 34, borderWidth: 0, paddingHorizontal: 0 },
-  deleteText: { color: COLORS.textGray, fontWeight: '600' },
-  payButton: { minWidth: 120, minHeight: 34, backgroundColor: COLORS.success, borderWidth: 0 },
-
+  searchInput: { flex: 1, marginLeft: 10, fontSize: 15, fontWeight: '600' },
+  loadingWrapper: { gap: 12, marginTop: 10 },
+  skeleton: { height: 160, borderRadius: 22 },
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 20,
-    width: 62,
-    height: 62,
-    borderRadius: 31,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: COLORS.modDespesas,
     alignItems: 'center',
     justifyContent: 'center',
-    ...SHADOWS.floating,
+    elevation: 8,
+    shadowColor: COLORS.modDespesas,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
 });
 

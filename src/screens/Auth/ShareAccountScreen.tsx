@@ -93,9 +93,21 @@ export default function ShareAccountScreen() {
   const [memberSearch, setMemberSearch] = useState('');
 
   const currentTenant = availableTenants.find((tenant) => tenant.uid === selectedTenantId) || null;
+  const currentSharedTenant = sharedTenants.find((tenant) => tenant.uid === selectedTenantId) || null;
+  const currentAccountName = currentTenant?.name || currentSharedTenant?.name || 'Nenhuma conta selecionada';
+  const currentUserName = user?.name || user?.displayName || 'Nao informado';
+  const currentUserEmail = user?.email || 'Nao informado';
+  const responsibleName =
+    currentTenant?.ownerName || currentSharedTenant?.sharedBy || currentSharedTenant?.ownerName || currentUserName;
+  const responsibleEmail =
+    currentTenant?.ownerEmail ||
+    currentSharedTenant?.sharedByEmail ||
+    currentSharedTenant?.ownerEmail ||
+    (currentTenant?.type === 'owner' ? user?.email : null) ||
+    'Nao informado';
 
   useEffect(() => {
-    if (activeTab === 'parceiros') {
+    if (user?.uid) {
       void loadSharedList();
     }
     if (activeTab === 'minhas') {
@@ -333,11 +345,11 @@ export default function ShareAccountScreen() {
           <View style={{ flex: 1 }}>
             <Text style={[styles.recordTitle, { color: appTheme.textPrimary }]}>{item.name}</Text>
             <Text style={[styles.recordSubtitle, { color: appTheme.textSecondary }]}>
-              Compartilhado por {item.sharedBy || 'Parceiro'}
+              Responsavel: {item.sharedBy || 'Parceiro'}
             </Text>
           </View>
           <View style={[styles.roleBadge, { backgroundColor: appTheme.infoSoft, borderColor: appTheme.info }]}>
-            <Text style={[styles.roleBadgeText, { color: appTheme.info }]}>{getMemberRoleLabel((item as any).role)}</Text>
+            <Text style={[styles.roleBadgeText, { color: appTheme.info }]}>{getMemberRoleLabel(item.role)}</Text>
           </View>
         </View>
 
@@ -550,9 +562,7 @@ export default function ShareAccountScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.summaryTitle, { color: appTheme.textPrimary }]}>Conta ativa para compartilhamento</Text>
-                  <Text style={[styles.summaryText, { color: appTheme.textSecondary }]}>
-                    {currentTenant?.name || 'Nenhuma conta selecionada'}
-                  </Text>
+                  <Text style={[styles.summaryText, { color: appTheme.textSecondary }]}>{currentAccountName}</Text>
                 </View>
                 <View style={[styles.roleBadge, { backgroundColor: appTheme.successSoft, borderColor: appTheme.success }]}>
                   <Text style={[styles.roleBadgeText, { color: appTheme.success }]}>{accessRoleLabel}</Text>
@@ -560,13 +570,21 @@ export default function ShareAccountScreen() {
               </View>
 
               <View style={styles.infoGrid}>
-                <InfoItem icon="greenhouse" label="Conta compartilhada" value={currentTenant?.name || 'Tenant atual'} appTheme={appTheme} />
+                <InfoItem icon="account-outline" label="Seu nome" value={currentUserName} appTheme={appTheme} />
+                <InfoItem icon="email-outline" label="Seu e-mail" value={currentUserEmail} appTheme={appTheme} />
+                <InfoItem icon="greenhouse" label="Conta ativa" value={currentAccountName} appTheme={appTheme} />
                 <InfoItem
                   icon="account-tie-outline"
                   label="Responsável"
                   value={currentTenant?.ownerName || user?.name || 'Não informado'}
                   appTheme={appTheme}
                 />
+              </View>
+
+              <View style={styles.infoGrid}>
+                <InfoItem icon="account-tie-outline" label="Responsavel da conta" value={responsibleName} appTheme={appTheme} />
+                <InfoItem icon="badge-account-outline" label="Seu perfil" value={accessRoleLabel} appTheme={appTheme} />
+                <InfoItem icon="at" label="E-mail do responsavel" value={responsibleEmail} appTheme={appTheme} />
               </View>
 
               <Surface style={[styles.noticeBox, { backgroundColor: appTheme.surfaceMuted }]} elevation={0}>

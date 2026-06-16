@@ -9,6 +9,7 @@ export type AvailableTenantLike = {
   name: string;
   type?: 'owner' | 'shared';
   ownerName?: string;
+  ownerEmail?: string;
   role?: 'guest' | 'operator' | 'admin';
   permissions?: {
     canRead?: boolean;
@@ -42,17 +43,23 @@ const pickMembershipTenant = (tenant: MembershipRow['tenants']): MembershipTenan
 export const mapMembershipsToAvailableTenants = (
   memberships: MembershipRow[],
   authUser: AuthBootstrapUser,
-  fallbackName: string
+  fallbackName: string,
+  ownerNamesMap: Map<string, string> = new Map(),
+  ownerEmailsMap: Map<string, string> = new Map()
 ): AvailableTenantLike[] =>
   memberships.map((membership) => {
     const tenant = pickMembershipTenant(membership.tenants);
     const isOwner = tenant?.owner_user_id === authUser.id;
+    const ownerId = tenant?.owner_user_id || '';
+    const sharedOwnerName = ownerNamesMap.get(ownerId);
+    const sharedOwnerEmail = ownerEmailsMap.get(ownerId);
 
     return {
       uid: membership.tenant_id,
       name: tenant?.name || (isOwner ? 'Minha Estufa' : 'Estufa Compartilhada'),
       type: isOwner ? 'owner' : 'shared',
-      ownerName: isOwner ? fallbackName : undefined,
+      ownerName: isOwner ? fallbackName : sharedOwnerName || undefined,
+      ownerEmail: isOwner ? authUser.email || undefined : sharedOwnerEmail || undefined,
       role: membership.role || 'guest',
       permissions: isOwner
         ? {

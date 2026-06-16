@@ -1,4 +1,4 @@
-import { Timestamp } from '../lib/timestamp';
+import type { Timestamp } from '../lib/timestamp.ts';
 
 export type UserRole = 'admin' | 'operator' | 'guest';
 

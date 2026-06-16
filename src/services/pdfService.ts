@@ -212,6 +212,52 @@ const downloadPdfOnWeb = async (uri: string, fileName: string) => {
   return true;
 };
 
+const injectHtmlTitle = (html: string, title: string) => {
+  const safeTitle = escapeHtml(title);
+  if (/<title>.*<\/title>/i.test(html)) {
+    return html.replace(/<title>.*<\/title>/i, `<title>${safeTitle}</title>`);
+  }
+
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/<head([^>]*)>/i, `<head$1><title>${safeTitle}</title>`);
+  }
+
+  return `<!DOCTYPE html><html lang="pt-BR"><head><title>${safeTitle}</title></head><body>${html}</body></html>`;
+};
+
+const printHtmlOnWeb = async (html: string, title: string) => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return false;
+  }
+
+  const printWindow = window.open('', '_blank', 'width=1200,height=900');
+  if (!printWindow) {
+    throw new Error('Nao foi possivel abrir a janela de impressao no navegador.');
+  }
+
+  const fullHtml = injectHtmlTitle(html, title);
+  printWindow.document.open();
+  printWindow.document.write(fullHtml);
+  printWindow.document.close();
+
+  await new Promise<void>((resolve) => {
+    const finish = () => printWindow.setTimeout(resolve, 500);
+    if (printWindow.document.readyState === 'complete' && printWindow.document.body?.children.length) {
+      finish();
+      return;
+    }
+
+    printWindow.onload = finish;
+  });
+
+  printWindow.focus();
+  printWindow.print();
+  printWindow.onafterprint = () => {
+    printWindow.close();
+  };
+  return true;
+};
+
 export const buildHtmlTemplate = (input: ComprovantePDFInput, logoBase64: string) => {
   const { colheita, cliente, plantio, nomeEstufa, nomeFazenda, cultura, contatoFazenda } = input;
   const dataOperacao = formatDateTime(colheita.dataVenda || colheita.dataColheita);
@@ -766,6 +812,12 @@ const buildEstufaVerdeVivoReceiptHtml = (input: ComprovantePDFInput, logoBase64:
   const observacoesVenda = String(colheita.observacoes || '').trim();
   const contactEmail = contatoFazenda || 'contato@estufaverdevivo.com.br';
   const website = String(colheita.traceabilityPublicUrl || '').trim() || 'www.estufaverdevivo.com.br';
+  const observacoesLista = observacoesVenda
+    ? observacoesVenda
+        .split(/\r?\n+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : ['Mercadorias entregues conforme pedido.', `Origem: ${nomeEstufa || nomeFazenda}.`];
 
   const itensRows = itens
     .map(
@@ -790,58 +842,60 @@ const buildEstufaVerdeVivoReceiptHtml = (input: ComprovantePDFInput, logoBase64:
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <style>
           * { box-sizing: border-box; }
-          body { margin: 0; padding: 16px; font-family: Arial, Helvetica, sans-serif; color: #1d1d1d; background: #f4f6f5; }
-          .sheet { max-width: 1020px; margin: 0 auto; background: #ffffff; border: 3px solid #0c5f2f; border-radius: 22px; padding: 20px; }
-          .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 18px; }
-          .brand-wrap { display: flex; align-items: center; gap: 16px; }
-          .logo { width: 118px; height: 118px; object-fit: contain; display: block; }
-          .brand-name { margin: 0; font-size: 48px; line-height: 0.95; font-weight: 900; color: #0b5a2c; text-transform: uppercase; }
-          .brand-sub { margin: 10px 0 0; font-size: 15px; line-height: 1.3; color: #143324; text-transform: uppercase; }
-          .doc-title-wrap { flex: 1; text-align: right; }
-          .doc-title { margin: 12px 0 26px; font-size: 36px; line-height: 1; font-weight: 900; color: #0b5a2c; text-transform: uppercase; }
-          .doc-code { display: inline-block; min-width: 220px; border: 2px solid #7aa38a; border-radius: 14px; padding: 14px 18px; font-size: 24px; font-weight: 800; color: #14452a; background: #fff; }
-          .row-2 { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 18px; margin-bottom: 18px; }
-          .box { border: 2px solid #7aa38a; border-radius: 14px; overflow: hidden; background: #fff; }
-          .box-header { background: linear-gradient(90deg, #0b5a2c 0%, #0f6f35 100%); color: #fff; font-size: 16px; font-weight: 800; text-transform: uppercase; padding: 12px 16px; }
-          .box-content { padding: 16px 16px 14px; }
-          .kv-grid { display: grid; grid-template-columns: 175px 1fr; gap: 10px 14px; font-size: 15px; line-height: 1.4; }
-          .kv-grid .label { font-weight: 800; color: #18281d; }
-          .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 18px; font-size: 15px; }
-          .meta-item { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; }
-          .meta-label { font-weight: 800; color: #143324; text-transform: uppercase; }
-          .items-table { width: 100%; border-collapse: separate; border-spacing: 0; border: 2px solid #7aa38a; border-radius: 14px; overflow: hidden; margin-bottom: 18px; }
-          .items-table thead th { background: linear-gradient(90deg, #0b5a2c 0%, #0f6f35 100%); color: #fff; padding: 14px 10px; font-size: 13px; text-transform: uppercase; font-weight: 800; text-align: center; }
-          .items-table tbody td { border-right: 1px dashed #b8c7bd; border-bottom: 1px dashed #b8c7bd; padding: 14px 12px; font-size: 15px; vertical-align: middle; }
+          @page { size: A4 portrait; margin: 12mm; }
+          body { margin: 0; padding: 0; font-family: "Segoe UI", Arial, sans-serif; color: #111827; background: #ffffff; }
+          .sheet { width: 100%; max-width: 186mm; margin: 0 auto; background: #ffffff; padding: 0; }
+          .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+          .brand-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; }
+          .logo { width: 54px; height: 54px; object-fit: contain; display: block; }
+          .brand-name { margin: 0; font-size: 21px; line-height: 1.08; font-weight: 900; color: #1a5c2e; text-transform: uppercase; }
+          .brand-sub { margin: 3px 0 0; font-size: 9px; line-height: 1.25; color: #4b5563; letter-spacing: 0.2px; text-transform: uppercase; }
+          .doc-title-wrap { text-align: right; flex-shrink: 0; }
+          .doc-title { margin: 0; font-size: 26px; line-height: 1; font-weight: 900; color: #1a5c2e; letter-spacing: -0.5px; }
+          .doc-code { display: inline-block; border: 2px solid #1a5c2e; border-radius: 4px; padding: 4px 16px; margin-top: 8px; font-weight: 700; font-size: 15px; color: #1a5c2e; letter-spacing: 1px; }
+          .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+          .card { border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; page-break-inside: avoid; }
+          .section-header { background: #1a5c2e; color: #ffffff; font-weight: 700; font-size: 11px; letter-spacing: 1px; padding: 6px 14px; }
+          .card-body { padding: 10px 14px; background: #f9fafb; }
+          .info-row { display: flex; gap: 4px; font-size: 12px; line-height: 1.55; color: #374151; }
+          .info-row-label { font-weight: 700; white-space: nowrap; }
+          .sale-info { padding: 10px 14px; display: flex; flex-direction: column; gap: 10px; min-height: 100%; justify-content: center; }
+          .sale-info-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #4b5563; }
+          .sale-info-row strong { color: #374151; white-space: nowrap; }
+          .table-card { border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; margin-bottom: 14px; page-break-inside: avoid; }
+          .items-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+          .items-table thead th { background: #1a5c2e; color: #ffffff; padding: 10px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.4px; text-align: center; }
+          .items-table tbody tr:nth-child(even) { background: #f9fafb; }
+          .items-table tbody td { padding: 10px 10px; font-size: 12px; color: #374151; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
           .items-table tbody tr:last-child td { border-bottom: 0; }
-          .items-table tbody td:last-child, .items-table thead th:last-child { border-right: 0; }
-          .idx-cell { width: 70px; text-align: center; font-size: 18px; font-weight: 700; }
-          .desc-cell { line-height: 1.45; }
+          .idx-cell { text-align: center; font-weight: 700; width: 48px; }
+          .desc-cell { white-space: pre-line; word-break: break-word; line-height: 1.45; }
           .center { text-align: center; }
-          .amount { text-align: center; font-variant-numeric: tabular-nums; }
-          .summary-row { display: grid; grid-template-columns: 1.35fr 0.95fr; gap: 18px; margin-bottom: 18px; }
-          .summary-box { border: 2px solid #7aa38a; border-radius: 14px; padding: 16px 18px; background: #fff; }
-          .summary-title { margin: 0 0 14px; font-size: 17px; font-weight: 900; color: #0b5a2c; text-transform: uppercase; }
-          .summary-grid { display: grid; grid-template-columns: 1fr auto; gap: 12px 14px; font-size: 15px; line-height: 1.5; }
-          .summary-grid .value { font-weight: 800; }
-          .grand-total { text-align: center; }
-          .grand-total strong { display: block; font-size: 58px; line-height: 1; color: #0b5a2c; font-weight: 900; }
-          .payment-box { border: 2px solid #7aa38a; border-radius: 14px; overflow: hidden; margin-bottom: 18px; background: #fff; }
+          .amount { text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+          .summary-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+          .summary-box { border: 1px solid #e5e7eb; border-radius: 6px; padding: 14px 16px; page-break-inside: avoid; }
+          .summary-title { margin: 0 0 12px; font-size: 13px; font-weight: 800; color: #1a5c2e; letter-spacing: 0.5px; }
+          .summary-grid { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #374151; }
+          .summary-grid-row { display: flex; justify-content: space-between; gap: 12px; }
+          .summary-grid-row .value { font-weight: 700; white-space: nowrap; }
+          .grand-total { background: #f9fafb; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+          .grand-total strong { display: block; font-size: 30px; line-height: 1.1; color: #1a5c2e; font-weight: 900; letter-spacing: -0.6px; }
+          .payment-box { border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; margin-bottom: 14px; page-break-inside: avoid; }
           .payment-grid { display: grid; grid-template-columns: 1fr 1fr; }
-          .payment-cell { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 13px 16px; font-size: 15px; border-right: 1px dashed #b8c7bd; border-bottom: 1px dashed #b8c7bd; }
-          .payment-cell:nth-child(2n) { border-right: 0; }
-          .payment-cell:nth-last-child(-n+2) { border-bottom: 0; }
-          .payment-cell .label { font-weight: 800; color: #183521; text-transform: uppercase; }
-          .payment-cell .value.negative { color: #d81313; font-weight: 900; }
-          .obs-box { border: 2px solid #7aa38a; border-radius: 14px; padding: 18px 22px 22px; background: #fff; }
-          .obs-title { margin: 0 0 18px; font-size: 16px; font-weight: 900; color: #143324; text-transform: uppercase; }
-          .obs-row { display: grid; grid-template-columns: 1.3fr 0.9fr; gap: 20px; align-items: start; min-height: 120px; }
-          .obs-text { font-size: 15px; line-height: 1.55; color: #242424; white-space: pre-line; }
-          .sign-area { padding-top: 22px; text-align: center; }
-          .sign-line { width: 100%; border-top: 2px solid #8a8a8a; margin-bottom: 8px; }
-          .sign-label { font-size: 15px; color: #2b2b2b; }
-          .sign-date { margin-top: 18px; font-size: 15px; color: #2b2b2b; }
-          .footer-note { text-align: center; margin: 22px 0 12px; color: #22563b; font-size: 18px; font-style: italic; }
-          .contact-bar { border-top: 2px solid #a7b9ad; padding-top: 12px; display: flex; justify-content: space-between; gap: 14px; font-size: 14px; color: #143324; flex-wrap: wrap; }
+          .payment-cell { padding: 10px 14px; border-bottom: 1px solid #f3f4f6; display: flex; gap: 8px; align-items: center; font-size: 12px; }
+          .payment-cell:nth-child(odd) { border-right: 1px solid #f3f4f6; }
+          .payment-label { font-weight: 700; color: #374151; white-space: nowrap; }
+          .payment-value { color: #374151; }
+          .payment-value.negative { color: #dc2626; font-weight: 700; }
+          .obs-box { border: 1px solid #e5e7eb; border-radius: 6px; padding: 14px 16px; margin-bottom: 18px; page-break-inside: avoid; }
+          .obs-wrap { display: grid; grid-template-columns: 1fr 190px; gap: 20px; }
+          .obs-title { margin: 0 0 8px; font-weight: 700; font-size: 12px; color: #111827; }
+          .obs-line { font-size: 12px; color: #4b5563; line-height: 1.7; }
+          .sign-box { text-align: center; min-width: 180px; }
+          .sign-line { border-top: 1px solid #374151; padding-top: 6px; margin-top: 26px; font-size: 11px; color: #4b5563; }
+          .sign-date { font-size: 11px; color: #4b5563; margin-top: 8px; }
+          .footer-note { text-align: center; font-size: 13px; font-style: italic; color: #1a5c2e; font-weight: 600; margin-bottom: 12px; }
+          .contact-bar { border-top: 1px solid #e5e7eb; padding-top: 10px; display: flex; justify-content: center; gap: 26px; font-size: 11px; color: #4b5563; flex-wrap: wrap; }
         </style>
       </head>
       <body>
@@ -861,78 +915,84 @@ const buildEstufaVerdeVivoReceiptHtml = (input: ComprovantePDFInput, logoBase64:
           </div>
 
           <div class="row-2">
-            <div class="box">
-              <div class="box-header">Dados do Cliente</div>
-              <div class="box-content">
-                <div class="kv-grid">
-                  <div class="label">Nome / Razão Social:</div><div>${escapeHtml(clienteNome)}</div>
-                  <div class="label">CNPJ:</div><div>${escapeHtml(clienteDocumento)}</div>
-                  <div class="label">Endereço:</div><div>${escapeHtml(clienteEndereco)}</div>
-                  <div class="label">Cidade/UF:</div><div>${escapeHtml(`${clienteCidade}${clienteEstado ? ` - ${clienteEstado}` : ''}`)}&nbsp;&nbsp;&nbsp;&nbsp;<strong>CEP:</strong> ${escapeHtml(clienteCep)}</div>
-                  <div class="label">Telefone:</div><div>${escapeHtml(clienteTelefone)}</div>
-                </div>
+            <div class="card">
+              <div class="section-header">DADOS DO CLIENTE</div>
+              <div class="card-body">
+                <div class="info-row"><span class="info-row-label">Nome / Razão Social:</span><span>${escapeHtml(clienteNome)}</span></div>
+                <div class="info-row"><span class="info-row-label">CNPJ:</span><span>${escapeHtml(clienteDocumento)}</span></div>
+                <div class="info-row"><span class="info-row-label">Endereço:</span><span>${escapeHtml(clienteEndereco)}</span></div>
+                <div class="info-row"><span class="info-row-label">Cidade/UF:</span><span>${escapeHtml(`${clienteCidade}${clienteEstado ? ` - ${clienteEstado}` : ''}`)}</span></div>
+                <div class="info-row"><span class="info-row-label">CEP:</span><span>${escapeHtml(clienteCep)}</span></div>
+                <div class="info-row"><span class="info-row-label">Telefone:</span><span>${escapeHtml(clienteTelefone)}</span></div>
               </div>
             </div>
-            <div class="box">
-              <div class="box-content" style="padding-top:18px;">
-                <div class="meta-grid">
-                  <div class="meta-item"><div class="meta-label">Data da venda:</div><div>${escapeHtml(dataOperacao.date)}</div></div>
-                  <div class="meta-item"><div class="meta-label">Condição de pagamento:</div><div>${escapeHtml(formaPagamentoLabel)}</div></div>
-                  <div class="meta-item"><div class="meta-label">Vendedor:</div><div>${escapeHtml(vendedorLabel)}</div></div>
-                  <div class="meta-item"><div class="meta-label">Frete:</div><div>${escapeHtml(freteLabel)}</div></div>
-                </div>
+            <div class="card">
+              <div class="sale-info">
+                <div class="sale-info-row"><strong>DATA DA VENDA:</strong><span>${escapeHtml(dataOperacao.date)}</span></div>
+                <div class="sale-info-row"><strong>CONDIÇÃO DE PAGAMENTO:</strong><span>${escapeHtml(formaPagamentoLabel)}</span></div>
+                <div class="sale-info-row"><strong>VENDEDOR:</strong><span>${escapeHtml(vendedorLabel)}</span></div>
+                <div class="sale-info-row"><strong>FRETE:</strong><span>${escapeHtml(freteLabel)}</span></div>
               </div>
             </div>
           </div>
 
-          <table class="items-table">
-            <thead>
-              <tr>
-                <th style="width:70px;">Produto</th>
-                <th>Descrição</th>
-                <th style="width:120px;">Quant.</th>
-                <th style="width:100px;">Unid.</th>
-                <th style="width:150px;">Preço CX (R$)</th>
-                <th style="width:170px;">Valor Total (R$)</th>
-              </tr>
-            </thead>
-            <tbody>${itensRows}</tbody>
-          </table>
+          <div class="table-card">
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th style="width:50px;">PRODUTO</th>
+                  <th style="text-align:left;">DESCRIÇÃO</th>
+                  <th style="width:78px;">QUANT.</th>
+                  <th style="width:70px;">UNID.</th>
+                  <th style="width:108px;">PREÇO CX (R$)</th>
+                  <th style="width:118px;">VALOR TOTAL (R$)</th>
+                </tr>
+              </thead>
+              <tbody>${itensRows}</tbody>
+            </table>
+          </div>
 
           <div class="summary-row">
             <div class="summary-box">
-              <h3 class="summary-title">Resumo da Venda</h3>
+              <h3 class="summary-title">RESUMO DA VENDA</h3>
               <div class="summary-grid">
-                <div>Quantidade total:</div><div class="value">${escapeHtml(quantidadeLabel)}</div>
-                <div>Valor total da venda:</div><div class="value">${formatCurrency(valorTotal)}</div>
+                <div class="summary-grid-row">
+                  <span>QUANTIDADE TOTAL DE CAIXAS:</span>
+                  <span class="value">${escapeHtml(quantidadeLabel)}</span>
+                </div>
+                <div class="summary-grid-row">
+                  <span>VALOR TOTAL DA VENDA:</span>
+                  <span class="value">${formatCurrency(valorTotal)}</span>
+                </div>
               </div>
             </div>
             <div class="summary-box grand-total">
-              <h3 class="summary-title">Valor Total da Venda</h3>
+              <div class="summary-title">VALOR TOTAL DA VENDA</div>
               <strong>${formatCurrency(valorTotal)}</strong>
             </div>
           </div>
 
           <div class="payment-box">
-            <div class="box-header">Condições de Pagamento</div>
+            <div class="section-header">CONDIÇÕES DE PAGAMENTO</div>
             <div class="payment-grid">
-              <div class="payment-cell"><div class="label">Valor pago:</div><div class="value">${formatCurrency(valorPago)}</div></div>
-              <div class="payment-cell"><div class="label">Data do pagamento:</div><div class="value">${escapeHtml(dataPagamentoLabel)}</div></div>
-              <div class="payment-cell"><div class="label">Valor pendente:</div><div class="value ${valorPendente > 0 ? 'negative' : ''}">${formatCurrency(valorPendente)}</div></div>
-              <div class="payment-cell"><div class="label">Quantidade a pagar:</div><div class="value">${escapeHtml(quantidadeLabel)}</div></div>
-              <div class="payment-cell"><div class="label">Vencimento:</div><div class="value ${valorPendente > 0 ? 'negative' : ''}">${escapeHtml(valorPendente > 0 ? `${vencimentoLabel} (${formaPagamentoLabel})` : '-')}</div></div>
-              <div class="payment-cell"><div class="label">Forma de pagamento:</div><div class="value">${escapeHtml(String(metodoPagamento).replace(/_/g, ' ').toUpperCase())}</div></div>
+              <div class="payment-cell"><span class="payment-label">VALOR PAGO:</span><span class="payment-value">${formatCurrency(valorPago)}</span></div>
+              <div class="payment-cell"><span class="payment-label">DATA DO PAGAMENTO:</span><span class="payment-value">${escapeHtml(dataPagamentoLabel)}</span></div>
+              <div class="payment-cell"><span class="payment-label">VALOR PENDENTE:</span><span class="payment-value ${valorPendente > 0 ? 'negative' : ''}">${formatCurrency(valorPendente)}</span></div>
+              <div class="payment-cell"><span class="payment-label">QUANTIDADE A PAGAR:</span><span class="payment-value">${escapeHtml(quantidadeLabel)}</span></div>
+              <div class="payment-cell"><span class="payment-label">VENCIMENTO:</span><span class="payment-value ${valorPendente > 0 ? 'negative' : ''}">${escapeHtml(valorPendente > 0 ? `${vencimentoLabel} (${formaPagamentoLabel})` : '-')}</span></div>
+              <div class="payment-cell"><span class="payment-label">FORMA DE PAGAMENTO:</span><span class="payment-value">${escapeHtml(String(metodoPagamento).replace(/_/g, ' ').toUpperCase())}</span></div>
             </div>
           </div>
 
           <div class="obs-box">
-            <h3 class="obs-title">Observações:</h3>
-            <div class="obs-row">
-              <div class="obs-text">${escapeHtml(observacoesVenda || `Mercadorias entregues conforme pedido.\nOrigem: ${nomeEstufa || nomeFazenda}.\nProduto: ${produtoLabel}.`)}</div>
-              <div class="sign-area">
-                <div class="sign-line"></div>
-                <div class="sign-label">Assinatura do Cliente</div>
-                <div class="sign-date">Data: ____/____/______</div>
+            <div class="obs-wrap">
+              <div>
+                <div class="obs-title">OBSERVAÇÕES:</div>
+                ${observacoesLista.map((obs) => `<div class="obs-line">${escapeHtml(obs)}</div>`).join('')}
+              </div>
+              <div class="sign-box">
+                <div class="sign-line">Assinatura do Cliente</div>
+                <div class="sign-date">Data: ______/______/______</div>
               </div>
             </div>
           </div>
@@ -964,6 +1024,16 @@ export const compartilharPDF = async (input: ComprovantePDFInput) => {
   if (isShareLocked()) return;
   setShareLocked(true);
   try {
+    if (typeof document !== 'undefined') {
+      const logoBase64 = await resolveLogoBase64(
+        input.logoAssetModule ?? require('../../assets/icon.png'),
+        input.logoBase64
+      );
+      const htmlString = buildEstufaVerdeVivoReceiptHtml(input, logoBase64);
+      await printHtmlOnWeb(htmlString, 'Comprovante de venda');
+      return;
+    }
+
     const uri = await gerarComprovantePDF(input);
     const dataOperacao = toDate(input.colheita.dataVenda || input.colheita.dataColheita);
     const dataToken = dataOperacao.toISOString().slice(0, 10);

@@ -7,6 +7,7 @@ import { useThemeMode } from '../../hooks/useThemeMode';
 
 interface QuickAction {
   label: string;
+  subtitle?: string;
   icon: string;
   color: string;
   onPress: () => void;
@@ -21,7 +22,7 @@ const QuickActions = ({ actions }: QuickActionsProps) => {
 
   return (
     <>
-      <SectionHeading title={'A\u00e7\u00f5es r\u00e1pidas'} />
+      <SectionHeading title={'Ações rápidas'} />
       <View style={styles.grid}>
         {actions.map((action) => (
           <TouchableOpacity
@@ -34,6 +35,7 @@ const QuickActions = ({ actions }: QuickActionsProps) => {
               <MaterialCommunityIcons name={action.icon as any} size={22} color={action.color} />
             </View>
             <Text style={[styles.label, { color: theme.textPrimary }]}>{action.label}</Text>
+            {action.subtitle ? <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{action.subtitle}</Text> : null}
           </TouchableOpacity>
         ))}
       </View>
@@ -66,6 +68,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
     lineHeight: 16,
+  },
+  subtitle: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 14,
   },
 });
 

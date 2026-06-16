@@ -86,6 +86,8 @@ const ManejoFormScreen = ({ route, navigation }: any) => {
     }
   };
 
+  if (!canWrite) return null;
+
   return (
     <View style={styles.container}>
       <ScrollView

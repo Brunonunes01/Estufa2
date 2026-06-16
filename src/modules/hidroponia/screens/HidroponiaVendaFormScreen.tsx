@@ -19,6 +19,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { useAuth } from '../../../hooks/useAuth';
+import { useWriteGuard } from '../../../hooks/useWriteGuard';
 import { RootStackParamList } from '../../../navigation/types';
 import { COLORS } from '../../../constants/theme';
 import { Cliente } from '../../../types/domain';
@@ -45,6 +46,7 @@ type MetodoPagamento = 'pix' | 'dinheiro' | 'boleto' | 'prazo' | 'cartao' | 'che
 
 const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
   const { user, selectedTenantId } = useAuth();
+  const canWrite = useWriteGuard(navigation, 'Registro de venda hidroponia');
   const { settings } = useAppSettings();
   const insets = useSafeAreaInsets();
   const targetId = selectedTenantId || user?.uid;
@@ -122,6 +124,8 @@ const HidroponiaVendaFormScreen = ({ route, navigation }: Props) => {
         ) : null,
     });
   }, [navigation, isEditMode]);
+
+  if (!canWrite) return null;
 
   const culturasAtivas = useMemo(() => {
     const unique = Array.from(new Set(ocupacoesAtivas.map((item) => item.cultura).filter(Boolean)));

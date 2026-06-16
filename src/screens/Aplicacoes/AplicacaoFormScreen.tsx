@@ -143,6 +143,7 @@ const AplicacaoFormScreen = ({ route, navigation }: any) => {
       finally { setLoading(false); }
   };
 
+  if (!canWrite) return null;
   if (loadingData) return <ActivityIndicator size="large" style={{flex:1, backgroundColor: COLORS.background}} color={COLORS.info} />;
 
   return (

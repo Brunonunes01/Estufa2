@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { deserializeOfflinePayload, JsonValue, serializeOfflinePayload } from './offlinePayloadCodec';
-import { isOfflineLikeError } from './offlineUtils';
+import { deserializeOfflinePayload, serializeOfflinePayload } from './offlinePayloadCodec.ts';
+import type { JsonValue } from './offlinePayloadCodec.ts';
+import { isOfflineLikeError } from './offlineUtils.ts';
 
 const OFFLINE_QUEUE_KEY = '@sge/offline_queue_v1';
 
@@ -111,7 +112,7 @@ export const flushOfflineQueue = async (): Promise<FlushResult> => {
   if (queue.length === 0) return { flushed: 0, pending: 0, failed: 0 };
 
   // Import dinamico para evitar ciclos no load inicial.
-  const { executeOfflineAction } = await import('./offlineStorageHandlers');
+  const { executeOfflineAction } = await import('./offlineStorageHandlers.ts');
 
   const remaining: OfflineQueueItem[] = [];
   let flushed = 0;

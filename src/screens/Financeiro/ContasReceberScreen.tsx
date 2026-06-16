@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -23,15 +23,18 @@ import { listContasAReceber, receberConta } from '../../services/colheitaService
 import { listClientes } from '../../services/clienteService';
 import { CaixaPessoa, createCaixaPessoa, listCaixaPessoas } from '../../services/caixaPessoaService';
 import { Venda } from '../../types/domain';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { SPACING } from '../../constants/theme';
 import { queryClient, queryKeys } from '../../lib/queryClient';
 import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
 import MetricCard from '../../components/ui/MetricCard';
 import EmptyState from '../../components/ui/EmptyState';
+import LoadingButton from '../../components/ui/LoadingButton';
+
+import ContaItemCard from './components/ContaItemCard';
 
 const ContasReceberScreen = ({ navigation }: any) => {
   const { user, selectedTenantId } = useAuth();
-  const { settings } = useAppSettings();
+  useAppSettings();
   const theme = useThemeMode();
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
@@ -52,7 +55,7 @@ const ContasReceberScreen = ({ navigation }: any) => {
   const [novoCaixaNome, setNovoCaixaNome] = useState('');
   const [salvandoCaixaPessoa, setSalvandoCaixaPessoa] = useState(false);
 
-  const carregarDados = async (isRefresh = false) => {
+  const carregarDados = useCallback(async (isRefresh = false) => {
     const targetId = selectedTenantId || user?.uid;
     if (!targetId) return;
 
@@ -66,9 +69,7 @@ const ContasReceberScreen = ({ navigation }: any) => {
       ]);
 
       const map: Record<string, string> = {};
-      listaClientes.forEach((c) => {
-        map[c.id] = c.nome;
-      });
+      listaClientes.forEach((c) => { map[c.id] = c.nome; });
 
       setClientesMap(map);
       setContas(listaContas);
@@ -82,11 +83,11 @@ const ContasReceberScreen = ({ navigation }: any) => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [selectedTenantId, user?.uid, pagamentoPara]);
 
   useEffect(() => {
     if (isFocused) void carregarDados(true);
-  }, [isFocused, selectedTenantId, user?.uid]);
+  }, [isFocused, selectedTenantId, user?.uid, carregarDados]);
 
   const getVendaTotal = (venda: Venda) => {
     const item = venda.itens?.[0];
@@ -129,14 +130,10 @@ const ContasReceberScreen = ({ navigation }: any) => {
   const formatMetodo = (metodo?: string | null) => {
     if (!metodo) return 'Indefinido';
     switch (metodo) {
-      case 'prazo':
-        return 'Fiado / Prazo';
-      case 'boleto':
-        return 'Boleto';
-      case 'cheque':
-        return 'Cheque';
-      default:
-        return metodo.charAt(0).toUpperCase() + metodo.slice(1);
+      case 'prazo': return 'Fiado / Prazo';
+      case 'boleto': return 'Boleto';
+      case 'cheque': return 'Cheque';
+      default: return metodo.charAt(0).toUpperCase() + metodo.slice(1);
     }
   };
 
@@ -196,144 +193,68 @@ const ContasReceberScreen = ({ navigation }: any) => {
     }
   };
 
-  const renderItem = ({ item }: { item: Venda }) => {
-    const total = getVendaTotal(item);
-    const primeiraLinha = item.itens?.[0];
-    const quantidade = Number((item as any).quantidade || primeiraLinha?.quantidade || 0);
-    const unidade = String((item as any).unidade || (primeiraLinha as any)?.unidade || 'un');
-    const precoUnitario = Number((item as any).precoUnitario || primeiraLinha?.valorUnitario || 0);
-    const clienteNome = item.clienteId ? clientesMap[item.clienteId] || 'Cliente desconhecido' : 'Não identificado';
-    const metodoLabel = formatMetodo(item.metodoPagamento || item.formaPagamento || undefined);
-    const isHydroSale = (item as any).originType === 'hydro_lote' || !!(item as any).hydroLoteId;
-
-    return (
-      <View style={[styles.card, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
-        <TouchableOpacity
-          activeOpacity={0.9}
-          style={styles.cardTouch}
-          onPress={() =>
-            isHydroSale
-              ? navigation.navigate('HidroponiaVendaForm', { vendaId: item.id })
-              : navigation.navigate('ColheitaForm', { vendaId: item.id, isEdit: true })
-          }
-        >
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderMain}>
-              <Text style={[styles.clienteName, { color: theme.textPrimary }]}>{clienteNome}</Text>
-              <Text style={[styles.productName, { color: theme.textSecondary }]} numberOfLines={1}>
-                {String(primeiraLinha?.descricao || 'Venda registrada')}
-              </Text>
-              <View style={styles.metodoRow}>
-                <MaterialCommunityIcons name="credit-card-clock-outline" size={14} color={theme.info} />
-                <Text style={[styles.metodoText, { color: theme.info }]}>{metodoLabel}</Text>
-              </View>
-              <Text style={[styles.dateText, { color: theme.textSecondary }]}>Venda em {formatDate(item.dataVenda)}</Text>
-            </View>
-
-            <View style={[styles.badge, { backgroundColor: theme.dangerBackground, borderColor: COLORS.cFECACA }]}>
-              <Text style={[styles.badgeText, { color: COLORS.danger }]}>PENDENTE</Text>
-            </View>
-          </View>
-
-          <View style={styles.infoGrid}>
-            <View style={[styles.infoCard, { backgroundColor: theme.surfaceMuted }]}>
-              <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Composicao</Text>
-              <Text style={[styles.infoValue, { color: theme.textPrimary }]}>
-                {quantidade} {unidade} x {formatCurrency(precoUnitario)}
-              </Text>
-            </View>
-            <View style={[styles.infoCard, { backgroundColor: theme.surfaceMuted }]}>
-              <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Total</Text>
-              <Text style={[styles.infoValueStrong, { color: theme.textPrimary }]}>{formatCurrency(total)}</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.receiveBtn, { backgroundColor: theme.info }]} onPress={() => handleOpenReceber(item)}>
-          <MaterialCommunityIcons name="check-circle-outline" size={20} color={COLORS.textLight} />
-          <Text style={styles.btnText}>Receber</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
-
-  const renderListHeader = () => (
+  const renderHeader = () => (
     <>
       <ScreenHeaderCard
-        title="Contas a Receber"
-        subtitle="Priorize cobrancas e registre baixas sem sobrecarregar a tela."
-        badgeLabel="Recebimentos"
+        title="Recebimentos"
+        subtitle="Gestão de vendas a prazo e cobranças pendentes."
+        badgeLabel="Contas"
       >
-        <View style={styles.headerStatsRow}>
-          <View style={styles.headerChip}>
-            <Text style={styles.headerChipValue}>{contas.length}</Text>
-            <Text style={styles.headerChipLabel}>Contas abertas</Text>
+        <View style={styles.headerStats}>
+          <View style={styles.headerStatChip}>
+            <Text style={styles.headerStatValue}>{contas.length}</Text>
+            <Text style={styles.headerStatLabel}>Em aberto</Text>
           </View>
-          <View style={styles.headerChip}>
-            <Text style={styles.headerChipValue}>{formatCurrency(totalPendente)}</Text>
-            <Text style={styles.headerChipLabel}>Pendente total</Text>
+          <View style={styles.headerStatChip}>
+            <Text style={styles.headerStatValue}>{formatCurrency(totalPendente).split(',')[0]}</Text>
+            <Text style={styles.headerStatLabel}>Total Pendente</Text>
           </View>
         </View>
       </ScreenHeaderCard>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.financeLinksRow}>
-        <TouchableOpacity
-          style={[styles.financeLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
-          onPress={() => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' })}
-        >
-          <MaterialCommunityIcons name="cash-multiple" size={16} color={theme.textSecondary} />
-          <Text style={[styles.financeLinkText, { color: theme.textSecondary }]}>Vendas</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.financeLink, styles.financeLinkActive, { borderColor: theme.info }]}>
-          <MaterialCommunityIcons name="cash-clock" size={16} color={theme.info} />
-          <Text style={[styles.financeLinkText, { color: theme.info }]}>Contas</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.financeLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
-          onPress={() => navigation.navigate('DespesasList')}
-        >
-          <MaterialCommunityIcons name="cash-minus" size={16} color={theme.textSecondary} />
-          <Text style={[styles.financeLinkText, { color: theme.textSecondary }]}>Despesas</Text>
-        </TouchableOpacity>
+        {[
+          { label: 'Vendas', icon: 'cash-multiple', screen: 'VendasList' },
+          { label: 'Contas', icon: 'cash-clock', active: true, screen: 'ContasReceber' },
+          { label: 'Despesas', icon: 'cash-minus', screen: 'DespesasList' },
+        ].map(link => (
+          <TouchableOpacity
+            key={link.label}
+            style={[styles.financeLink, link.active && { borderColor: theme.info, backgroundColor: theme.infoSoft }]}
+            onPress={() => link.active ? null : navigation.navigate(link.screen)}
+          >
+            <MaterialCommunityIcons name={link.icon as any} size={16} color={link.active ? theme.info : theme.textSecondary} />
+            <Text style={[styles.financeLinkText, { color: link.active ? theme.info : theme.textSecondary }]}>{link.label}</Text>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
 
-      <View style={[styles.overviewCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
-        <View style={styles.overviewTopRow}>
-          <View>
-            <Text style={[styles.overviewLabel, { color: theme.textSecondary }]}>Pendente total</Text>
-            <Text style={[styles.overviewValue, { color: theme.textPrimary }]}>{formatCurrency(totalPendente)}</Text>
-            <Text style={[styles.overviewCaption, { color: theme.textSecondary }]}>
-              {filteredContas.length} conta(s) na visao atual
-            </Text>
-          </View>
-          <View style={[styles.overviewBadge, { backgroundColor: theme.warningBackground, borderColor: COLORS.warning }]}>
-            <Text style={[styles.overviewBadgeText, { color: COLORS.warning }]}>Em aberto</Text>
-          </View>
-        </View>
-
-        <View style={styles.metricsGrid}>
-          <MetricCard label="Total pendente" value={formatCurrency(totalPendente)} icon="cash-clock" tone="warning" />
-          <MetricCard label="Ticket medio" value={formatCurrency(ticketMedio)} icon="chart-line" />
-        </View>
+      <View style={styles.metricsWrapper}>
+        <MetricCard label="Pendente Total" value={formatCurrency(totalPendente)} icon="cash-clock" tone="warning" />
+        <MetricCard label="Ticket Médio" value={formatCurrency(ticketMedio)} icon="chart-line" tone="info" />
       </View>
 
-      <View style={[styles.toolbarCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
-        <View style={[styles.searchBox, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
-          <MaterialCommunityIcons name="magnify" size={18} color={theme.textSecondary} />
-          <TextInput
-            style={[styles.searchInput, { color: theme.textPrimary }]}
-            placeholder="Buscar por cliente, forma de pagamento ou produto"
-            placeholderTextColor={theme.textSecondary}
-            value={searchText}
-            onChangeText={setSearchText}
-          />
-          {searchText ? (
-            <TouchableOpacity onPress={() => setSearchText('')}>
-              <MaterialCommunityIcons name="close-circle" size={16} color={theme.textSecondary} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
+      <View style={[styles.searchWrapper, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
+        <MaterialCommunityIcons name="magnify" size={20} color={theme.textSecondary} />
+        <TextInput
+          style={[styles.searchInput, { color: theme.textPrimary }]}
+          placeholder="Buscar cliente, produto ou forma..."
+          placeholderTextColor={theme.textMuted}
+          value={searchText}
+          onChangeText={setSearchText}
+        />
+        {searchText ? (
+          <TouchableOpacity onPress={() => setSearchText('')}>
+            <MaterialCommunityIcons name="close-circle" size={18} color={theme.textSecondary} />
+          </TouchableOpacity>
+        ) : null}
       </View>
+
+      {loading && (
+        <View style={styles.loadingWrapper}>
+          <ActivityIndicator size="large" color={theme.info} />
+        </View>
+      )}
     </>
   );
 
@@ -342,63 +263,87 @@ const ContasReceberScreen = ({ navigation }: any) => {
       <FlatList
         data={filteredContas}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={[styles.listContent, { paddingBottom: (settings.uiV2Enabled ? 138 : 48) + insets.bottom }]}
-        ListHeaderComponent={renderListHeader}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 40 }]}
+        ListHeaderComponent={renderHeader}
         refreshing={refreshing}
         onRefresh={() => void carregarDados(true)}
-        ListEmptyComponent={
-          loading ? (
-            <ActivityIndicator size="large" color={theme.info} style={{ marginTop: 56 }} />
-          ) : (
-            <EmptyState
-              icon="hand-coin-outline"
-              title="Nenhuma conta pendente"
-              description="Todas as vendas foram recebidas no momento."
-            />
-          )
-        }
-        renderItem={renderItem}
+        ListEmptyComponent={!loading ? (
+          <EmptyState 
+            icon="hand-coin-outline" 
+            title="Tudo em dia!" 
+            description="Não há recebimentos pendentes no momento." 
+          />
+        ) : null}
+        renderItem={({ item }) => (
+          <ContaItemCard
+            item={item}
+            theme={theme}
+            clienteNome={item.clienteId ? clientesMap[item.clienteId] || 'Cliente desconhecido' : 'Não identificado'}
+            formatDate={formatDate}
+            formatMetodo={formatMetodo}
+            formatCurrency={formatCurrency}
+            getVendaTotal={getVendaTotal}
+            onReceber={handleOpenReceber}
+            onPress={() => {
+              const isHydro = (item as any).originType === 'hydro_lote' || !!(item as any).hydroLoteId;
+              isHydro
+                ? navigation.navigate('HidroponiaVendaForm', { vendaId: item.id })
+                : navigation.navigate('ColheitaForm', { vendaId: item.id, isEdit: true });
+            }}
+          />
+        )}
       />
 
       <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
           <View style={[styles.modalContent, { backgroundColor: theme.surfaceBackground }]}>
-            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Receber Pagamento</Text>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Receber Pagamento</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <MaterialCommunityIcons name="close" size={24} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
 
             {selectedConta ? (
               <View style={[styles.resumoConta, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
-                <Text style={[styles.resumoLabel, { color: theme.textSecondary }]}>Cliente</Text>
-                <Text style={[styles.resumoValue, { color: theme.textPrimary }]}>
-                  {selectedConta.clienteId ? clientesMap[selectedConta.clienteId] : 'Avulso'}
-                </Text>
-
-                <Text style={[styles.resumoLabel, { color: theme.textSecondary, marginTop: 10 }]}>Valor total</Text>
-                <Text style={[styles.resumoValuePrice, { color: theme.info }]}>
-                  {formatCurrency(getVendaTotal(selectedConta))}
-                </Text>
-                <Text style={[styles.resumoLabel, { color: theme.textSecondary, marginTop: 10 }]}>Metodo original</Text>
+                <View style={styles.resumoRow}>
+                  <View>
+                    <Text style={[styles.resumoLabel, { color: theme.textSecondary }]}>Cliente</Text>
+                    <Text style={[styles.resumoValue, { color: theme.textPrimary }]}>
+                      {selectedConta.clienteId ? clientesMap[selectedConta.clienteId] : 'Avulso'}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={[styles.resumoLabel, { color: theme.textSecondary }]}>Valor total</Text>
+                    <Text style={[styles.resumoValuePrice, { color: theme.info }]}>
+                      {formatCurrency(getVendaTotal(selectedConta))}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[styles.divider, { backgroundColor: theme.divider }]} />
+                <Text style={[styles.resumoLabel, { color: theme.textSecondary }]}>Método original</Text>
                 <Text style={[styles.resumoValue, { color: theme.textPrimary }]}>
                   {formatMetodo(selectedConta.metodoPagamento || selectedConta.formaPagamento || undefined)}
                 </Text>
               </View>
             ) : null}
 
-            <Text style={[styles.labelPicker, { color: theme.textPrimary }]}>Forma de pagamento</Text>
+            <Text style={[styles.labelPicker, { color: theme.textSecondary }]}>Forma de recebimento</Text>
             <View style={[styles.pickerWrapper, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
-              <Picker selectedValue={metodoRecebimento} onValueChange={setMetodoRecebimento} style={{ color: theme.textPrimary }}>
+              <Picker selectedValue={metodoRecebimento} onValueChange={setMetodoRecebimento} style={{ color: theme.textPrimary }} dropdownIconColor={theme.textPrimary}>
                 <Picker.Item label="Pix" value="pix" />
                 <Picker.Item label="Dinheiro" value="dinheiro" />
-                <Picker.Item label="Cartao" value="cartao" />
+                <Picker.Item label="Cartão" value="cartao" />
                 <Picker.Item label="Boleto" value="boleto" />
                 <Picker.Item label="Cheque" value="cheque" />
                 <Picker.Item label="Outro" value="outro" />
               </Picker>
             </View>
 
-            <Text style={[styles.labelPicker, { color: theme.textPrimary }]}>Recebido por (Caixa)</Text>
-            <View style={styles.dateRow}>
-              <View style={[styles.pickerWrapper, { flex: 1, borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
-                <Picker selectedValue={pagamentoPara} onValueChange={setPagamentoPara} style={{ color: theme.textPrimary }}>
+            <Text style={[styles.labelPicker, { color: theme.textSecondary }]}>Recebido por (Caixa)</Text>
+            <View style={styles.pickerRow}>
+              <View style={[styles.pickerWrapper, { flex: 1, borderColor: theme.border, backgroundColor: theme.surfaceMuted, marginBottom: 0 }]}>
+                <Picker selectedValue={pagamentoPara} onValueChange={setPagamentoPara} style={{ color: theme.textPrimary }} dropdownIconColor={theme.textPrimary}>
                   <Picker.Item label="Selecione uma pessoa..." value={null} />
                   {caixaPessoas.map((pessoa) => (
                     <Picker.Item key={pessoa.id} label={pessoa.nome} value={pessoa.id} />
@@ -406,32 +351,22 @@ const ContasReceberScreen = ({ navigation }: any) => {
                 </Picker>
               </View>
               <TouchableOpacity
-                style={[
-                  styles.dateBtn,
-                  { marginLeft: 8, flex: 0, width: 54, justifyContent: 'center', borderColor: theme.border, backgroundColor: theme.surfaceMuted },
-                ]}
+                style={[styles.addCaixaBtn, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}
                 onPress={() => setModalCaixaVisible(true)}
               >
-                <MaterialCommunityIcons name="account-plus" size={18} color={theme.info} />
+                <MaterialCommunityIcons name="account-plus" size={22} color={theme.info} />
               </TouchableOpacity>
             </View>
 
             <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.cancelBtn, { borderColor: theme.border }]}
-                onPress={() => setModalVisible(false)}
-                disabled={loadingAction}
-              >
-                <Text style={[styles.cancelText, { color: theme.textSecondary }]}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.confirmBtn, { backgroundColor: theme.info }]}
-                onPress={confirmRecebimento}
-                disabled={loadingAction}
-              >
-                <Text style={styles.confirmText}>{loadingAction ? 'Salvando...' : 'Confirmar'}</Text>
-              </TouchableOpacity>
+              <LoadingButton label="Cancelar" variant="neutral" onPress={() => setModalVisible(false)} style={{ flex: 1 }} />
+              <LoadingButton 
+                label={loadingAction ? 'Salvando...' : 'Confirmar'} 
+                variant="primary" 
+                onPress={confirmRecebimento} 
+                loading={loadingAction}
+                style={{ flex: 1.5 }} 
+              />
             </View>
           </View>
         </View>
@@ -444,26 +379,21 @@ const ContasReceberScreen = ({ navigation }: any) => {
             <TextInput
               style={[styles.input, { borderColor: theme.border, backgroundColor: theme.surfaceMuted, color: theme.textPrimary }]}
               placeholder="Nome da pessoa"
-              placeholderTextColor={theme.textSecondary}
+              placeholderTextColor={theme.textMuted}
               value={novoCaixaNome}
               onChangeText={setNovoCaixaNome}
+              autoFocus
             />
 
             <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.cancelBtn, { borderColor: theme.border }]}
-                onPress={() => setModalCaixaVisible(false)}
-                disabled={salvandoCaixaPessoa}
-              >
-                <Text style={[styles.cancelText, { color: theme.textSecondary }]}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.confirmBtn, { backgroundColor: theme.info }]}
-                onPress={handleSalvarPessoaCaixa}
-                disabled={salvandoCaixaPessoa}
-              >
-                <Text style={styles.confirmText}>{salvandoCaixaPessoa ? 'Salvando...' : 'Salvar'}</Text>
-              </TouchableOpacity>
+              <LoadingButton label="Cancelar" variant="neutral" onPress={() => setModalCaixaVisible(false)} style={{ flex: 1 }} />
+              <LoadingButton 
+                label={salvandoCaixaPessoa ? 'Salvando...' : 'Salvar'} 
+                variant="primary" 
+                onPress={handleSalvarPessoaCaixa} 
+                loading={salvandoCaixaPessoa}
+                style={{ flex: 1 }} 
+              />
             </View>
           </View>
         </View>
@@ -474,172 +404,70 @@ const ContasReceberScreen = ({ navigation }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  headerStatsRow: { flexDirection: 'row', gap: 8 },
-  headerChip: {
+  listContent: { paddingHorizontal: SPACING.lg },
+  headerStats: { flexDirection: 'row', gap: 8 },
+  headerStatChip: {
     flex: 1,
-    backgroundColor: COLORS.whiteAlpha12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
     borderWidth: 1,
-    borderColor: COLORS.whiteAlpha20,
+    borderColor: 'rgba(255,255,255,0.2)',
     borderRadius: 12,
     paddingVertical: 10,
     alignItems: 'center',
   },
-  headerChipValue: { color: COLORS.textLight, fontSize: 15, fontWeight: '900' },
-  headerChipLabel: { color: COLORS.whiteAlpha80, marginTop: 2, fontSize: 10, fontWeight: '700' },
-
-  financeLinksRow: {
-    gap: 8,
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.xs,
-  },
+  headerStatValue: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
+  headerStatLabel: { color: 'rgba(255,255,255,0.8)', marginTop: 2, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+  financeLinksRow: { gap: 10, marginTop: 16, paddingRight: 20 },
   financeLink: {
-    borderWidth: 1,
-    borderRadius: RADIUS.pill,
-    paddingHorizontal: 14,
+    borderWidth: 1.5,
+    borderRadius: 20,
+    paddingHorizontal: 16,
     paddingVertical: 10,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
-    minWidth: 96,
-  },
-  financeLinkActive: {
-    backgroundColor: COLORS.infoSoft,
-  },
-  financeLinkText: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-
-  overviewCard: {
-    marginHorizontal: SPACING.lg,
-    marginTop: SPACING.md,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    padding: SPACING.md,
-    ...SHADOWS.card,
-  },
-  overviewTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  overviewLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-  overviewValue: { fontSize: 28, fontWeight: '900', marginTop: 4 },
-  overviewCaption: { fontSize: 12, fontWeight: '600', marginTop: 4 },
-  overviewBadge: {
-    alignSelf: 'flex-start',
-    borderRadius: RADIUS.pill,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  overviewBadgeText: { fontSize: 11, fontWeight: '800' },
-  metricsGrid: {
-    flexDirection: 'row',
     gap: 8,
-    marginTop: SPACING.md,
+    minWidth: 100,
+    borderColor: '#E2E8F0',
   },
-
-  toolbarCard: {
-    marginHorizontal: SPACING.lg,
-    marginTop: SPACING.md,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    padding: SPACING.md,
-    ...SHADOWS.card,
-  },
-  searchBox: {
-    borderWidth: 1,
-    borderRadius: RADIUS.md,
-    minHeight: 46,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 14,
-    paddingVertical: 8,
-  },
-
-  listContent: { padding: SPACING.lg, paddingTop: SPACING.sm },
-  card: {
-    borderRadius: RADIUS.lg,
+  financeLinkText: { fontSize: 13, fontWeight: '800' },
+  metricsWrapper: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  searchWrapper: {
+    marginTop: 16,
     marginBottom: 12,
-    borderWidth: 1,
-    padding: SPACING.md,
-    ...SHADOWS.card,
-  },
-  cardTouch: { width: '100%' },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  cardHeaderMain: { flex: 1, paddingRight: 8 },
-  clienteName: { fontSize: TYPOGRAPHY.title, fontWeight: '800' },
-  productName: { marginTop: 3, fontSize: 12, fontWeight: '700' },
-  metodoRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  metodoText: { fontSize: 13, fontWeight: '700', marginLeft: 4 },
-  dateText: { fontSize: 12, marginTop: 2, fontWeight: '600' },
-  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: RADIUS.sm, borderWidth: 1 },
-  badgeText: { fontSize: 10, fontWeight: '800' },
-  infoGrid: { flexDirection: 'row', gap: 8, marginTop: 12, marginBottom: 12 },
-  infoCard: { flex: 1, borderRadius: RADIUS.md, padding: 10 },
-  infoLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
-  infoValue: { marginTop: 4, fontSize: 12, fontWeight: '700' },
-  infoValueStrong: { marginTop: 4, fontSize: 18, fontWeight: '900' },
-  receiveBtn: {
+    borderWidth: 1.5,
+    borderRadius: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 46,
-    paddingVertical: 12,
-    borderRadius: RADIUS.md,
-    gap: 6,
+    paddingHorizontal: 16,
+    minHeight: 52,
   },
-  btnText: { color: COLORS.textLight, fontWeight: '800', fontSize: 14 },
-
-  modalOverlay: { flex: 1, justifyContent: 'center', padding: 20 },
-  modalContent: { borderRadius: RADIUS.lg, padding: SPACING.xl, ...SHADOWS.card },
-  modalTitle: { fontSize: TYPOGRAPHY.h3, fontWeight: '800', marginBottom: 16, textAlign: 'center' },
-  resumoConta: { padding: 14, borderRadius: RADIUS.md, marginBottom: 16, borderWidth: 1 },
-  resumoLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  searchInput: { flex: 1, marginLeft: 10, fontSize: 15, fontWeight: '600' },
+  loadingWrapper: { marginVertical: 20, alignItems: 'center' },
+  
+  modalOverlay: { flex: 1, justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 40 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
+  resumoConta: { padding: 16, borderRadius: 16, marginBottom: 20, borderWidth: 1.5 },
+  resumoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  resumoLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
   resumoValue: { marginTop: 4, fontSize: 16, fontWeight: '800' },
-  resumoValuePrice: { marginTop: 4, fontSize: 22, fontWeight: '900' },
-  labelPicker: { fontSize: TYPOGRAPHY.body, fontWeight: '700', marginBottom: 8 },
-  dateRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-  pickerWrapper: { borderWidth: 1, borderRadius: RADIUS.sm, marginBottom: 20 },
-  dateBtn: {
-    height: 50,
-    borderRadius: RADIUS.sm,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  resumoValuePrice: { marginTop: 4, fontSize: 24, fontWeight: '900' },
+  divider: { height: 1, marginVertical: 12 },
+  labelPicker: { fontSize: 13, fontWeight: '800', marginBottom: 8, marginTop: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  pickerWrapper: { borderWidth: 1.5, borderRadius: 14, marginBottom: 20, overflow: 'hidden' },
+  pickerRow: { flexDirection: 'row', gap: 10, alignItems: 'center', marginBottom: 24 },
+  addCaixaBtn: { width: 54, height: 54, borderRadius: 14, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  modalActions: { flexDirection: 'row', gap: 12 },
   input: {
-    borderWidth: 1,
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: TYPOGRAPHY.body,
-    marginBottom: 16,
+    borderWidth: 1.5,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 24,
   },
-  modalActions: { flexDirection: 'row', gap: 10 },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 13,
-    borderRadius: RADIUS.sm,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  cancelText: { fontWeight: '700', fontSize: TYPOGRAPHY.body },
-  confirmBtn: {
-    flex: 1,
-    paddingVertical: 13,
-    borderRadius: RADIUS.sm,
-    alignItems: 'center',
-  },
-  confirmText: { color: COLORS.textLight, fontWeight: '700', fontSize: TYPOGRAPHY.body },
 });
 
 export default ContasReceberScreen;

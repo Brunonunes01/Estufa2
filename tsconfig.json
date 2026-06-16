@@ -4,7 +4,8 @@
     "strict": false,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "useUnknownInCatchVariables": true
   },
   "exclude": ["Telas", "node_modules", "android"]
 }

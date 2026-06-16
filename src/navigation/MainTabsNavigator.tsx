@@ -18,6 +18,7 @@ import { useThemeMode } from '../hooks/useThemeMode';
 import { COLORS, RADIUS } from '../constants/theme';
 import { MainTabParamList, RootStackParamList } from './types';
 import { buildQuickActions, getMainTabIconMap, getOperationTabTitle, ProductionMode } from './rootNavigatorConfig';
+import ReadOnlyAccessBanner from '../components/ReadOnlyAccessBanner';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -31,7 +32,7 @@ export const MainTabsNavigator = ({
   const theme = useThemeMode();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { canWrite } = useAuth();
+  const { canWrite, isReadOnly, accessRoleLabel } = useAuth();
   const [quickActionsVisible, setQuickActionsVisible] = useState(false);
 
   const operationEntryScreen =
@@ -47,6 +48,7 @@ export const MainTabsNavigator = ({
 
   return (
     <View style={{ flex: 1 }}>
+      {isReadOnly ? <ReadOnlyAccessBanner roleLabel={accessRoleLabel} /> : null}
       <Tab.Navigator
         id="main-tabs"
         screenOptions={({ route }) => {

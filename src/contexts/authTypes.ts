@@ -1,4 +1,4 @@
-import { User } from '../types/domain';
+import type { User } from '../types/domain.ts';
 
 export type TenantPermissionFlags = {
   canRead?: boolean;
@@ -12,6 +12,7 @@ export type AvailableTenant = {
   name: string;
   type?: 'owner' | 'shared';
   ownerName?: string;
+  ownerEmail?: string;
   role?: 'guest' | 'operator' | 'admin';
   permissions?: TenantPermissionFlags;
 };

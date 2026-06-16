@@ -148,6 +148,44 @@ export type Database = {
           },
         ]
       }
+      caixa_pessoas: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          created_by: string | null
+          id: string
+          nome: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          nome: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          nome?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "caixa_pessoas_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clientes: {
         Row: {
           bairro: string | null
@@ -360,6 +398,11 @@ export type Database = {
       despesas: {
         Row: {
           categoria: Database["public"]["Enums"]["despesa_categoria"]
+          comprovante_bytes: number | null
+          comprovante_mime: string | null
+          comprovante_nome: string | null
+          comprovante_public_id: string | null
+          comprovante_url: string | null
           created_at: string
           created_by: string | null
           data_despesa: string
@@ -368,6 +411,7 @@ export type Database = {
           estufa_id: string | null
           id: string
           observacoes: string | null
+          pagamento_para: string | null
           plantio_id: string | null
           status_pagamento: Database["public"]["Enums"]["pagamento_status"]
           tenant_id: string
@@ -377,6 +421,11 @@ export type Database = {
         }
         Insert: {
           categoria?: Database["public"]["Enums"]["despesa_categoria"]
+          comprovante_bytes?: number | null
+          comprovante_mime?: string | null
+          comprovante_nome?: string | null
+          comprovante_public_id?: string | null
+          comprovante_url?: string | null
           created_at?: string
           created_by?: string | null
           data_despesa?: string
@@ -385,6 +434,7 @@ export type Database = {
           estufa_id?: string | null
           id?: string
           observacoes?: string | null
+          pagamento_para?: string | null
           plantio_id?: string | null
           status_pagamento?: Database["public"]["Enums"]["pagamento_status"]
           tenant_id: string
@@ -394,6 +444,11 @@ export type Database = {
         }
         Update: {
           categoria?: Database["public"]["Enums"]["despesa_categoria"]
+          comprovante_bytes?: number | null
+          comprovante_mime?: string | null
+          comprovante_nome?: string | null
+          comprovante_public_id?: string | null
+          comprovante_url?: string | null
           created_at?: string
           created_by?: string | null
           data_despesa?: string
@@ -402,6 +457,7 @@ export type Database = {
           estufa_id?: string | null
           id?: string
           observacoes?: string | null
+          pagamento_para?: string | null
           plantio_id?: string | null
           status_pagamento?: Database["public"]["Enums"]["pagamento_status"]
           tenant_id?: string
@@ -415,6 +471,13 @@ export type Database = {
             columns: ["estufa_id"]
             isOneToOne: false
             referencedRelation: "estufas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "despesas_pagamento_para_fkey"
+            columns: ["pagamento_para"]
+            isOneToOne: false
+            referencedRelation: "caixa_pessoas"
             referencedColumns: ["id"]
           },
           {
@@ -1479,6 +1542,7 @@ export type Database = {
       }
       plantios: {
         Row: {
+          caixa_pesos: Json
           ciclo_desbloqueado_por_admin: boolean
           ciclo_dias: number | null
           codigo_lote: string | null
@@ -1496,7 +1560,7 @@ export type Database = {
           desbloqueio_admin_by_name: string | null
           desbloqueio_admin_by_uid: string | null
           desbloqueio_admin_reason: string | null
-          estufa_id: string
+          estufa_id: string | null
           id: string
           mudas_por_bandeja: number | null
           observacoes: string | null
@@ -1507,6 +1571,7 @@ export type Database = {
           quantidade_plantada: number | null
           safra_id: string | null
           status: Database["public"]["Enums"]["plantio_status"]
+          talhao_id: string | null
           tenant_id: string
           unidade_preco_estimado: string | null
           unidade_quantidade: string | null
@@ -1514,6 +1579,7 @@ export type Database = {
           variedade: string | null
         }
         Insert: {
+          caixa_pesos?: Json
           ciclo_desbloqueado_por_admin?: boolean
           ciclo_dias?: number | null
           codigo_lote?: string | null
@@ -1531,7 +1597,7 @@ export type Database = {
           desbloqueio_admin_by_name?: string | null
           desbloqueio_admin_by_uid?: string | null
           desbloqueio_admin_reason?: string | null
-          estufa_id: string
+          estufa_id?: string | null
           id?: string
           mudas_por_bandeja?: number | null
           observacoes?: string | null
@@ -1542,6 +1608,7 @@ export type Database = {
           quantidade_plantada?: number | null
           safra_id?: string | null
           status?: Database["public"]["Enums"]["plantio_status"]
+          talhao_id?: string | null
           tenant_id: string
           unidade_preco_estimado?: string | null
           unidade_quantidade?: string | null
@@ -1549,6 +1616,7 @@ export type Database = {
           variedade?: string | null
         }
         Update: {
+          caixa_pesos?: Json
           ciclo_desbloqueado_por_admin?: boolean
           ciclo_dias?: number | null
           codigo_lote?: string | null
@@ -1566,7 +1634,7 @@ export type Database = {
           desbloqueio_admin_by_name?: string | null
           desbloqueio_admin_by_uid?: string | null
           desbloqueio_admin_reason?: string | null
-          estufa_id?: string
+          estufa_id?: string | null
           id?: string
           mudas_por_bandeja?: number | null
           observacoes?: string | null
@@ -1577,6 +1645,7 @@ export type Database = {
           quantidade_plantada?: number | null
           safra_id?: string | null
           status?: Database["public"]["Enums"]["plantio_status"]
+          talhao_id?: string | null
           tenant_id?: string
           unidade_preco_estimado?: string | null
           unidade_quantidade?: string | null
@@ -1596,6 +1665,13 @@ export type Database = {
             columns: ["safra_id"]
             isOneToOne: false
             referencedRelation: "safras"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plantios_talhao_id_fkey"
+            columns: ["talhao_id"]
+            isOneToOne: false
+            referencedRelation: "talhoes"
             referencedColumns: ["id"]
           },
           {
@@ -1840,6 +1916,109 @@ export type Database = {
           },
         ]
       }
+      support_audit: {
+        Row: {
+          action: string
+          created_at: string
+          created_by: string | null
+          id: string
+          metadata: Json | null
+          note: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          metadata?: Json | null
+          note: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          metadata?: Json | null
+          note?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_audit_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      talhoes: {
+        Row: {
+          area_calculada_hectares: number | null
+          area_hectares: number | null
+          boundary_points: Json | null
+          cidade: string | null
+          codigo: string | null
+          created_at: string
+          created_by: string | null
+          cultura_principal: string | null
+          id: string
+          nome: string
+          observacoes: string | null
+          status: string
+          tenant_id: string
+          tipo_solo: string | null
+          updated_at: string
+        }
+        Insert: {
+          area_calculada_hectares?: number | null
+          area_hectares?: number | null
+          boundary_points?: Json | null
+          cidade?: string | null
+          codigo?: string | null
+          created_at?: string
+          created_by?: string | null
+          cultura_principal?: string | null
+          id?: string
+          nome: string
+          observacoes?: string | null
+          status?: string
+          tenant_id: string
+          tipo_solo?: string | null
+          updated_at?: string
+        }
+        Update: {
+          area_calculada_hectares?: number | null
+          area_hectares?: number | null
+          boundary_points?: Json | null
+          cidade?: string | null
+          codigo?: string | null
+          created_at?: string
+          created_by?: string | null
+          cultura_principal?: string | null
+          id?: string
+          nome?: string
+          observacoes?: string | null
+          status?: string
+          tenant_id?: string
+          tipo_solo?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "talhoes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tarefas_agricolas: {
         Row: {
           cancel_reason: string | null
@@ -2063,13 +2242,14 @@ export type Database = {
           hydro_lote_id: string | null
           id: string
           metodo_pagamento: string | null
-          pagamento_para: string | null
           observacoes: string | null
           origin_id: string | null
           origin_type: string | null
+          pagamento_para: string | null
           plantio_id: string | null
           quantidade: number | null
           status_pagamento: Database["public"]["Enums"]["pagamento_status"]
+          talhao_id: string | null
           tenant_id: string
           traceability_public_token: string | null
           traceability_public_url: string | null
@@ -2093,13 +2273,14 @@ export type Database = {
           hydro_lote_id?: string | null
           id?: string
           metodo_pagamento?: string | null
-          pagamento_para?: string | null
           observacoes?: string | null
           origin_id?: string | null
           origin_type?: string | null
+          pagamento_para?: string | null
           plantio_id?: string | null
           quantidade?: number | null
           status_pagamento?: Database["public"]["Enums"]["pagamento_status"]
+          talhao_id?: string | null
           tenant_id: string
           traceability_public_token?: string | null
           traceability_public_url?: string | null
@@ -2123,13 +2304,14 @@ export type Database = {
           hydro_lote_id?: string | null
           id?: string
           metodo_pagamento?: string | null
-          pagamento_para?: string | null
           observacoes?: string | null
           origin_id?: string | null
           origin_type?: string | null
+          pagamento_para?: string | null
           plantio_id?: string | null
           quantidade?: number | null
           status_pagamento?: Database["public"]["Enums"]["pagamento_status"]
+          talhao_id?: string | null
           tenant_id?: string
           traceability_public_token?: string | null
           traceability_public_url?: string | null
@@ -2159,10 +2341,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "vendas_pagamento_para_fkey"
+            columns: ["pagamento_para"]
+            isOneToOne: false
+            referencedRelation: "caixa_pessoas"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "vendas_plantio_id_fkey"
             columns: ["plantio_id"]
             isOneToOne: false
             referencedRelation: "plantios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendas_talhao_id_fkey"
+            columns: ["talhao_id"]
+            isOneToOne: false
+            referencedRelation: "talhoes"
             referencedColumns: ["id"]
           },
           {
@@ -2194,9 +2390,11 @@ export type Database = {
         Args: { p_tenant_id: string }
         Returns: boolean
       }
+      can_read_tenant: { Args: { p_tenant_id: string }; Returns: boolean }
       can_write_tenant: { Args: { p_tenant_id: string }; Returns: boolean }
+      is_support_agent: { Args: never; Returns: boolean }
       is_tenant_member: { Args: { p_tenant_id: string }; Returns: boolean }
-      redeem_share_code: { Args: { p_code: string }; Returns: boolean }
+      redeem_share_code: { Args: { p_code: string }; Returns: string }
     }
     Enums: {
       app_role: "admin" | "operator" | "guest"

@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useEffect, useMemo, useRef, useState
 
 import { onAuthStateChangedBridge, signInWithPasswordBridge } from '../services/authBridge';
 import { bootstrapAuthTenantState } from '../services/authTenantService';
+import { loadPersistedTenantSelection, persistTenantSelection } from '../services/tenantSelectionStorage';
 import { AuthContextData } from './authTypes';
 
 export const AuthContext = createContext<AuthContextData>({} as AuthContextData);
@@ -18,11 +19,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     async (authUser: { id: string; email?: string | null; displayName?: string | null }) => {
       const bootstrapId = authBootstrapRef.current + 1;
       authBootstrapRef.current = bootstrapId;
-      const bootstrap = await bootstrapAuthTenantState(authUser, selectedTenantIdRef.current);
+      const persistedTenantId =
+        selectedTenantIdRef.current || (await loadPersistedTenantSelection(authUser.id));
+      const bootstrap = await bootstrapAuthTenantState(authUser, persistedTenantId);
       if (authBootstrapRef.current !== bootstrapId) return;
       setAvailableTenants(bootstrap.availableTenants);
       setSelectedTenantId(bootstrap.resolvedTenantId);
       selectedTenantIdRef.current = bootstrap.resolvedTenantId;
+      await persistTenantSelection(authUser.id, bootstrap.resolvedTenantId);
       setUser(bootstrap.user);
     },
     []
@@ -72,6 +76,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     selectedTenantIdRef.current = trimmedUid;
     setSelectedTenantId(trimmedUid);
+    if (user?.uid) {
+      void persistTenantSelection(user.uid, trimmedUid);
+    }
   };
 
   const signIn = async (email: string, password: string) => {

@@ -9,13 +9,16 @@ import {
   resolveTenantPermissions,
 } from '../src/lib/accessControl.ts';
 
-test('viewer keeps read-only access and can see dashboard', () => {
+test('viewer keeps read-only access and can see all read-only dashboards', () => {
   const access = getAccessSnapshot({ type: 'shared', role: 'guest' });
 
   assert.equal(access.accessRole, 'viewer');
   assert.equal(access.canRead, true);
   assert.equal(access.canWrite, false);
+  assert.equal(access.canDelete, false);
+  assert.equal(access.canManageSharing, false);
   assert.equal(access.canViewFinancialDashboard, true);
+  assert.equal(access.canViewCash, true);
 });
 
 test('operator can see dashboard and write but not manage sharing', () => {

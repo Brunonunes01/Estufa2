@@ -1,90 +1,19 @@
 import NetInfo from '@react-native-community/netinfo';
-import { flushOfflineQueue, getOfflineQueueSize, isOnlineNow } from './offlineStorage';
-import { applyFlushResultToSyncState, isNetworkReadyForSync, toOfflineSyncErrorMessage } from './syncServiceHelpers';
 
-export type OfflineSyncState = {
-  syncing: boolean;
-  lastSyncAt: number | null;
-  lastError: string | null;
-  queued: number;
-  flushed: number;
-  failed: number;
-};
+import { flushOfflineQueue, getOfflineQueueSize, isOnlineNow } from './offlineStorage.ts';
+import { createOfflineSyncService } from './syncServiceCore.ts';
 
-const state: OfflineSyncState = {
-  syncing: false,
-  lastSyncAt: null,
-  lastError: null,
-  queued: 0,
-  flushed: 0,
-  failed: 0,
-};
+export { createOfflineSyncService, type OfflineSyncState } from './syncServiceCore.ts';
 
-const subscribers = new Set<(snapshot: OfflineSyncState) => void>();
-let stopListener: (() => void) | null = null;
+const defaultOfflineSyncService = createOfflineSyncService({
+  isOnlineNow,
+  flushOfflineQueue,
+  getOfflineQueueSize,
+  addNetInfoListener: (listener) => NetInfo.addEventListener(listener),
+  now: () => Date.now(),
+});
 
-const notify = () => {
-  const snapshot = { ...state };
-  subscribers.forEach((listener) => listener(snapshot));
-};
-
-const refreshQueuedCount = async () => {
-  state.queued = await getOfflineQueueSize();
-  notify();
-};
-
-const syncInternal = async () => {
-  if (state.syncing) return { ...state };
-
-  state.syncing = true;
-  state.lastError = null;
-  notify();
-
-  try {
-    const online = await isOnlineNow();
-    if (!online) {
-      await refreshQueuedCount();
-      return { ...state };
-    }
-
-    const flushResult = await flushOfflineQueue();
-    Object.assign(state, applyFlushResultToSyncState(state, flushResult, Date.now()));
-  } catch (error) {
-    state.lastError = toOfflineSyncErrorMessage(error);
-  } finally {
-    state.syncing = false;
-    await refreshQueuedCount();
-  }
-
-  return { ...state };
-};
-
-export const syncPendingDataNow = async () => syncInternal();
-
-export const getOfflineSyncState = () => ({ ...state });
-
-export const subscribeOfflineSyncState = (listener: (snapshot: OfflineSyncState) => void) => {
-  subscribers.add(listener);
-  listener({ ...state });
-  return () => {
-    subscribers.delete(listener);
-  };
-};
-
-export const startOfflineSyncListener = () => {
-  if (stopListener) return stopListener;
-
-  const unsubscribe = NetInfo.addEventListener((net) => {
-    if (isNetworkReadyForSync(net)) {
-      void syncInternal();
-    }
-  });
-
-  stopListener = () => {
-    unsubscribe();
-    stopListener = null;
-  };
-
-  void refreshQueuedCount();
-  return stopListener;
-};
+export const syncPendingDataNow = defaultOfflineSyncService.syncPendingDataNow;
+export const getOfflineSyncState = defaultOfflineSyncService.getOfflineSyncState;
+export const subscribeOfflineSyncState = defaultOfflineSyncService.subscribeOfflineSyncState;
+export const startOfflineSyncListener = defaultOfflineSyncService.startOfflineSyncListener;

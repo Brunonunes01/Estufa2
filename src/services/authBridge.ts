@@ -1,4 +1,4 @@
-import { mapSessionUserToAuthBridgeUser, AuthBridgeUser } from './authBridgeHelpers.ts';
+import { mapSessionUserToAuthBridgeUser, AuthBridgeUser, isInvalidRefreshTokenError } from './authBridgeHelpers.ts';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
 const ensureSupabaseReady = () => {
@@ -48,6 +48,15 @@ export const signOutBridge = async () => {
   if (error) throw error;
 };
 
+const clearInvalidLocalSession = async () => {
+  const supabase = getSupabaseClient();
+  try {
+    await supabase.auth.signOut({ scope: 'local' });
+  } catch {
+    // Best effort cleanup only.
+  }
+};
+
 export const onAuthStateChangedBridge = (
   callback: (user: AuthBridgeUser | null) => void
 ) => {
@@ -57,6 +66,26 @@ export const onAuthStateChangedBridge = (
     callback(mapSessionUserToAuthBridgeUser(session?.user));
   });
 
+  void supabase.auth
+    .getSession()
+    .then(async ({ data: sessionData, error }) => {
+      if (error) {
+        if (isInvalidRefreshTokenError(error)) {
+          await clearInvalidLocalSession();
+          callback(null);
+          return;
+        }
+        throw error;
+      }
+      callback(mapSessionUserToAuthBridgeUser(sessionData.session?.user));
+    })
+    .catch(async (error) => {
+      if (isInvalidRefreshTokenError(error)) {
+        await clearInvalidLocalSession();
+        callback(null);
+      }
+    });
+
   return () => data.subscription.unsubscribe();
 };
 
@@ -64,6 +93,12 @@ export const getCurrentAuthUserBridge = async (): Promise<AuthBridgeUser | null>
   ensureSupabaseReady();
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.auth.getSession();
-  if (error) throw error;
+  if (error) {
+    if (isInvalidRefreshTokenError(error)) {
+      await clearInvalidLocalSession();
+      return null;
+    }
+    throw error;
+  }
   return mapSessionUserToAuthBridgeUser(data.session?.user);
 };
