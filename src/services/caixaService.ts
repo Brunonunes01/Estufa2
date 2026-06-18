@@ -219,9 +219,22 @@ export const getCaixaExtrato = async (
     
     // Busca por descricao ou pessoa
     const term = (params.busca || '').toLowerCase().trim();
-    const byBusca = !term || 
-      mov.descricao.toLowerCase().includes(term) || 
-      mov.caixaPessoaNome.toLowerCase().includes(term);
+    const byBusca =
+      !term ||
+      mov.descricao.toLowerCase().includes(term) ||
+      mov.caixaPessoaNome.toLowerCase().includes(term) ||
+      String(mov.clienteNome || '')
+        .toLowerCase()
+        .includes(term) ||
+      String(mov.observacoes || '')
+        .toLowerCase()
+        .includes(term) ||
+      String(mov.metodoPagamento || '')
+        .toLowerCase()
+        .includes(term) ||
+      String(mov.origem || '')
+        .toLowerCase()
+        .includes(term);
 
     return byPessoa && byTipo && byBusca;
   });

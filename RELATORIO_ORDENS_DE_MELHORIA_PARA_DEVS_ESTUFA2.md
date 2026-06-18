@@ -1136,3 +1136,32 @@ Proximos passos atualizados:
 1. Refinar o template novo para aproximacao visual final com o comprovante de referencia, incluindo textos comerciais, rodape e identidade definitiva do nome do app quando voce concluir a troca de marca
 2. Validar o fluxo real no aparelho com uma venda completa e confirmar compartilhamento/impressao em Android
 3. Depois disso, seguir na modularizacao das telas grandes e no endurecimento adicional de contratos e tipagem
+
+Atualizacao da rodada seguinte:
+- Reestruturacao visual completa do modulo `Caixa` em `src/screens/Caixa/CaixaResumoScreen.tsx` e `src/screens/Caixa/CaixaExtratoScreen.tsx`, com cabecalhos mais fortes, cards de leitura rapida, filtros mais claros e navegacao mais coerente com a central financeira
+- Correcao funcional no resumo do caixa para listar tambem as pessoas de caixa cadastradas sem movimento no periodo, evitando a falsa impressao de que o cadastro sumiu
+- Melhoria da busca do extrato em `src/services/caixaService.ts`, agora cobrindo descricao, responsavel, cliente, observacoes, metodo de pagamento e origem
+- Ajuste de leitura operacional no extrato para mostrar quantos registros estao carregados versus total filtrado, reduzindo confusao em listas paginadas
+
+Evidencias validadas apos esta rodada:
+- `npm.cmd run typecheck` verde
+- `npm.cmd run lint` verde
+
+Proximos passos atualizados:
+1. Revisar a manutencao/cadastro de pessoas do caixa para deixar o fluxo administrativo tao claro quanto o fluxo de consulta
+2. Continuar a frente visual no financeiro pelos pontos de maior uso diario, especialmente recebimentos e dashboards operacionais
+3. Depois disso, voltar ao endurecimento progressivo de contratos e modularizacao das telas grandes
+
+Atualizacao da rodada seguinte:
+- Centralizacao do cadastro de responsaveis do caixa dentro de `src/screens/Caixa/CaixaResumoScreen.tsx`, evitando depender apenas dos modais espalhados em recebimentos e vendas
+- Inclusao da secao visual `Equipe de caixa` com leitura imediata de quem esta cadastrado e CTA dedicado para novo responsavel
+- Inclusao de modal administrativo no proprio resumo do caixa para cadastrar rapidamente quem pode receber/pagar no fluxo financeiro
+
+Evidencias validadas apos esta rodada:
+- `npm.cmd run typecheck` verde
+- `npm.cmd run lint` verde
+
+Proximos passos atualizados:
+1. Melhorar agora a manutencao das pessoas do caixa com edicao/inativacao, para completar o fluxo administrativo
+2. Seguir nas melhorias visuais do financeiro com foco em dashboards operacionais e leitura diaria
+3. Depois disso, voltar ao endurecimento progressivo de contratos e modularizacao das telas grandes

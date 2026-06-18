@@ -4,10 +4,14 @@ import { useNavigation } from '@react-navigation/native';
 import { Picker } from '@react-native-picker/picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import EmptyState from '../../components/ui/EmptyState';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import MetricCard from '../../components/ui/MetricCard';
+import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
+import { COLORS, RADIUS, SHADOWS, SPACING } from '../../constants/theme';
 import { useAuth } from '../../hooks/useAuth';
+import { useThemeMode } from '../../hooks/useThemeMode';
 import { RootStackParamList } from '../../navigation/types';
 import { listCaixaPessoas } from '../../services/caixaPessoaService';
 import { listDespesasByMonth } from '../../services/despesaService';
@@ -20,7 +24,7 @@ import { Despesa, Plantio, Venda } from '../../types/domain';
 const generateYearList = () => {
   const currentYear = new Date().getFullYear();
   const years = [];
-  for (let i = currentYear; i >= currentYear - 5; i--) {
+  for (let i = currentYear; i >= currentYear - 5; i -= 1) {
     years.push(i);
   }
   return years;
@@ -48,6 +52,8 @@ type ScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Relat
 const RelatoriosScreen = () => {
   const navigation = useNavigation<ScreenNavigationProp>();
   const { user, selectedTenantId, availableTenants } = useAuth();
+  const theme = useThemeMode();
+  const insets = useSafeAreaInsets();
   const targetId = selectedTenantId || user?.uid;
 
   const [vendas, setVendas] = useState<Venda[]>([]);
@@ -58,10 +64,13 @@ const RelatoriosScreen = () => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
-  const formatCurrency = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const formatCurrency = (value: number) =>
+    value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-  const getVendaQuantidade = (venda: Venda) => Number((venda as any).quantidade || venda.itens?.[0]?.quantidade || 0);
-  const getVendaPrecoUnitario = (venda: Venda) => Number((venda as any).precoUnitario || venda.itens?.[0]?.valorUnitario || 0);
+  const getVendaQuantidade = (venda: Venda) =>
+    Number((venda as any).quantidade || venda.itens?.[0]?.quantidade || 0);
+  const getVendaPrecoUnitario = (venda: Venda) =>
+    Number((venda as any).precoUnitario || venda.itens?.[0]?.valorUnitario || 0);
 
   const plantiosMap = useMemo(
     () =>
@@ -98,9 +107,17 @@ const RelatoriosScreen = () => {
   };
 
   const getVendaOrigem = (venda: Venda) =>
-    (venda as any).originType === 'hydro_lote' || (venda as any).hydroLoteId ? 'Hidroponia' : (venda as any).talhaoId ? 'Campo' : 'Estufa';
-  const getVendaLocal = (venda: Venda) => String((venda as any).estufaNome || (venda as any).talhaoNome || 'Local nao informado');
-  const getVendaLote = (venda: Venda) => String((venda as any).loteColheita || (venda as any).codigoLote || venda.plantioId || '-');
+    (venda as any).originType === 'hydro_lote' || (venda as any).hydroLoteId
+      ? 'Hidroponia'
+      : (venda as any).talhaoId
+        ? 'Campo'
+        : 'Estufa';
+
+  const getVendaLocal = (venda: Venda) =>
+    String((venda as any).estufaNome || (venda as any).talhaoNome || 'Local nao informado');
+
+  const getVendaLote = (venda: Venda) =>
+    String((venda as any).loteColheita || (venda as any).codigoLote || venda.plantioId || '-');
 
   useEffect(() => {
     const loadData = async () => {
@@ -124,19 +141,19 @@ const RelatoriosScreen = () => {
       }
     };
 
-    loadData();
-  }, [targetId, selectedYear, selectedMonth]);
+    void loadData();
+  }, [targetId, selectedMonth, selectedYear]);
 
   const stats = useMemo(() => {
     let totalCaixas = 0;
     const receitaTotal = vendas.reduce((acc, venda) => {
       const status = String(venda.statusPagamento || '').toLowerCase().trim();
       if (status === 'cancelado') return acc;
-      
+
       const item = venda.itens?.[0];
       const fallbackTotal = Number(item?.quantidade || 0) * Number(item?.valorUnitario || 0);
-      
       const unidade = String((venda as any).unidade || item?.unidade || '').toLowerCase().trim();
+
       if (unidade === 'caixas' || unidade === 'caixa' || unidade === 'cx') {
         totalCaixas += Number(venda.quantidade || item?.quantidade || 0);
       }
@@ -186,7 +203,10 @@ const RelatoriosScreen = () => {
 
           return {
             codigo: venda.id,
-            data: parsedDate instanceof Date && !Number.isNaN(parsedDate.getTime()) ? parsedDate.toLocaleDateString('pt-BR') : '-',
+            data:
+              parsedDate instanceof Date && !Number.isNaN(parsedDate.getTime())
+                ? parsedDate.toLocaleDateString('pt-BR')
+                : '-',
             cliente: (venda as any).clienteNome || (venda as any).clienteId || 'Cliente',
             documentoCliente: (venda as any).clienteDocumento || '',
             ciclo: getVendaProduto(venda),
@@ -212,7 +232,7 @@ const RelatoriosScreen = () => {
         })
         .sort((a, b) => b.valor - a.valor)
         .slice(0, 10),
-    [vendas, plantiosMap, caixaPessoasMap]
+    [caixaPessoasMap, plantiosMap, vendas]
   );
 
   const buildExportData = () => ({
@@ -236,7 +256,11 @@ const RelatoriosScreen = () => {
     const topVenda = topVendas[0] || null;
     const principalCategoria = stats.categoriasArray[0] || null;
     const resultadoLabel =
-      stats.lucroLiquido > 0 ? 'Lucro no periodo' : stats.lucroLiquido < 0 ? 'Atencao ao prejuizo' : 'Periodo em equilibrio';
+      stats.lucroLiquido > 0
+        ? 'Lucro no periodo'
+        : stats.lucroLiquido < 0
+          ? 'Atencao ao prejuizo'
+          : 'Periodo em equilibrio';
 
     return { topVenda, principalCategoria, resultadoLabel };
   }, [stats.categoriasArray, stats.lucroLiquido, topVendas]);
@@ -261,7 +285,7 @@ const RelatoriosScreen = () => {
     if (loading) {
       return (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={theme.info} />
         </View>
       );
     }
@@ -271,154 +295,172 @@ const RelatoriosScreen = () => {
 
     return (
       <>
-        <View style={styles.snapshotCard}>
+        <View style={[styles.snapshotCard, { backgroundColor: theme.surfaceBackground }]}>
           <View style={styles.snapshotHeader}>
             <View style={styles.snapshotTextWrap}>
               <Text style={styles.sectionEyebrow}>Resumo do periodo</Text>
-              <Text style={styles.snapshotTitle}>{periodoLabel}</Text>
-              <Text style={styles.snapshotSubtitle}>Leitura rapida para decidir qual relatorio gerar.</Text>
+              <Text style={[styles.snapshotTitle, { color: theme.textPrimary }]}>{periodoLabel}</Text>
+              <Text style={[styles.snapshotSubtitle, { color: theme.textSecondary }]}>
+                Leitura rapida para decidir qual relatorio gerar.
+              </Text>
             </View>
-            <View style={styles.statusBadge}>
-              <Text style={styles.statusBadgeText}>{financialHighlights.resultadoLabel}</Text>
-            </View>
-          </View>
-
-          <View style={styles.kpiGrid}>
-            <View style={[styles.kpiCard, styles.kpiCardPositive]}>
-              <Text style={styles.kpiLabel}>Receitas</Text>
-              <Text style={[styles.kpiValue, { color: COLORS.success }]}>{formatCurrency(stats.receitaTotal)}</Text>
-            </View>
-            <View style={[styles.kpiCard, styles.kpiCardNegative]}>
-              <Text style={styles.kpiLabel}>Despesas</Text>
-              <Text style={[styles.kpiValue, { color: COLORS.danger }]}>{formatCurrency(stats.despesaTotal)}</Text>
-            </View>
-          </View>
-
-          <View style={[styles.quickReadGrid, { marginTop: 12, marginBottom: 0 }]}>
-            <View style={styles.quickReadCard}>
-              <Text style={styles.quickReadLabel}>Volume de Saida</Text>
-              <Text style={styles.quickReadValue}>{stats.totalCaixas.toFixed(1)} caixas</Text>
-              <Text style={styles.quickReadMeta}>Considerando apenas unidades 'caixa', 'cx' ou 'caixas'.</Text>
-            </View>
-            <View style={styles.quickReadCard}>
-              <Text style={styles.quickReadLabel}>Qtd. Vendas</Text>
-              <Text style={styles.quickReadValue}>{vendas.length} registros</Text>
-              <Text style={styles.quickReadMeta}>Total de notas/vendas emitidas no periodo.</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.reportHubCard}>
-          <View style={styles.reportHubHeader}>
-            <View>
-              <Text style={styles.sectionEyebrow}>Exportacao principal</Text>
-              <Text style={styles.reportHubTitle}>Relatorio Financeiro Mensal</Text>
-              <Text style={styles.reportHubSubtitle}>
-                Gera PDF e Excel com receitas, despesas, vendas do mes e leitura gerencial consolidada.
+            <View style={[styles.statusBadge, { backgroundColor: stats.lucroLiquido >= 0 ? theme.successSoft : theme.warningSoft }]}>
+              <Text style={[styles.statusBadgeText, { color: stats.lucroLiquido >= 0 ? theme.success : theme.warning }]}>
+                {financialHighlights.resultadoLabel}
               </Text>
             </View>
           </View>
 
+          <View style={styles.metricGrid}>
+            <MetricCard label="Receitas" value={formatCurrency(stats.receitaTotal)} icon="arrow-top-right" tone="success" />
+            <MetricCard label="Despesas" value={formatCurrency(stats.despesaTotal)} icon="arrow-bottom-right" tone="danger" />
+            <MetricCard
+              label="Lucro Liquido"
+              value={formatCurrency(stats.lucroLiquido)}
+              icon={stats.lucroLiquido >= 0 ? 'trending-up' : 'alert-circle-outline'}
+              tone={stats.lucroLiquido >= 0 ? 'info' : 'warning'}
+            />
+            <MetricCard label="Margem" value={`${stats.margem.toFixed(1)}%`} icon="percent-outline" tone="neutral" />
+          </View>
+
+          <View style={[styles.quickReadGrid, { marginTop: 12, marginBottom: 0 }]}>
+            <View style={[styles.quickReadCard, { backgroundColor: theme.surfaceMuted }]}>
+              <Text style={[styles.quickReadLabel, { color: theme.textSecondary }]}>Volume de Saida</Text>
+              <Text style={[styles.quickReadValue, { color: theme.textPrimary }]}>{stats.totalCaixas.toFixed(1)} caixas</Text>
+              <Text style={[styles.quickReadMeta, { color: theme.textSecondary }]}>
+                Considerando apenas unidades "caixa", "cx" ou "caixas".
+              </Text>
+            </View>
+            <View style={[styles.quickReadCard, { backgroundColor: theme.surfaceMuted }]}>
+              <Text style={[styles.quickReadLabel, { color: theme.textSecondary }]}>Qtd. Vendas</Text>
+              <Text style={[styles.quickReadValue, { color: theme.textPrimary }]}>{vendas.length} registros</Text>
+              <Text style={[styles.quickReadMeta, { color: theme.textSecondary }]}>
+                Total de notas e vendas emitidas no periodo.
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={[styles.reportHubCard, { backgroundColor: theme.surfaceBackground }]}>
+          <View style={styles.reportHubHeader}>
+            <View style={styles.reportHubTextWrap}>
+              <Text style={styles.sectionEyebrow}>Exportacao principal</Text>
+              <Text style={[styles.reportHubTitle, { color: theme.textPrimary }]}>Relatorio Financeiro Mensal</Text>
+              <Text style={[styles.reportHubSubtitle, { color: theme.textSecondary }]}>
+                Gera PDF e Excel com receitas, despesas, vendas do mes e leitura gerencial consolidada.
+              </Text>
+            </View>
+            <View style={[styles.reportHubBadge, { backgroundColor: theme.successSoft }]}>
+              <MaterialCommunityIcons name="file-chart-outline" size={18} color={theme.success} />
+            </View>
+          </View>
+
           <View style={styles.explainRow}>
-            <View style={styles.explainPill}>
-              <Text style={styles.explainPillText}>Periodo: {periodoLabel}</Text>
+            <View style={[styles.explainPill, { backgroundColor: theme.surfaceMuted }]}>
+              <Text style={[styles.explainPillText, { color: theme.textSecondary }]}>Periodo: {periodoLabel}</Text>
             </View>
-            <View style={styles.explainPill}>
-              <Text style={styles.explainPillText}>{vendas.length} vendas</Text>
+            <View style={[styles.explainPill, { backgroundColor: theme.surfaceMuted }]}>
+              <Text style={[styles.explainPillText, { color: theme.textSecondary }]}>{vendas.length} vendas</Text>
             </View>
-            <View style={styles.explainPill}>
-              <Text style={styles.explainPillText}>{despesas.length} despesas</Text>
+            <View style={[styles.explainPill, { backgroundColor: theme.surfaceMuted }]}>
+              <Text style={[styles.explainPillText, { color: theme.textSecondary }]}>{despesas.length} despesas</Text>
             </View>
           </View>
 
           <View style={styles.exportRow}>
-            <TouchableOpacity style={[styles.exportButton, { backgroundColor: COLORS.info }]} onPress={handleExportPdf}>
+            <TouchableOpacity style={[styles.exportButton, { backgroundColor: theme.info }]} onPress={handleExportPdf}>
               <MaterialCommunityIcons name="file-pdf-box" size={18} color={COLORS.textLight} />
               <Text style={styles.exportButtonText}>Baixar PDF</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.exportButton, { backgroundColor: COLORS.primary }]} onPress={handleExportExcel}>
+            <TouchableOpacity style={[styles.exportButton, { backgroundColor: theme.success }]} onPress={handleExportExcel}>
               <MaterialCommunityIcons name="microsoft-excel" size={18} color={COLORS.textLight} />
               <Text style={styles.exportButtonText}>Baixar Excel</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        <View style={[styles.lucroCard, { backgroundColor: stats.lucroLiquido >= 0 ? COLORS.infoSoft : `${COLORS.warning}20` }]}>
+        <View style={[styles.lucroCard, { backgroundColor: stats.lucroLiquido >= 0 ? theme.infoSoft : theme.warningSoft }]}>
           <View>
-            <Text style={styles.lucroLabel}>Resultado Liquido</Text>
-            <Text style={[styles.lucroValue, { color: stats.lucroLiquido >= 0 ? COLORS.primary : COLORS.danger }]}>
+            <Text style={[styles.lucroLabel, { color: theme.textSecondary }]}>Resultado Liquido</Text>
+            <Text style={[styles.lucroValue, { color: stats.lucroLiquido >= 0 ? theme.success : theme.danger }]}>
               {formatCurrency(stats.lucroLiquido)}
             </Text>
           </View>
-          <View style={styles.margemBadge}>
+          <View style={[styles.margemBadge, { backgroundColor: stats.margem >= 0 ? theme.success : theme.danger }]}>
             <Text style={styles.margemText}>{stats.margem.toFixed(1)}% Margem</Text>
           </View>
         </View>
 
-        <View style={styles.specializedSection}>
+        <View style={[styles.specializedSection, { backgroundColor: theme.surfaceBackground }]}>
           <View style={styles.sectionHeader}>
             <View>
               <Text style={styles.sectionEyebrow}>Relatorios especializados</Text>
-              <Text style={styles.sectionTitle}>Escolha por objetivo</Text>
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Escolha por objetivo</Text>
             </View>
           </View>
 
-          <TouchableOpacity style={styles.reportNavCard} onPress={() => navigation.navigate('RelatorioOperacional')}>
-            <View style={styles.reportNavIconWrap}>
-              <MaterialCommunityIcons name="chart-line" size={22} color={COLORS.primary} />
-            </View>
-            <View style={styles.reportNavContent}>
-              <Text style={styles.reportNavTitle}>Analise de Ciclo de Producao</Text>
-              <Text style={styles.reportNavDescription}>
-                Use quando quiser avaliar um ciclo especifico com receita, custo, produtividade, lote e vendas.
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.reportNavCard} onPress={() => navigation.navigate('EstufaPerformance')}>
-            <View style={styles.reportNavIconWrap}>
-              <MaterialCommunityIcons name="greenhouse" size={22} color={COLORS.primary} />
-            </View>
-            <View style={styles.reportNavContent}>
-              <Text style={styles.reportNavTitle}>Performance por Estufa</Text>
-              <Text style={styles.reportNavDescription}>
-                Visão consolidada de ROI e lucratividade acumulada por ambiente de cultivo.
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.reportNavCard} onPress={() => navigation.navigate('CaixasPesoCiclo')}>
-            <View style={styles.reportNavIconWrap}>
-              <MaterialCommunityIcons name="package-variant-closed" size={22} color={COLORS.primary} />
-            </View>
-            <View style={styles.reportNavContent}>
-              <Text style={styles.reportNavTitle}>Caixas e Peso por Ciclo</Text>
-              <Text style={styles.reportNavDescription}>
-                Use para conferir caixas, peso livre, peso por caixa e total produzido por ciclo.
-              </Text>
-            </View>
-          </TouchableOpacity>
+          {[
+            {
+              title: 'Analise de Ciclo de Producao',
+              description: 'Use quando quiser avaliar um ciclo especifico com receita, custo, produtividade, lote e vendas.',
+              icon: 'chart-line',
+              color: theme.info,
+              soft: theme.infoSoft,
+              onPress: () => navigation.navigate('RelatorioOperacional'),
+            },
+            {
+              title: 'Performance por Estufa',
+              description: 'Visao consolidada de ROI e lucratividade acumulada por ambiente de cultivo.',
+              icon: 'greenhouse',
+              color: theme.success,
+              soft: theme.successSoft,
+              onPress: () => navigation.navigate('EstufaPerformance'),
+            },
+            {
+              title: 'Caixas e Peso por Ciclo',
+              description: 'Use para conferir caixas, peso livre, peso por caixa e total produzido por ciclo.',
+              icon: 'package-variant-closed',
+              color: theme.warning,
+              soft: theme.warningSoft,
+              onPress: () => navigation.navigate('CaixasPesoCiclo'),
+            },
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.title}
+              style={[styles.reportNavCard, { borderColor: theme.border, backgroundColor: theme.pageBackground }]}
+              onPress={item.onPress}
+            >
+              <View style={[styles.reportNavIconWrap, { backgroundColor: item.soft }]}>
+                <MaterialCommunityIcons name={item.icon as any} size={22} color={item.color} />
+              </View>
+              <View style={styles.reportNavContent}>
+                <Text style={[styles.reportNavTitle, { color: theme.textPrimary }]}>{item.title}</Text>
+                <Text style={[styles.reportNavDescription, { color: theme.textSecondary }]}>{item.description}</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={22} color={theme.textMuted} />
+            </TouchableOpacity>
+          ))}
         </View>
 
         <View style={styles.quickReadGrid}>
-          <View style={styles.quickReadCard}>
-            <Text style={styles.quickReadLabel}>Maior venda</Text>
-            <Text style={styles.quickReadValue}>
+          <View style={[styles.quickReadCard, { backgroundColor: theme.surfaceBackground }]}>
+            <Text style={[styles.quickReadLabel, { color: theme.textSecondary }]}>Maior venda</Text>
+            <Text style={[styles.quickReadValue, { color: theme.textPrimary }]}>
               {financialHighlights.topVenda ? formatCurrency(financialHighlights.topVenda.valor) : 'Sem vendas'}
             </Text>
-            <Text style={styles.quickReadMeta}>
+            <Text style={[styles.quickReadMeta, { color: theme.textSecondary }]}>
               {financialHighlights.topVenda
                 ? `${financialHighlights.topVenda.cliente} | ${financialHighlights.topVenda.produto}`
                 : 'Nenhuma venda registrada no periodo'}
             </Text>
           </View>
 
-          <View style={styles.quickReadCard}>
-            <Text style={styles.quickReadLabel}>Principal custo</Text>
-            <Text style={styles.quickReadValue}>
+          <View style={[styles.quickReadCard, { backgroundColor: theme.surfaceBackground }]}>
+            <Text style={[styles.quickReadLabel, { color: theme.textSecondary }]}>Principal custo</Text>
+            <Text style={[styles.quickReadValue, { color: theme.textPrimary }]}>
               {financialHighlights.principalCategoria ? financialHighlights.principalCategoria.nome.toUpperCase() : 'Sem despesas'}
             </Text>
-            <Text style={styles.quickReadMeta}>
+            <Text style={[styles.quickReadMeta, { color: theme.textSecondary }]}>
               {financialHighlights.principalCategoria
                 ? formatCurrency(financialHighlights.principalCategoria.valor)
                 : 'Nenhuma despesa registrada no periodo'}
@@ -426,36 +468,26 @@ const RelatoriosScreen = () => {
           </View>
         </View>
 
-        <View style={styles.chartCard}>
-          <Text style={styles.chartTitle}>Receitas vs Despesas</Text>
+        <View style={[styles.chartCard, { backgroundColor: theme.surfaceBackground }]}>
+          <Text style={[styles.chartTitle, { color: theme.textPrimary }]}>Receitas vs Despesas</Text>
 
           <View style={styles.barContainer}>
             <View style={styles.barLabelRow}>
-              <Text style={styles.barLabel}>Receitas</Text>
-              <Text style={styles.barAmount}>{formatCurrency(stats.receitaTotal)}</Text>
+              <Text style={[styles.barLabel, { color: theme.textSecondary }]}>Receitas</Text>
+              <Text style={[styles.barAmount, { color: theme.textPrimary }]}>{formatCurrency(stats.receitaTotal)}</Text>
             </View>
-            <View style={styles.barTrack}>
-              <View
-                style={[
-                  styles.barFill,
-                  { backgroundColor: COLORS.success, width: `${(stats.receitaTotal / maxReferencia) * 100}%` },
-                ]}
-              />
+            <View style={[styles.barTrack, { backgroundColor: theme.surfaceMuted }]}>
+              <View style={[styles.barFill, { backgroundColor: theme.success, width: `${(stats.receitaTotal / maxReferencia) * 100}%` }]} />
             </View>
           </View>
 
           <View style={styles.barContainer}>
             <View style={styles.barLabelRow}>
-              <Text style={styles.barLabel}>Despesas</Text>
-              <Text style={styles.barAmount}>{formatCurrency(stats.despesaTotal)}</Text>
+              <Text style={[styles.barLabel, { color: theme.textSecondary }]}>Despesas</Text>
+              <Text style={[styles.barAmount, { color: theme.textPrimary }]}>{formatCurrency(stats.despesaTotal)}</Text>
             </View>
-            <View style={styles.barTrack}>
-              <View
-                style={[
-                  styles.barFill,
-                  { backgroundColor: COLORS.danger, width: `${(stats.despesaTotal / maxReferencia) * 100}%` },
-                ]}
-              />
+            <View style={[styles.barTrack, { backgroundColor: theme.surfaceMuted }]}>
+              <View style={[styles.barFill, { backgroundColor: theme.danger, width: `${(stats.despesaTotal / maxReferencia) * 100}%` }]} />
             </View>
           </View>
         </View>
@@ -468,23 +500,23 @@ const RelatoriosScreen = () => {
           />
         ) : null}
 
-        <View style={styles.chartCard}>
-          <Text style={styles.chartTitle}>Distribuicao de Custos</Text>
+        <View style={[styles.chartCard, { backgroundColor: theme.surfaceBackground }]}>
+          <Text style={[styles.chartTitle, { color: theme.textPrimary }]}>Distribuicao de Custos</Text>
           {stats.categoriasArray.length === 0 ? (
-            <Text style={styles.emptyText}>Sem despesas no periodo.</Text>
+            <Text style={[styles.emptyText, { color: theme.textMuted }]}>Sem despesas no periodo.</Text>
           ) : (
             stats.categoriasArray.map((cat, index) => {
               const percent = stats.despesaTotal > 0 ? (cat.valor / stats.despesaTotal) * 100 : 0;
               return (
-                <View key={index} style={styles.catRow}>
+                <View key={`${cat.nome}-${index}`} style={styles.catRow}>
                   <View style={styles.catInfo}>
-                    <Text style={styles.catName}>{cat.nome.toUpperCase()}</Text>
-                    <Text style={styles.catPercent}>{percent.toFixed(1)}%</Text>
+                    <Text style={[styles.catName, { color: theme.textSecondary }]}>{cat.nome.toUpperCase()}</Text>
+                    <Text style={[styles.catPercent, { color: theme.info }]}>{percent.toFixed(1)}%</Text>
                   </View>
-                  <View style={styles.catTrack}>
+                  <View style={[styles.catTrack, { backgroundColor: theme.surfaceMuted }]}>
                     <View style={[styles.catFill, { width: `${percent}%` }]} />
                   </View>
-                  <Text style={styles.catValue}>{formatCurrency(cat.valor)}</Text>
+                  <Text style={[styles.catValue, { color: theme.textPrimary }]}>{formatCurrency(cat.valor)}</Text>
                 </View>
               );
             })
@@ -495,30 +527,78 @@ const RelatoriosScreen = () => {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Central Financeira</Text>
-        <Text style={styles.subtitle}>Organize o periodo, escolha o tipo de relatorio e exporte sem confusao.</Text>
-      </View>
+    <ScrollView style={[styles.container, { backgroundColor: theme.pageBackground }]} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 44 }]}>
+      <ScreenHeaderCard
+        title="Central Financeira"
+        subtitle="Fechamento do periodo, leitura gerencial e exportacao rapida dos relatorios mais usados."
+        badgeLabel="Financeiro"
+      >
+        <View style={styles.headerStats}>
+          <View style={styles.headerStatChip}>
+            <Text style={styles.headerStatValue}>{periodoLabel}</Text>
+            <Text style={styles.headerStatLabel}>Periodo ativo</Text>
+          </View>
+          <View style={styles.headerStatChip}>
+            <Text style={styles.headerStatValue}>{vendas.length}</Text>
+            <Text style={styles.headerStatLabel}>Vendas no recorte</Text>
+          </View>
+        </View>
+      </ScreenHeaderCard>
 
-      <View style={styles.filterCard}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.financeLinksRow}>
+        {[
+          { label: 'Vendas', icon: 'cash-multiple', screen: 'VendasList' as const },
+          { label: 'Contas', icon: 'cash-clock', screen: 'ContasReceber' as const },
+          { label: 'Despesas', icon: 'cash-minus', screen: 'DespesasList' as const },
+          { label: 'Relatorios', icon: 'chart-box', active: true },
+        ].map((link) => (
+          <TouchableOpacity
+            key={link.label}
+            style={[
+              styles.financeLink,
+              {
+                borderColor: link.active ? theme.info : theme.border,
+                backgroundColor: link.active ? theme.infoSoft : theme.surfaceBackground,
+              },
+            ]}
+            onPress={() => {
+              if (!link.active && link.screen) {
+                navigation.navigate(link.screen);
+              }
+            }}
+          >
+            <MaterialCommunityIcons name={link.icon as any} size={16} color={link.active ? theme.info : theme.textSecondary} />
+            <Text style={[styles.financeLinkText, { color: link.active ? theme.info : theme.textSecondary }]}>
+              {link.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <View style={[styles.filterCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
         <View style={styles.filterCardHeader}>
-          <View>
+          <View style={styles.filterTextWrap}>
             <Text style={styles.sectionEyebrow}>Passo 1</Text>
-            <Text style={styles.filterTitle}>Defina o periodo do fechamento</Text>
-            <Text style={styles.filterHelpText}>Todo o conteudo abaixo e os arquivos gerados usam este mes e este ano.</Text>
+            <Text style={[styles.filterTitle, { color: theme.textPrimary }]}>Defina o periodo do fechamento</Text>
+            <Text style={[styles.filterHelpText, { color: theme.textSecondary }]}>
+              Todo o conteudo abaixo e os arquivos gerados usam este mes e este ano.
+            </Text>
+          </View>
+          <View style={[styles.periodPreview, { backgroundColor: theme.infoSoft }]}>
+            <MaterialCommunityIcons name="calendar-month-outline" size={18} color={theme.info} />
+            <Text style={[styles.periodPreviewText, { color: theme.info }]}>{periodoLabel}</Text>
           </View>
         </View>
 
         <View style={styles.filterContainer}>
-          <View style={styles.pickerWrapper}>
+          <View style={[styles.pickerWrapper, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
             <Picker selectedValue={selectedMonth} onValueChange={(itemValue) => setSelectedMonth(itemValue)} style={styles.picker}>
               {MONTHS.map((month) => (
                 <Picker.Item key={month.value} label={month.label} value={month.value} />
               ))}
             </Picker>
           </View>
-          <View style={styles.pickerWrapper}>
+          <View style={[styles.pickerWrapper, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
             <Picker selectedValue={selectedYear} onValueChange={(itemValue) => setSelectedYear(itemValue)} style={styles.picker}>
               {YEARS.map((year) => (
                 <Picker.Item key={year} label={String(year)} value={year} />
@@ -535,13 +615,38 @@ const RelatoriosScreen = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.xl, paddingBottom: 50 },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 400 },
-
-  header: { marginBottom: SPACING.lg },
-  title: { fontSize: TYPOGRAPHY.h2, fontWeight: '900', color: COLORS.textDark },
-  subtitle: { fontSize: TYPOGRAPHY.body, color: COLORS.textSecondary, marginTop: 4, lineHeight: 20 },
-
+  content: { paddingHorizontal: SPACING.xl, paddingBottom: 50 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 360 },
+  headerStats: { flexDirection: 'row', gap: 8 },
+  headerStatChip: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  headerStatValue: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
+  headerStatLabel: {
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  financeLinksRow: { gap: 10, marginTop: 16, paddingRight: 20 },
+  financeLink: {
+    borderWidth: 1.5,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 104,
+  },
+  financeLinkText: { fontSize: 13, fontWeight: '800' },
   sectionEyebrow: {
     fontSize: 11,
     fontWeight: '800',
@@ -551,31 +656,45 @@ const styles = StyleSheet.create({
   },
   sectionHeader: { marginBottom: SPACING.md },
   sectionTitle: { fontSize: 18, fontWeight: '900', color: COLORS.textDark, marginTop: 4 },
-
   filterCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
     padding: SPACING.lg,
+    marginTop: SPACING.lg,
     marginBottom: SPACING.lg,
+    borderWidth: 1,
     ...SHADOWS.card,
   },
-  filterCardHeader: { marginBottom: SPACING.md },
-  filterTitle: { fontSize: 17, fontWeight: '900', color: COLORS.textDark, marginTop: 4 },
-  filterHelpText: { fontSize: 13, color: COLORS.textSecondary, marginTop: 6, lineHeight: 19 },
+  filterCardHeader: {
+    marginBottom: SPACING.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: SPACING.md,
+  },
+  filterTextWrap: { flex: 1 },
+  filterTitle: { fontSize: 17, fontWeight: '900', marginTop: 4 },
+  filterHelpText: { fontSize: 13, marginTop: 6, lineHeight: 19 },
   filterContainer: { flexDirection: 'row', gap: SPACING.md },
   pickerWrapper: {
     flex: 1,
-    backgroundColor: COLORS.surface,
     borderRadius: RADIUS.md,
-    ...SHADOWS.card,
-    height: 50,
+    borderWidth: 1,
+    height: 52,
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   picker: { color: COLORS.textDark },
-
+  periodPreview: {
+    borderRadius: RADIUS.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  periodPreviewText: { fontSize: 12, fontWeight: '800' },
   snapshotCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
     ...SHADOWS.card,
@@ -588,46 +707,37 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   snapshotTextWrap: { flex: 1 },
-  snapshotTitle: { fontSize: 20, fontWeight: '900', color: COLORS.textDark, marginTop: 4 },
-  snapshotSubtitle: { fontSize: 13, color: COLORS.textSecondary, marginTop: 6, lineHeight: 18 },
-  statusBadge: {
-    backgroundColor: COLORS.primarySoft,
-    borderRadius: RADIUS.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  statusBadgeText: { color: COLORS.primary, fontSize: 12, fontWeight: '800' },
-  kpiGrid: { flexDirection: 'row', gap: SPACING.md },
-  kpiCard: {
-    flex: 1,
-    backgroundColor: COLORS.surface,
-    padding: SPACING.md,
-    borderRadius: RADIUS.md,
-    ...SHADOWS.card,
-  },
-  kpiCardPositive: { borderLeftColor: COLORS.success, borderLeftWidth: 4 },
-  kpiCardNegative: { borderLeftColor: COLORS.danger, borderLeftWidth: 4 },
-  kpiLabel: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '700', marginBottom: 4 },
-  kpiValue: { fontSize: 18, fontWeight: '900' },
-
+  snapshotTitle: { fontSize: 22, fontWeight: '900', marginTop: 4, letterSpacing: -0.6 },
+  snapshotSubtitle: { fontSize: 13, marginTop: 6, lineHeight: 18 },
+  statusBadge: { borderRadius: RADIUS.pill, paddingHorizontal: 12, paddingVertical: 8 },
+  statusBadgeText: { fontSize: 12, fontWeight: '800' },
+  metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md },
   reportHubCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     marginBottom: SPACING.md,
     ...SHADOWS.card,
   },
-  reportHubHeader: { marginBottom: SPACING.md },
-  reportHubTitle: { fontSize: 18, fontWeight: '900', color: COLORS.textDark, marginTop: 4 },
-  reportHubSubtitle: { fontSize: 13, color: COLORS.textSecondary, marginTop: 6, lineHeight: 19 },
-  explainRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
-  explainPill: {
-    backgroundColor: COLORS.surfaceMuted,
-    borderRadius: RADIUS.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  reportHubHeader: {
+    marginBottom: SPACING.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: SPACING.md,
   },
-  explainPillText: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '700' },
+  reportHubTextWrap: { flex: 1 },
+  reportHubTitle: { fontSize: 18, fontWeight: '900', marginTop: 4 },
+  reportHubSubtitle: { fontSize: 13, marginTop: 6, lineHeight: 19 },
+  reportHubBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  explainRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
+  explainPill: { borderRadius: RADIUS.pill, paddingHorizontal: 12, paddingVertical: 8 },
+  explainPillText: { fontSize: 12, fontWeight: '700' },
   exportRow: { flexDirection: 'row', gap: SPACING.md },
   exportButton: {
     flex: 1,
@@ -639,23 +749,20 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md,
   },
   exportButtonText: { color: COLORS.textLight, fontSize: 13, fontWeight: '800' },
-
   lucroCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: SPACING.lg,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
     marginBottom: SPACING.xl,
   },
-  lucroLabel: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '800' },
-  lucroValue: { fontSize: 24, fontWeight: '900', marginTop: 4 },
-  margemBadge: { backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.pill },
+  lucroLabel: { fontSize: 13, fontWeight: '800' },
+  lucroValue: { fontSize: 24, fontWeight: '900', marginTop: 4, letterSpacing: -0.6 },
+  margemBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.pill },
   margemText: { color: COLORS.textLight, fontWeight: 'bold', fontSize: 12 },
-
   specializedSection: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
     ...SHADOWS.card,
@@ -665,59 +772,51 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.lg,
     padding: SPACING.md,
-    backgroundColor: COLORS.background,
     marginBottom: SPACING.md,
   },
   reportNavIconWrap: {
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: COLORS.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   reportNavContent: { flex: 1 },
-  reportNavTitle: { fontSize: 15, fontWeight: '800', color: COLORS.textDark, marginBottom: 4 },
-  reportNavDescription: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 18 },
-
+  reportNavTitle: { fontSize: 15, fontWeight: '800', marginBottom: 4 },
+  reportNavDescription: { fontSize: 13, lineHeight: 18 },
   quickReadGrid: { flexDirection: 'row', gap: SPACING.md, marginBottom: SPACING.xl },
   quickReadCard: {
     flex: 1,
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     ...SHADOWS.card,
   },
-  quickReadLabel: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '700', marginBottom: 8 },
-  quickReadValue: { fontSize: 18, fontWeight: '900', color: COLORS.textDark },
-  quickReadMeta: { fontSize: 12, color: COLORS.textSecondary, marginTop: 6, lineHeight: 17 },
-
+  quickReadLabel: { fontSize: 12, fontWeight: '700', marginBottom: 8 },
+  quickReadValue: { fontSize: 18, fontWeight: '900' },
+  quickReadMeta: { fontSize: 12, marginTop: 6, lineHeight: 17 },
   chartCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     marginBottom: SPACING.xl,
     ...SHADOWS.card,
   },
-  chartTitle: { fontSize: 16, fontWeight: '800', color: COLORS.textDark, marginBottom: SPACING.lg },
+  chartTitle: { fontSize: 16, fontWeight: '800', marginBottom: SPACING.lg },
   barContainer: { marginBottom: SPACING.md },
   barLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  barLabel: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary },
-  barAmount: { fontSize: 13, fontWeight: '800', color: COLORS.textDark },
-  barTrack: { height: 12, backgroundColor: COLORS.surfaceMuted, borderRadius: RADIUS.pill, overflow: 'hidden' },
+  barLabel: { fontSize: 13, fontWeight: '700' },
+  barAmount: { fontSize: 13, fontWeight: '800' },
+  barTrack: { height: 12, borderRadius: RADIUS.pill, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: RADIUS.pill },
-
   catRow: { marginBottom: 15 },
   catInfo: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  catName: { fontSize: 11, fontWeight: '700', color: COLORS.textSecondary },
-  catPercent: { fontSize: 11, fontWeight: 'bold', color: COLORS.primary },
-  catTrack: { height: 8, backgroundColor: COLORS.surfaceMuted, borderRadius: RADIUS.pill, overflow: 'hidden', marginBottom: 4 },
+  catName: { fontSize: 11, fontWeight: '700' },
+  catPercent: { fontSize: 11, fontWeight: 'bold' },
+  catTrack: { height: 8, borderRadius: RADIUS.pill, overflow: 'hidden', marginBottom: 4 },
   catFill: { height: '100%', backgroundColor: COLORS.modDespesas, borderRadius: RADIUS.pill },
-  catValue: { fontSize: 12, fontWeight: '700', color: COLORS.textDark, textAlign: 'right' },
-  emptyText: { fontSize: 13, color: COLORS.textPlaceholder, fontStyle: 'italic', textAlign: 'center', paddingVertical: 20 },
+  catValue: { fontSize: 12, fontWeight: '700', textAlign: 'right' },
+  emptyText: { fontSize: 13, fontStyle: 'italic', textAlign: 'center', paddingVertical: 20 },
 });
 
 export default RelatoriosScreen;

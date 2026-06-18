@@ -62,8 +62,25 @@ export const onAuthStateChangedBridge = (
 ) => {
   ensureSupabaseReady();
   const supabase = getSupabaseClient();
+  let hasResolvedInitialSession = false;
+  let pendingUser: AuthBridgeUser | null | undefined;
+  let isActive = true;
+
+  const flushUser = (user: AuthBridgeUser | null) => {
+    if (!isActive) return;
+    hasResolvedInitialSession = true;
+    callback(pendingUser !== undefined ? pendingUser : user);
+    pendingUser = undefined;
+  };
+
   const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-    callback(mapSessionUserToAuthBridgeUser(session?.user));
+    const mappedUser = mapSessionUserToAuthBridgeUser(session?.user);
+    if (!hasResolvedInitialSession) {
+      pendingUser = mappedUser;
+      return;
+    }
+    if (!isActive) return;
+    callback(mappedUser);
   });
 
   void supabase.auth
@@ -72,21 +89,24 @@ export const onAuthStateChangedBridge = (
       if (error) {
         if (isInvalidRefreshTokenError(error)) {
           await clearInvalidLocalSession();
-          callback(null);
+          flushUser(null);
           return;
         }
         throw error;
       }
-      callback(mapSessionUserToAuthBridgeUser(sessionData.session?.user));
+      flushUser(mapSessionUserToAuthBridgeUser(sessionData.session?.user));
     })
     .catch(async (error) => {
       if (isInvalidRefreshTokenError(error)) {
         await clearInvalidLocalSession();
-        callback(null);
+        flushUser(null);
       }
     });
 
-  return () => data.subscription.unsubscribe();
+  return () => {
+    isActive = false;
+    data.subscription.unsubscribe();
+  };
 };
 
 export const getCurrentAuthUserBridge = async (): Promise<AuthBridgeUser | null> => {

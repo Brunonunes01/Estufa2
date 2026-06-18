@@ -25,6 +25,8 @@ import { listCaixaPessoas, CaixaPessoa } from '../../services/caixaPessoaService
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { gerarRelatorioCaixaPDF } from '../../services/pdfService';
 import { exportToExcel } from '../../services/excelService';
+import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
+import MetricCard from '../../components/ui/MetricCard';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
@@ -50,6 +52,7 @@ const CaixaExtratoScreen = () => {
   const [exportingExcel, setExportingExcel] = useState(false);
   const [items, setItems] = useState<any[]>([]);
   const [hasMore, setHasMore] = useState(false);
+  const [totalItems, setTotalItems] = useState(0);
   const [caixaPessoas, setCaixaPessoas] = useState<CaixaPessoa[]>([]);
 
   const canView = canViewCash;
@@ -68,7 +71,7 @@ const CaixaExtratoScreen = () => {
 
   const tipos = useMemo(
     () => [
-      { id: 'todos', label: 'Todos' },
+      { id: 'todos', label: 'Tudo' },
       { id: 'entrada', label: 'Entradas' },
       { id: 'saida', label: 'Saidas' },
     ],
@@ -92,8 +95,10 @@ const CaixaExtratoScreen = () => {
           page: nextPage,
           pageSize: 50,
         });
+
         setItems((prev) => (nextPage === 1 ? result.items : [...prev, ...result.items]));
         setHasMore(result.hasMore);
+        setTotalItems(result.total);
         setPage(nextPage);
       } catch (err) {
         console.error('Erro ao carregar extrato:', err);
@@ -101,7 +106,7 @@ const CaixaExtratoScreen = () => {
         setLoading(false);
       }
     },
-    [targetId, canView, period, tipo, selectedPessoaId, busca, dateFrom, dateTo]
+    [busca, canView, dateFrom, dateTo, period, selectedPessoaId, targetId, tipo]
   );
 
   const filteredTotals = useMemo(() => {
@@ -134,31 +139,33 @@ const CaixaExtratoScreen = () => {
       try {
         const list = await listCaixaPessoas(targetId);
         setCaixaPessoas(list);
-      } catch (e) {
-        console.error(e);
+      } catch (error) {
+        console.error(error);
       }
     };
     void loadPessoas();
   }, [targetId]);
 
   useEffect(() => {
-    if (isFocused) void load(1);
-  }, [isFocused, period, tipo, selectedPessoaId, busca, dateFrom, dateTo]);
+    if (isFocused) {
+      void load(1);
+    }
+  }, [dateFrom, dateTo, busca, isFocused, load, period, selectedPessoaId, tipo]);
 
   const selectedPessoaNome = useMemo(() => {
     if (!selectedPessoaId) return 'Todos os responsaveis';
-    return caixaPessoas.find((p) => p.id === selectedPessoaId)?.nome || 'Responsavel';
+    return caixaPessoas.find((pessoa) => pessoa.id === selectedPessoaId)?.nome || 'Responsavel';
   }, [caixaPessoas, selectedPessoaId]);
 
   const activeFiltersLabel = useMemo(() => {
-    const periodLabel = periods.find((p) => p.id === period)?.label || period;
-    const tipoLabel = tipos.find((t) => t.id === tipo)?.label || tipo;
+    const periodLabel = periods.find((item) => item.id === period)?.label || period;
+    const tipoLabel = tipos.find((item) => item.id === tipo)?.label || tipo;
     const dateLabel =
       period === 'custom'
         ? `${dateFrom.toLocaleDateString('pt-BR')} ate ${dateTo.toLocaleDateString('pt-BR')}`
         : periodLabel;
     return `${dateLabel} • ${tipoLabel} • ${selectedPessoaNome}`;
-  }, [periods, period, tipos, tipo, dateFrom, dateTo, selectedPessoaNome]);
+  }, [dateFrom, dateTo, period, periods, selectedPessoaNome, tipo, tipos]);
 
   const clearFilters = () => {
     setPeriod('month');
@@ -172,12 +179,13 @@ const CaixaExtratoScreen = () => {
 
   const handleExportPdf = async () => {
     if (items.length === 0) {
-      Alert.alert('Aviso', 'Não há dados para exportar.');
+      Alert.alert('Aviso', 'Nao ha dados para exportar.');
       return;
     }
+
     setExporting(true);
     try {
-      let periodLabel = periods.find((p) => p.id === period)?.label || period;
+      let periodLabel = periods.find((item) => item.id === period)?.label || period;
       if (period === 'custom') {
         periodLabel = `${dateFrom.toLocaleDateString('pt-BR')} ate ${dateTo.toLocaleDateString('pt-BR')}`;
       }
@@ -188,19 +196,19 @@ const CaixaExtratoScreen = () => {
         totalEntradas: filteredTotals.entradas,
         totalSaidas: filteredTotals.saidas,
         saldoFinal: filteredTotals.saldo,
-        movimentos: items.map((m) => ({
-          data: new Date(m.data),
-          descricao: m.descricao,
-          pessoa: m.caixaPessoaNome,
-          valor: m.valor,
-          tipo: m.tipo,
-          origem: m.origem,
-          metodoPagamento: m.metodoPagamento,
-          observacoes: m.observacoes,
+        movimentos: items.map((item) => ({
+          data: new Date(item.data),
+          descricao: item.descricao,
+          pessoa: item.caixaPessoaNome,
+          valor: item.valor,
+          tipo: item.tipo,
+          origem: item.origem,
+          metodoPagamento: item.metodoPagamento,
+          observacoes: item.observacoes,
         })),
       });
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
       Alert.alert('Erro', 'Falha ao gerar PDF.');
     } finally {
       setExporting(false);
@@ -209,9 +217,10 @@ const CaixaExtratoScreen = () => {
 
   const handleExportExcel = async () => {
     if (items.length === 0) {
-      Alert.alert('Aviso', 'Não há dados para exportar.');
+      Alert.alert('Aviso', 'Nao ha dados para exportar.');
       return;
     }
+
     setExportingExcel(true);
     try {
       await exportToExcel({
@@ -220,28 +229,28 @@ const CaixaExtratoScreen = () => {
         columns: [
           { header: 'Data', key: 'data', width: 15 },
           { header: 'Cliente', key: 'cliente', width: 25 },
-          { header: 'Descrição', key: 'descricao', width: 35 },
-          { header: 'Responsável', key: 'pessoa', width: 20 },
+          { header: 'Descricao', key: 'descricao', width: 35 },
+          { header: 'Responsavel', key: 'pessoa', width: 20 },
           { header: 'Tipo', key: 'tipo', width: 12 },
           { header: 'Valor', key: 'valor', width: 15 },
           { header: 'Origem', key: 'origem', width: 15 },
           { header: 'Meio Pagamento', key: 'metodo', width: 20 },
-          { header: 'Observações', key: 'obs', width: 30 },
+          { header: 'Observacoes', key: 'obs', width: 30 },
         ],
-        data: items.map((m) => ({
-          data: new Date(m.data).toLocaleDateString('pt-BR'),
-          cliente: m.clienteNome || (m.tipo === 'entrada' ? 'Cliente avulso' : '-'),
-          descricao: m.descricao,
-          pessoa: m.caixaPessoaNome,
-          tipo: m.tipo === 'entrada' ? 'Entrada' : 'Saída',
-          valor: m.valor,
-          origem: String(m.origem).toUpperCase(),
-          metodo: String(m.metodoPagamento || '-').toUpperCase(),
-          obs: m.observacoes || '-',
+        data: items.map((item) => ({
+          data: new Date(item.data).toLocaleDateString('pt-BR'),
+          cliente: item.clienteNome || (item.tipo === 'entrada' ? 'Cliente avulso' : '-'),
+          descricao: item.descricao,
+          pessoa: item.caixaPessoaNome,
+          tipo: item.tipo === 'entrada' ? 'Entrada' : 'Saida',
+          valor: item.valor,
+          origem: String(item.origem).toUpperCase(),
+          metodo: String(item.metodoPagamento || '-').toUpperCase(),
+          obs: item.observacoes || '-',
         })),
       });
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
       Alert.alert('Erro', 'Falha ao gerar arquivo Excel.');
     } finally {
       setExportingExcel(false);
@@ -267,6 +276,23 @@ const CaixaExtratoScreen = () => {
 
   const renderHeader = () => (
     <View style={styles.headerContainer}>
+      <ScreenHeaderCard
+        title="Extrato do Caixa"
+        subtitle="Filtre os movimentos e identifique rapido onde entrou, saiu e quem movimentou o caixa."
+        badgeLabel="Caixa"
+      >
+        <View style={styles.headerStats}>
+          <View style={styles.headerStatChip}>
+            <Text style={styles.headerStatValue}>{items.length}</Text>
+            <Text style={styles.headerStatLabel}>Registros carregados</Text>
+          </View>
+          <View style={styles.headerStatChip}>
+            <Text style={styles.headerStatValue}>{selectedPessoaNome}</Text>
+            <Text style={styles.headerStatLabel}>Responsavel</Text>
+          </View>
+        </View>
+      </ScreenHeaderCard>
+
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.financeLinksRow}>
         <TouchableOpacity
           style={[styles.financeLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
@@ -304,68 +330,51 @@ const CaixaExtratoScreen = () => {
             <MaterialCommunityIcons name="file-document-outline" size={22} color={COLORS.modFinanceiro} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.heroTitle, { color: theme.textPrimary }]}>Extrato do caixa</Text>
-            <Text style={[styles.heroSubtitle, { color: theme.textSecondary }]}>
-              Filtre os movimentos e acompanhe o saldo da visao atual.
+            <Text style={[styles.heroTitle, { color: theme.textPrimary }]}>Visao filtrada</Text>
+            <Text style={[styles.heroSubtitle, { color: theme.textSecondary }]}>{activeFiltersLabel}</Text>
+            <Text style={[styles.heroSummaryLine, { color: theme.textSecondary }]}>
+              {items.length} de {totalItems} registro(s) carregados
             </Text>
           </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity 
-              onPress={handleExportExcel} 
-              style={[styles.exportBtn, { backgroundColor: '#1D6F42' }]} 
+          <View style={styles.exportActions}>
+            <TouchableOpacity
+              onPress={handleExportExcel}
+              style={[styles.exportBtn, { backgroundColor: '#1D6F42' }]}
               disabled={exportingExcel}
               activeOpacity={0.7}
             >
-              {exportingExcel ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <MaterialCommunityIcons name="file-excel" size={24} color="#fff" />
-              )}
+              {exportingExcel ? <ActivityIndicator size="small" color="#fff" /> : <MaterialCommunityIcons name="file-excel" size={20} color="#fff" />}
             </TouchableOpacity>
-            <TouchableOpacity 
-              onPress={handleExportPdf} 
-              style={[styles.exportBtn, { backgroundColor: COLORS.modFinanceiro }]} 
+            <TouchableOpacity
+              onPress={handleExportPdf}
+              style={[styles.exportBtn, { backgroundColor: COLORS.modFinanceiro }]}
               disabled={exporting}
               activeOpacity={0.7}
             >
-              {exporting ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <MaterialCommunityIcons name="file-pdf-box" size={24} color="#fff" />
-              )}
+              {exporting ? <ActivityIndicator size="small" color="#fff" /> : <MaterialCommunityIcons name="file-pdf-box" size={20} color="#fff" />}
             </TouchableOpacity>
           </View>
         </View>
 
-        <View style={styles.overviewTopRow}>
-          <View>
-            <Text style={[styles.overviewLabel, { color: theme.textSecondary }]}>Saldo filtrado</Text>
-            <Text style={[styles.overviewValue, { color: theme.textPrimary }]}>{formatCurrency(filteredTotals.saldo)}</Text>
-            <Text style={[styles.overviewCaption, { color: theme.textSecondary }]}>{activeFiltersLabel}</Text>
-          </View>
-          <View
-            style={[
-              styles.overviewBadge,
-              {
-                backgroundColor: filteredTotals.saldo >= 0 ? theme.successBackground : theme.dangerBackground,
-                borderColor: filteredTotals.saldo >= 0 ? COLORS.success : COLORS.danger,
-              },
-            ]}
-          >
-            <Text style={[styles.overviewBadgeText, { color: filteredTotals.saldo >= 0 ? COLORS.success : COLORS.danger }]}>
-              {filteredTotals.saldo >= 0 ? 'Positivo' : 'Negativo'}
-            </Text>
-          </View>
+        <View style={styles.metricsGrid}>
+          <MetricCard label="Entradas" value={formatCurrency(filteredTotals.entradas)} icon="arrow-down-left" tone="success" />
+          <MetricCard label="Saidas" value={formatCurrency(filteredTotals.saidas)} icon="arrow-up-right" tone="danger" />
+          <MetricCard
+            label="Saldo"
+            value={formatCurrency(filteredTotals.saldo)}
+            icon="wallet-outline"
+            tone={filteredTotals.saldo >= 0 ? 'info' : 'warning'}
+          />
         </View>
 
         <View style={[styles.searchWrapper, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
           <MaterialCommunityIcons name="magnify" size={20} color={theme.textSecondary} />
-          <TextInput
-            style={[styles.searchInput, { color: theme.textPrimary }]}
-            placeholder="Buscar por descrição ou responsável"
-            placeholderTextColor={theme.textSecondary}
-            value={busca}
-            onChangeText={setBusca}
+            <TextInput
+              style={[styles.searchInput, { color: theme.textPrimary }]}
+              placeholder="Buscar por descricao, cliente, observacao ou responsavel"
+              placeholderTextColor={theme.textSecondary}
+              value={busca}
+              onChangeText={setBusca}
           />
           {busca.length > 0 ? (
             <TouchableOpacity onPress={() => setBusca('')}>
@@ -374,21 +383,20 @@ const CaixaExtratoScreen = () => {
           ) : null}
         </View>
 
-        <View style={styles.totalsGrid}>
-          <View style={[styles.totalCard, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
-            <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Entradas</Text>
-            <Text style={[styles.totalValue, { color: COLORS.success }]}>{formatCurrency(filteredTotals.entradas)}</Text>
-          </View>
-          <View style={[styles.totalCard, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
-            <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Saidas</Text>
-            <Text style={[styles.totalValue, { color: COLORS.danger }]}>{formatCurrency(filteredTotals.saidas)}</Text>
-          </View>
+        <View style={[styles.readingCard, { backgroundColor: theme.infoSoft }]}>
+          <Text style={[styles.readingTitle, { color: theme.info }]}>Leitura da visao atual</Text>
+          <Text style={[styles.readingText, { color: theme.textSecondary }]}>
+            {totalItems} movimento(s) encontrado(s). Ajuste os filtros abaixo para afunilar por periodo, tipo ou responsavel.
+          </Text>
         </View>
       </View>
 
       <View style={[styles.filtersPanel, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
         <View style={styles.filtersHeader}>
-          <Text style={[styles.filtersTitle, { color: theme.textPrimary }]}>Filtros</Text>
+          <View>
+            <Text style={[styles.filtersTitle, { color: theme.textPrimary }]}>Filtros do extrato</Text>
+            <Text style={[styles.filtersCaption, { color: theme.textSecondary }]}>Mude o recorte sem sair da tela.</Text>
+          </View>
           <TouchableOpacity onPress={clearFilters} style={styles.clearFiltersBtn}>
             <MaterialCommunityIcons name="filter-remove-outline" size={16} color={COLORS.modFinanceiro} />
             <Text style={styles.clearFiltersText}>Limpar</Text>
@@ -420,11 +428,17 @@ const CaixaExtratoScreen = () => {
 
         {period === 'custom' ? (
           <View style={styles.customDateRow}>
-            <TouchableOpacity style={[styles.dateInput, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} onPress={() => setShowPicker('from')}>
+            <TouchableOpacity
+              style={[styles.dateInput, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}
+              onPress={() => setShowPicker('from')}
+            >
               <MaterialCommunityIcons name="calendar-import" size={16} color={COLORS.modFinanceiro} />
               <Text style={[styles.dateInputText, { color: theme.textPrimary }]}>{dateFrom.toLocaleDateString('pt-BR')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.dateInput, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} onPress={() => setShowPicker('to')}>
+            <TouchableOpacity
+              style={[styles.dateInput, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}
+              onPress={() => setShowPicker('to')}
+            >
               <MaterialCommunityIcons name="calendar-export" size={16} color={COLORS.modFinanceiro} />
               <Text style={[styles.dateInputText, { color: theme.textPrimary }]}>{dateTo.toLocaleDateString('pt-BR')}</Text>
             </TouchableOpacity>
@@ -434,20 +448,20 @@ const CaixaExtratoScreen = () => {
         <View style={styles.filterSection}>
           <Text style={[styles.filterLabel, { color: theme.textSecondary }]}>Tipo</Text>
           <View style={styles.inlineWrap}>
-            {tipos.map((t) => (
+            {tipos.map((item) => (
               <TouchableOpacity
-                key={t.id}
-                onPress={() => setTipo(t.id as any)}
+                key={item.id}
+                onPress={() => setTipo(item.id as any)}
                 style={[
                   styles.filterChip,
                   {
-                    borderColor: tipo === t.id ? COLORS.modFinanceiro : theme.border,
-                    backgroundColor: tipo === t.id ? `${COLORS.modFinanceiro}18` : 'transparent',
+                    borderColor: tipo === item.id ? COLORS.modFinanceiro : theme.border,
+                    backgroundColor: tipo === item.id ? `${COLORS.modFinanceiro}18` : 'transparent',
                   },
                 ]}
               >
-                <Text style={[styles.filterChipText, { color: tipo === t.id ? COLORS.modFinanceiro : theme.textPrimary }]}>
-                  {t.label}
+                <Text style={[styles.filterChipText, { color: tipo === item.id ? COLORS.modFinanceiro : theme.textPrimary }]}>
+                  {item.label}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -488,7 +502,9 @@ const CaixaExtratoScreen = () => {
         data={groupedItems}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[styles.listContent, { paddingBottom: 96 + insets.bottom }]}
-        refreshControl={<RefreshControl refreshing={loading && items.length === 0} onRefresh={() => load(1)} tintColor={COLORS.modFinanceiro} />}
+        refreshControl={
+          <RefreshControl refreshing={loading && items.length === 0} onRefresh={() => load(1)} tintColor={COLORS.modFinanceiro} />
+        }
         ListHeaderComponent={renderHeader}
         renderItem={({ item }) => {
           if (item.isHeader) {
@@ -505,41 +521,50 @@ const CaixaExtratoScreen = () => {
           const isEntrada = item.tipo === 'entrada';
           return (
             <View style={[styles.itemCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
-              <View style={[styles.itemIconBox, { backgroundColor: isEntrada ? `${COLORS.success}18` : `${COLORS.danger}18` }]}>
-                <MaterialCommunityIcons name={isEntrada ? 'arrow-down-left' : 'arrow-up-right'} size={20} color={isEntrada ? COLORS.success : COLORS.danger} />
-              </View>
-
-              <View style={styles.itemContent}>
-                <View style={styles.itemTopRow}>
+              <View style={styles.itemTopRow}>
+                <View style={[styles.itemIconBox, { backgroundColor: isEntrada ? `${COLORS.success}18` : `${COLORS.danger}18` }]}>
+                  <MaterialCommunityIcons
+                    name={isEntrada ? 'arrow-down-left' : 'arrow-up-right'}
+                    size={20}
+                    color={isEntrada ? COLORS.success : COLORS.danger}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
                   <Text style={[styles.itemDesc, { color: theme.textPrimary }]} numberOfLines={2}>
                     {item.descricao}
                   </Text>
-                  <Text style={[styles.itemValue, { color: isEntrada ? COLORS.success : COLORS.danger }]}>
-                    {isEntrada ? '+' : '-'} {formatCurrency(item.valor)}
-                  </Text>
-                </View>
-
-                <View style={styles.metaWrap}>
-                  <View style={[styles.metaBadge, { backgroundColor: theme.surfaceMuted }]}>
-                    <Text style={[styles.metaBadgeText, { color: theme.textSecondary }]}>{item.origem.toUpperCase()}</Text>
-                  </View>
-                  <Text style={[styles.metaText, { color: theme.textSecondary }]} numberOfLines={1}>
+                  <Text style={[styles.itemMeta, { color: theme.textSecondary }]} numberOfLines={1}>
                     {item.tipo === 'entrada' ? 'Recebido por' : 'Pago para'}: {item.caixaPessoaNome}
                   </Text>
                 </View>
+                <Text style={[styles.itemValue, { color: isEntrada ? COLORS.success : COLORS.danger }]}>
+                  {isEntrada ? '+' : '-'} {formatCurrency(item.valor)}
+                </Text>
+              </View>
 
+              <View style={styles.infoRow}>
+                <View style={[styles.metaBadge, { backgroundColor: theme.surfaceMuted }]}>
+                  <Text style={[styles.metaBadgeText, { color: theme.textSecondary }]}>{String(item.origem).toUpperCase()}</Text>
+                </View>
                 {item.metodoPagamento ? (
-                  <Text style={[styles.itemMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-                    Meio de pagamento: {String(item.metodoPagamento).toUpperCase()}
-                  </Text>
+                  <View style={[styles.metaBadge, { backgroundColor: theme.surfaceMuted }]}>
+                    <Text style={[styles.metaBadgeText, { color: theme.textSecondary }]}>
+                      {String(item.metodoPagamento).toUpperCase()}
+                    </Text>
+                  </View>
                 ) : null}
-
-                {item.observacoes ? (
-                  <Text style={[styles.itemObs, { color: theme.textSecondary }]} numberOfLines={2}>
-                    Observacao: {item.observacoes}
+                {item.clienteNome ? (
+                  <Text style={[styles.clientInfo, { color: theme.textSecondary }]} numberOfLines={1}>
+                    {item.clienteNome}
                   </Text>
                 ) : null}
               </View>
+
+              {item.observacoes ? (
+                <Text style={[styles.itemObs, { color: theme.textSecondary }]} numberOfLines={2}>
+                  Observacao: {item.observacoes}
+                </Text>
+              ) : null}
             </View>
           );
         }}
@@ -556,8 +581,16 @@ const CaixaExtratoScreen = () => {
         }
         ListFooterComponent={
           hasMore ? (
-            <TouchableOpacity onPress={() => load(page + 1)} style={[styles.loadMoreBtn, { borderColor: theme.border }]} disabled={loading}>
-              {loading ? <ActivityIndicator size="small" color={COLORS.modFinanceiro} /> : <Text style={[styles.loadMoreText, { color: theme.textPrimary }]}>Carregar mais</Text>}
+            <TouchableOpacity
+              onPress={() => load(page + 1)}
+              style={[styles.loadMoreBtn, { borderColor: theme.border }]}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color={COLORS.modFinanceiro} />
+              ) : (
+                <Text style={[styles.loadMoreText, { color: theme.textPrimary }]}>Carregar mais</Text>
+              )}
             </TouchableOpacity>
           ) : null
         }
@@ -578,8 +611,19 @@ const CaixaExtratoScreen = () => {
 const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
   lockTitle: { fontSize: 16, fontWeight: '800', marginTop: 10 },
-  headerContainer: { padding: SPACING.lg, gap: 14, paddingBottom: 8 },
-
+  headerContainer: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, gap: 14, paddingBottom: 8 },
+  headerStats: { flexDirection: 'row', gap: 8 },
+  headerStatChip: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  headerStatValue: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
+  headerStatLabel: { color: 'rgba(255,255,255,0.8)', marginTop: 2, fontSize: 10, fontWeight: '700' },
   financeLinksRow: { gap: 8, paddingBottom: SPACING.xs },
   financeLink: {
     borderWidth: 1,
@@ -594,14 +638,13 @@ const styles = StyleSheet.create({
   },
   financeLinkActive: { backgroundColor: `${COLORS.modFinanceiro}1A` },
   financeLinkText: { fontSize: 12, fontWeight: '800' },
-
   heroCard: {
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
     borderWidth: 1,
     padding: 16,
     ...SHADOWS.card,
   },
-  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  heroTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   heroIconBox: {
     width: 44,
     height: 44,
@@ -610,32 +653,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   heroTitle: { fontSize: TYPOGRAPHY.h2, fontWeight: '900' },
-  heroSubtitle: { fontSize: 13, lineHeight: 18, marginTop: 2 },
+  heroSubtitle: { fontSize: 12, lineHeight: 18, marginTop: 2 },
+  heroSummaryLine: { fontSize: 11, fontWeight: '700', marginTop: 6 },
+  exportActions: { flexDirection: 'row', gap: 8 },
   exportBtn: {
-    width: 44,
-    height: 44,
+    width: 42,
+    height: 42,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  overviewTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginTop: 16,
-  },
-  overviewLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-  overviewValue: { fontSize: 28, fontWeight: '900', marginTop: 4 },
-  overviewCaption: { fontSize: 12, fontWeight: '600', marginTop: 4, maxWidth: 220 },
-  overviewBadge: {
-    alignSelf: 'flex-start',
-    borderRadius: RADIUS.pill,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  overviewBadgeText: { fontSize: 11, fontWeight: '800' },
-
+  metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14 },
   searchWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -647,24 +675,19 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   searchInput: { flex: 1, fontSize: 14, fontWeight: '600' },
-  totalsGrid: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  totalCard: {
-    flex: 1,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    padding: 12,
-  },
-  totalLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', marginBottom: 4 },
-  totalValue: { fontSize: 18, fontWeight: '900' },
-
+  readingCard: { marginTop: 12, borderRadius: RADIUS.lg, padding: 12 },
+  readingTitle: { fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.6 },
+  readingText: { marginTop: 6, fontSize: 12, fontWeight: '600', lineHeight: 17 },
   filtersPanel: {
-    borderRadius: RADIUS.lg,
+    marginHorizontal: SPACING.lg,
+    borderRadius: RADIUS.xl,
     borderWidth: 1,
     padding: 16,
     ...SHADOWS.card,
   },
   filtersHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 12 },
   filtersTitle: { fontSize: 16, fontWeight: '900' },
+  filtersCaption: { fontSize: 12, fontWeight: '600', marginTop: 2 },
   filterSection: { marginBottom: 12 },
   filterLabel: { fontSize: 11, fontWeight: '800', marginBottom: 8, textTransform: 'uppercase' },
   filterScrollRow: { paddingRight: SPACING.lg },
@@ -691,37 +714,27 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   dateInputText: { fontSize: 13, fontWeight: '700' },
-
   listContent: { paddingHorizontal: SPACING.lg, paddingBottom: 24 },
   dateHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 16 },
   dateLine: { position: 'absolute', left: 0, right: 0, height: 1 },
   dateHeaderText: { paddingHorizontal: 12, fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
   itemCard: {
-    flexDirection: 'row',
-    padding: 14,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
+    padding: 14,
     marginBottom: 10,
-    gap: 12,
     ...SHADOWS.card,
   },
-  itemIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  itemContent: { flex: 1, gap: 6 },
-  itemTopRow: { gap: 6 },
-  itemDesc: { fontSize: 14, fontWeight: '800', lineHeight: 19 },
-  itemValue: { fontSize: 16, fontWeight: '900' },
-  metaWrap: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
-  metaBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
+  itemTopRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  itemIconBox: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  itemDesc: { fontSize: 14, fontWeight: '800', lineHeight: 18 },
+  itemMeta: { fontSize: 12, fontWeight: '700', marginTop: 3 },
+  itemValue: { fontSize: 15, fontWeight: '900' },
+  infoRow: { marginTop: 12, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  metaBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 },
   metaBadgeText: { fontSize: 10, fontWeight: '900' },
-  metaText: { fontSize: 12, fontWeight: '700', flexShrink: 1 },
-  itemMeta: { fontSize: 11, fontWeight: '700' },
-  itemObs: { fontSize: 11, fontStyle: 'italic', lineHeight: 16 },
+  clientInfo: { fontSize: 11, fontWeight: '700', flexShrink: 1 },
+  itemObs: { marginTop: 10, fontSize: 11, fontStyle: 'italic', lineHeight: 16 },
   emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 56, gap: 10 },
   emptyTitle: { fontSize: 16, fontWeight: '800', textAlign: 'center' },
   emptySubtitle: { fontSize: 13, textAlign: 'center', lineHeight: 18 },

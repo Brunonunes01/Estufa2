@@ -1183,6 +1183,23 @@ export const shareVendaReceipt = async (data: ReceiptData) => {
 export const shareSalesAccountingPdf = async (data: SalesAccountingPdfData) => {
   const { totalGeral, totalPago, totalPendente, totalCancelado, ticketMedio, recorteLabel } =
     buildSalesAccountingInsights(data);
+  const paymentRatio = totalGeral > 0 ? totalPago / totalGeral : 0;
+  const paymentDegrees = Math.round(paymentRatio * 360);
+  const logoSvg = `
+    <svg viewBox="0 0 86 86" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g fill="none" stroke="#0f5a2e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M43 8c-15.9 0-28.8 12.9-28.8 28.8V63h57.6V36.8C71.8 20.9 58.9 8 43 8Z"/>
+        <path d="M23 20.5h40"/>
+        <path d="M43 8v55"/>
+        <path d="M14.2 36.8h57.6"/>
+        <path d="M24.5 63c0-10.2 8.3-18.5 18.5-18.5S61.5 52.8 61.5 63"/>
+      </g>
+      <path d="M34.5 55c0-6.7 3.8-12.8 8.5-12.8S51.5 48.3 51.5 55" fill="#2f7d32"/>
+      <path d="M16 55.5c3.9-14.1 16.2-22.6 27-22.6-8.2 4.8-12.1 13.6-11.6 26.1-5.7-1.7-10.8-3.5-15.4-3.5Z" fill="#2f7d32"/>
+      <path d="M70 55.5c-3.9-14.1-16.2-22.6-27-22.6 8.2 4.8 12.1 13.6 11.6 26.1 5.7-1.7 10.8-3.5 15.4-3.5Z" fill="#0f5a2e"/>
+      <path d="M28.6 27.8c0-4.2 2.8-7.7 6.8-9.1-1.1 4.6 1 8.6 4.6 11.5-4.9 1.9-11.4 1.1-11.4-2.4Z" fill="#0f5a2e"/>
+    </svg>
+  `;
   const groupedByCliente = data.itens.reduce<Record<string, SalesAccountingItem[]>>((acc, item) => {
     const key = item.cliente || 'Cliente avulso';
     if (!acc[key]) acc[key] = [];
@@ -1201,14 +1218,14 @@ export const shareSalesAccountingPdf = async (data: SalesAccountingPdfData) => {
         .filter((item) => normalizeAccountingStatus(item.status) === 'PENDENTE')
         .reduce((acc, item) => acc + Number(item.valorTotal || 0), 0);
 
-      return buildSection(
-        `Cliente: ${cliente}`,
-        `
-          <div class="chip-grid">
-            <div class="chip"><div class="chip-label">Pedidos</div><div class="chip-value">${items.length}</div></div>
-            <div class="chip"><div class="chip-label">Total</div><div class="chip-value">${fmtMoeda(totalCliente)}</div></div>
-            <div class="chip"><div class="chip-label">Pago</div><div class="chip-value">${fmtMoeda(totalPagoCliente)}</div></div>
-            <div class="chip"><div class="chip-label">Pendente</div><div class="chip-value">${fmtMoeda(totalPendenteCliente)}</div></div>
+      return `
+        <section class="section">
+          <div class="section-title">CLIENTE: ${escapeHtml(cliente)}</div>
+          <div class="client-metrics">
+            <div class="client-metric"><span>Pedidos</span><strong>${items.length}</strong></div>
+            <div class="client-metric"><span>Total</span><strong>${fmtMoeda(totalCliente)}</strong></div>
+            <div class="client-metric"><span>Pago</span><strong>${fmtMoeda(totalPagoCliente)}</strong></div>
+            <div class="client-metric"><span>Pendente</span><strong class="pending-text">${fmtMoeda(totalPendenteCliente)}</strong></div>
           </div>
           <table>
             <thead>
@@ -1238,7 +1255,7 @@ export const shareSalesAccountingPdf = async (data: SalesAccountingPdfData) => {
                       <td class="align-right">${escapeHtml(v.quantidade)}</td>
                       <td class="align-right">${fmtMoeda(v.valorTotal)}</td>
                       <td>${escapeHtml(v.metodoPagamento)}</td>
-                      <td><span class="status ${getStatusClass(v.status)}">${escapeHtml(v.status)}</span></td>
+                      <td class="${normalizeAccountingStatus(v.status) === 'PAGO' ? 'paid-text' : normalizeAccountingStatus(v.status) === 'PENDENTE' ? 'pending-text' : ''}">${escapeHtml(v.status)}</td>
                       <td>${escapeHtml(v.recebidoPor || '-')}</td>
                     </tr>
                   `
@@ -1246,27 +1263,135 @@ export const shareSalesAccountingPdf = async (data: SalesAccountingPdfData) => {
                 .join('')}
             </tbody>
           </table>
-        `
-      );
+        </section>
+      `;
     });
 
-  const html = wrapHtmlDocument({
-    title: 'Relatorio contabil de vendas',
-    subtitle: 'Analise detalhada agrupada por cliente',
-    company: data.empresa,
-    period: data.periodo,
-    summaryCards: [
-      { label: 'Total geral', value: fmtMoeda(totalGeral) },
-      { label: 'Total recebido', value: fmtMoeda(totalPago), tone: 'success' },
-      { label: 'Total pendente', value: fmtMoeda(totalPendente), tone: 'danger' },
-      { label: 'Total cancelado', value: fmtMoeda(totalCancelado), tone: 'neutral' },
-      { label: 'Ticket medio', value: fmtMoeda(ticketMedio) },
-      { label: 'Registros', value: String(data.itens.length) },
-      { label: 'Recorte', value: recorteLabel },
-      { label: 'Periodo', value: data.periodo },
-    ],
-    sections: clientSections.length > 0 ? clientSections : [buildSection('Clientes', '<div class="panel">Sem registros no periodo selecionado.</div>')],
-  });
+  const html = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <style>
+          * { box-sizing: border-box; }
+          @page { size: A4 landscape; margin: 10mm; }
+          body { margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; color: #1b1b1b; background: #ffffff; }
+          .page {
+            width: 100%;
+            min-height: 100%;
+            border: 1px solid #c8d8cc;
+            background:
+              radial-gradient(circle at 10% 20%, rgba(26, 92, 46, 0.06), transparent 22%),
+              radial-gradient(circle at 90% 25%, rgba(26, 92, 46, 0.05), transparent 18%),
+              linear-gradient(180deg, #ffffff 0%, #fcfdfc 100%);
+            padding: 16px 18px 14px;
+          }
+          .header { display: grid; grid-template-columns: 330px 1fr 340px; gap: 12px; align-items: start; margin-bottom: 14px; }
+          .brand { display: flex; align-items: center; gap: 12px; }
+          .brand-icon { width: 86px; height: 86px; flex-shrink: 0; }
+          .brand-title { margin: 0; font-size: 31px; line-height: 0.9; font-weight: 900; color: #0f5a2e; text-transform: uppercase; letter-spacing: -0.8px; }
+          .brand-subtitle { margin: 8px 0 0; font-size: 10px; line-height: 1.25; color: #194128; text-transform: uppercase; }
+          .report-title-wrap { text-align: center; padding-top: 10px; }
+          .report-title { margin: 0; font-size: 30px; line-height: 1; font-weight: 900; color: #0f5a2e; text-transform: uppercase; letter-spacing: -0.8px; }
+          .report-subtitle { margin: 12px 0 0; font-size: 11px; font-weight: 800; color: #194128; text-transform: uppercase; letter-spacing: 0.2px; }
+          .meta-box { border: 1px solid #1a5c2e; border-radius: 10px; padding: 10px 14px; background: rgba(255, 255, 255, 0.95); box-shadow: inset 0 0 0 1px rgba(15, 90, 46, 0.06); }
+          .meta-row { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; padding: 7px 0; }
+          .meta-label { font-weight: 800; color: #123923; }
+          .cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 12px; }
+          .card { border: 1px solid #2d6b46; border-radius: 8px; background: rgba(255,255,255,0.95); min-height: 84px; display: flex; align-items: center; gap: 12px; padding: 12px; }
+          .card-icon { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(180deg, #0f5a2e 0%, #1f7d42 100%); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 900; flex-shrink: 0; }
+          .card-label { font-size: 10px; font-weight: 800; color: #194128; text-transform: uppercase; line-height: 1.12; }
+          .card-value { margin-top: 4px; font-size: 16px; font-weight: 900; color: #123923; }
+          .card-value.danger { color: #ff1d14; }
+          .section { border: 1px solid #2d6b46; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,0.97); margin-bottom: 10px; }
+          .section-title { display: inline-block; background: linear-gradient(180deg, #0f5a2e 0%, #145a31 100%); color: #fff; font-size: 12px; font-weight: 800; text-transform: uppercase; padding: 6px 18px 7px; border-bottom-right-radius: 6px; min-width: 185px; letter-spacing: 0.3px; }
+          .client-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 12px; border-bottom: 1px solid #dbe5dd; background: rgba(15, 90, 46, 0.03); }
+          .client-metric { border: 1px solid #dbe5dd; border-radius: 8px; padding: 10px; background: #fff; }
+          .client-metric span { display: block; font-size: 10px; font-weight: 800; color: #194128; text-transform: uppercase; }
+          .client-metric strong { display: block; margin-top: 4px; font-size: 14px; font-weight: 900; color: #123923; }
+          table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+          thead th { background: linear-gradient(180deg, #0f5a2e 0%, #145a31 100%); color: #fff; font-size: 10px; font-weight: 800; padding: 7px 6px; border-right: 1px solid rgba(255,255,255,0.25); text-transform: uppercase; }
+          tbody td { padding: 6px 8px; font-size: 10px; color: #222; border-right: 1px solid #dbe5dd; border-bottom: 1px solid #dbe5dd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          tbody tr:last-child td { border-bottom: 0; }
+          thead th:last-child, tbody td:last-child { border-right: 0; }
+          .align-right { text-align: right; }
+          .paid-text { color: #0f7a2f; font-weight: 800; }
+          .pending-text { color: #ff1d14; font-weight: 800; }
+          .bottom-grid { display: grid; grid-template-columns: 1.05fr 1.35fr; gap: 14px; margin-top: 10px; }
+          .notes-box, .finance-box { border: 1px solid #2d6b46; border-radius: 8px; background: rgba(255,255,255,0.97); padding: 10px 14px; min-height: 128px; }
+          .box-title { margin: 0 0 8px; font-size: 12px; font-weight: 900; color: #1c1c1c; text-transform: uppercase; }
+          .note-item { font-size: 11px; line-height: 1.7; margin: 8px 0; }
+          .finance-content { display: grid; grid-template-columns: 1fr 155px 150px; gap: 12px; align-items: center; }
+          .finance-row { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; margin: 10px 0; }
+          .finance-row strong { color: #111; }
+          .donut { width: 106px; height: 106px; border-radius: 50%; margin: 0 auto; background: conic-gradient(#2f7d32 0deg ${paymentDegrees}deg, #ff1d14 ${paymentDegrees}deg 360deg); position: relative; }
+          .donut::after { content: ''; position: absolute; inset: 26px; border-radius: 50%; background: #fff; }
+          .legend-row { display: flex; align-items: center; gap: 8px; font-size: 11px; margin: 8px 0; }
+          .legend-color { width: 12px; height: 12px; border-radius: 2px; }
+        </style>
+      </head>
+      <body>
+        <div class="page">
+          <div class="header">
+            <div class="brand">
+              <div class="brand-icon">${logoSvg}</div>
+              <div>
+                <h1 class="brand-title">ESTUFA<br/>VERDE VIVO</h1>
+                <p class="brand-subtitle">PRODUTOS PARA ESTUFAS<br/>E AGRICULTURA PROTEGIDA</p>
+              </div>
+            </div>
+            <div class="report-title-wrap">
+              <h2 class="report-title">RELATORIO CONTABIL</h2>
+              <div class="report-subtitle">ANALISE DETALHADA AGRUPADA POR CLIENTE</div>
+            </div>
+            <div class="meta-box">
+              <div class="meta-row"><span class="meta-label">Empresa:</span><span>${escapeHtml(data.empresa)}</span></div>
+              <div class="meta-row"><span class="meta-label">Periodo:</span><span>${escapeHtml(data.periodo)}</span></div>
+              <div class="meta-row"><span class="meta-label">Recorte:</span><span>${escapeHtml(recorteLabel)}</span></div>
+            </div>
+          </div>
+
+          <div class="cards">
+            <div class="card"><div class="card-icon">R$</div><div><div class="card-label">Total geral</div><div class="card-value">${fmtMoeda(totalGeral)}</div></div></div>
+            <div class="card"><div class="card-icon">PG</div><div><div class="card-label">Total recebido</div><div class="card-value">${fmtMoeda(totalPago)}</div></div></div>
+            <div class="card"><div class="card-icon">PD</div><div><div class="card-label">Total pendente</div><div class="card-value danger">${fmtMoeda(totalPendente)}</div></div></div>
+            <div class="card"><div class="card-icon">TK</div><div><div class="card-label">Ticket medio</div><div class="card-value">${fmtMoeda(ticketMedio)}</div></div></div>
+            <div class="card"><div class="card-icon">#</div><div><div class="card-label">Registros</div><div class="card-value">${String(data.itens.length)}</div></div></div>
+          </div>
+
+          ${clientSections.length > 0 ? clientSections.join('') : '<section class="section"><div class="section-title">CLIENTES</div><div style="padding:16px;font-size:12px;">Sem registros no periodo selecionado.</div></section>'}
+
+          <div class="bottom-grid">
+            <div class="notes-box">
+              <h3 class="box-title">Leitura contabil</h3>
+              <div class="note-item">Relatorio separado por cliente para facilitar conferencia de recebimentos, pendencias e concentracao de faturamento.</div>
+              <div class="note-item">Use o valor pendente para identificar cobrancas abertas e o total recebido para validar caixa realizado.</div>
+              <div class="note-item">Cancelados permanecem destacados apenas no resumo executivo.</div>
+            </div>
+            <div class="finance-box">
+              <h3 class="box-title">Resumo financeiro</h3>
+              <div class="finance-content">
+                <div>
+                  <div class="finance-row"><strong>Total recebido:</strong><span>${fmtMoeda(totalPago)}</span></div>
+                  <div class="finance-row"><strong>Total pendente:</strong><span class="pending-text">${fmtMoeda(totalPendente)}</span></div>
+                  <div class="finance-row"><strong>Total cancelado:</strong><span>${fmtMoeda(totalCancelado)}</span></div>
+                  <div class="finance-row"><strong>Registros:</strong><span>${String(data.itens.length)}</span></div>
+                </div>
+                <div class="donut"></div>
+                <div>
+                  <div class="legend-row"><span class="legend-color" style="background:#2f7d32;"></span><span>Recebido</span></div>
+                  <div class="legend-row" style="padding-left:20px;">${fmtMoeda(totalPago)}</div>
+                  <div class="legend-row"><span class="legend-color" style="background:#ff1d14;"></span><span>Pendente</span></div>
+                  <div class="legend-row" style="padding-left:20px;">${fmtMoeda(totalPendente)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
 
   const fileName = `Relatorio_Contabil_Vendas_${sanitizeFilenameSegment(data.empresa)}_${reportDateToken()}.pdf`;
   await sharePdfHtml(html, fileName);

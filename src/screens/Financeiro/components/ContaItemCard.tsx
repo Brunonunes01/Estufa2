@@ -12,6 +12,7 @@ interface ContaItemCardProps {
   formatMetodo: (metodo?: string | null) => string;
   formatCurrency: (value: number) => string;
   getVendaTotal: (venda: Venda) => number;
+  getOpenedDaysLabel: (venda: Venda) => string;
   onReceber: (item: Venda) => void;
   onPress: () => void;
 }
@@ -24,6 +25,7 @@ const ContaItemCard = ({
   formatMetodo,
   formatCurrency,
   getVendaTotal,
+  getOpenedDaysLabel,
   onReceber,
   onPress,
 }: ContaItemCardProps) => {
@@ -33,6 +35,8 @@ const ContaItemCard = ({
   const unidade = String((item as any).unidade || (primeiraLinha as any)?.unidade || 'un');
   const precoUnitario = Number((item as any).precoUnitario || primeiraLinha?.valorUnitario || 0);
   const metodoLabel = formatMetodo(item.metodoPagamento || item.formaPagamento || undefined);
+  const openedLabel = getOpenedDaysLabel(item);
+  const pagamentoPara = String((item as any).pagamentoParaNome || (item as any).pagamentoPara || '').trim();
 
   return (
     <View style={[styles.card, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
@@ -43,14 +47,20 @@ const ContaItemCard = ({
             <Text style={[styles.productName, { color: theme.textSecondary }]} numberOfLines={1}>
               {String(primeiraLinha?.descricao || 'Venda registrada')}
             </Text>
-            <View style={styles.metodoRow}>
-              <MaterialCommunityIcons name="credit-card-clock-outline" size={14} color={theme.info} />
-              <Text style={[styles.metodoText, { color: theme.info }]}>{metodoLabel}</Text>
+            <View style={styles.chipsRow}>
+              <View style={[styles.metaChip, { backgroundColor: theme.infoSoft }]}>
+                <MaterialCommunityIcons name="credit-card-clock-outline" size={13} color={theme.info} />
+                <Text style={[styles.metaChipText, { color: theme.info }]}>{metodoLabel}</Text>
+              </View>
+              <View style={[styles.metaChip, { backgroundColor: theme.warningSoft }]}>
+                <MaterialCommunityIcons name="calendar-clock-outline" size={13} color={theme.warning} />
+                <Text style={[styles.metaChipText, { color: theme.warning }]}>{openedLabel}</Text>
+              </View>
             </View>
             <Text style={[styles.dateText, { color: theme.textMuted }]}>Venda em {formatDate(item.dataVenda)}</Text>
           </View>
 
-          <View style={[styles.badge, { backgroundColor: theme.dangerBackground, borderColor: COLORS.cFECACA }]}>
+          <View style={[styles.badge, { backgroundColor: theme.warningSoft, borderColor: theme.warning }]}>
             <Text style={[styles.badgeText, { color: COLORS.danger }]}>PENDENTE</Text>
           </View>
         </View>
@@ -67,6 +77,19 @@ const ContaItemCard = ({
             <Text style={[styles.infoValueStrong, { color: theme.textPrimary }]}>{formatCurrency(total)}</Text>
           </View>
         </View>
+
+        <View style={[styles.bottomStrip, { borderTopColor: theme.border }]}>
+          <View style={styles.bottomStripItem}>
+            <Text style={[styles.bottomStripLabel, { color: theme.textMuted }]}>Receber em</Text>
+            <Text style={[styles.bottomStripValue, { color: theme.textPrimary }]}>
+              {pagamentoPara || 'Caixa nao definido'}
+            </Text>
+          </View>
+          <View style={styles.bottomStripItem}>
+            <Text style={[styles.bottomStripLabel, { color: theme.textMuted }]}>Acao</Text>
+            <Text style={[styles.bottomStripValue, { color: theme.info }]}>Registrar baixa</Text>
+          </View>
+        </View>
       </TouchableOpacity>
 
       <TouchableOpacity 
@@ -75,7 +98,7 @@ const ContaItemCard = ({
         onPress={() => onReceber(item)}
       >
         <MaterialCommunityIcons name="check-circle-outline" size={20} color={COLORS.textLight} />
-        <Text style={styles.btnText}>Dar Baixa / Receber</Text>
+        <Text style={styles.btnText}>Registrar Recebimento</Text>
       </TouchableOpacity>
     </View>
   );
@@ -94,8 +117,16 @@ const styles = StyleSheet.create({
   cardHeaderMain: { flex: 1, paddingRight: 8 },
   clienteName: { fontSize: 18, fontWeight: '900', letterSpacing: -0.5 },
   productName: { marginTop: 3, fontSize: 13, fontWeight: '700' },
-  metodoRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 },
-  metodoText: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8, gap: 8 },
+  metaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  metaChipText: { fontSize: 11, fontWeight: '800' },
   dateText: { fontSize: 12, marginTop: 4, fontWeight: '600' },
   badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, borderWidth: 1 },
   badgeText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
@@ -104,6 +135,17 @@ const styles = StyleSheet.create({
   infoLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
   infoValue: { marginTop: 4, fontSize: 13, fontWeight: '700' },
   infoValueStrong: { marginTop: 4, fontSize: 20, fontWeight: '900', letterSpacing: -0.5 },
+  bottomStrip: {
+    borderTopWidth: 1,
+    paddingTop: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 16,
+  },
+  bottomStripItem: { flex: 1 },
+  bottomStripLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  bottomStripValue: { marginTop: 4, fontSize: 12, fontWeight: '800' },
   receiveBtn: {
     flexDirection: 'row',
     alignItems: 'center',

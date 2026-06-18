@@ -1,16 +1,26 @@
 // src/screens/Perfil/PerfilScreen.tsx
 import React, { useState, useEffect } from 'react';
 import { 
-  View, Text, TextInput, ScrollView, Alert, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Share
+  View, Text, TextInput, ScrollView, Alert, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Share, Modal
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location'; 
 import { useAuth } from '../../hooks/useAuth';
 import { COLORS } from '../../constants/theme';
 import { getSupabaseClient } from '../../services/supabaseClient';
+import MapView, { Marker, Region } from '../../components/MapViewCompat';
+
+type MapCoordinate = { latitude: number; longitude: number };
+
+const DEFAULT_MAP_REGION: Region = {
+  latitude: -14.235,
+  longitude: -51.9253,
+  latitudeDelta: 18,
+  longitudeDelta: 18,
+};
 
 export default function PerfilScreen({ navigation }: any) {
-  const { user, canManageSharing, accessRoleLabel } = useAuth();
+  const { user, canManageSharing, accessRoleLabel, refreshUserProfile } = useAuth();
   
   const [nomeProdutor, setNomeProdutor] = useState(user?.name || '');
   const [nomePropriedade, setNomePropriedade] = useState('');
@@ -23,6 +33,23 @@ export default function PerfilScreen({ navigation }: any) {
   
   const [loadingGps, setLoadingGps] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [mapVisible, setMapVisible] = useState(false);
+  const [mapSaving, setMapSaving] = useState(false);
+  const [mapRegion, setMapRegion] = useState<Region>(DEFAULT_MAP_REGION);
+  const [selectedPoint, setSelectedPoint] = useState<MapCoordinate | null>(null);
+
+  const normalizeCoordinate = (value: string) => {
+    const trimmed = String(value || '').trim().replace(',', '.');
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) return null;
+    return parsed.toFixed(6);
+  };
+
+  const parseCoordinate = (value: string) => {
+    const parsed = Number(String(value || '').trim().replace(',', '.'));
+    return Number.isFinite(parsed) ? parsed : null;
+  };
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -74,6 +101,77 @@ export default function PerfilScreen({ navigation }: any) {
     }
   };
 
+  const handleOpenMapPicker = async () => {
+    const lat = parseCoordinate(latitude);
+    const lng = parseCoordinate(longitude);
+    let centerRegion: Region = DEFAULT_MAP_REGION;
+    let marker: MapCoordinate | null = null;
+
+    if (lat !== null && lng !== null) {
+      marker = { latitude: lat, longitude: lng };
+      centerRegion = { ...marker, latitudeDelta: 0.01, longitudeDelta: 0.01 };
+    } else {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const current = await Location.getCurrentPositionAsync({});
+          marker = {
+            latitude: current.coords.latitude,
+            longitude: current.coords.longitude,
+          };
+          centerRegion = { ...marker, latitudeDelta: 0.01, longitudeDelta: 0.01 };
+        }
+      } catch {
+        // Mantem regiao padrao quando nao houver permissao ou GPS.
+      }
+    }
+
+    setSelectedPoint(marker);
+    setMapRegion(centerRegion);
+    setMapVisible(true);
+  };
+
+  const handleConfirmMapPoint = async () => {
+    if (!selectedPoint) {
+      Alert.alert('Atencao', 'Toque no mapa para marcar um ponto.');
+      return;
+    }
+
+    setMapSaving(true);
+    const lat = selectedPoint.latitude;
+    const lng = selectedPoint.longitude;
+    setLatitude(lat.toFixed(6));
+    setLongitude(lng.toFixed(6));
+
+    try {
+      const geocode = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+      if (geocode.length > 0) {
+        const first = geocode[0];
+        const cityBase =
+          first.city ||
+          first.subregion ||
+          first.district ||
+          first.name ||
+          first.street ||
+          '';
+        const state = first.region || '';
+        const cityLabel =
+          cityBase && state && cityBase.toLowerCase() !== state.toLowerCase()
+            ? `${cityBase} - ${state}`
+            : cityBase || state;
+
+        if (cityLabel) {
+          setCidadeEstado(cityLabel);
+        }
+      }
+    } catch {
+      // Coordenadas ja foram definidas; geocode e melhor esforço.
+    } finally {
+      setMapSaving(false);
+      setMapVisible(false);
+    }
+  };
+
   // --- NOVA FUNÇÃO DE PARTILHA ---
   const handleShareLocation = async () => {
     if (!latitude || !longitude) {
@@ -98,20 +196,26 @@ export default function PerfilScreen({ navigation }: any) {
     if (!user?.uid) return;
     setSaving(true);
     try {
+      const latitudeValue = normalizeCoordinate(latitude);
+      const longitudeValue = normalizeCoordinate(longitude);
       const supabase = getSupabaseClient();
       const { error } = await supabase
         .from('profiles')
-        .update({
+        .upsert({
+          id: user.uid,
+          email: user.email || null,
           name: nomeProdutor,
           nome_propriedade: nomePropriedade || null,
           tamanho_hectares: tamanhoHectares || null,
           cidade_estado: cidadeEstado || null,
-          latitude: latitude || null,
-          longitude: longitude || null,
+          latitude: latitudeValue,
+          longitude: longitudeValue,
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.uid);
+        }, { onConflict: 'id' });
       if (error) throw error;
+      setLatitude(latitudeValue || '');
+      setLongitude(longitudeValue || '');
+      await refreshUserProfile();
       Alert.alert('Sucesso', 'Dados da propriedade atualizados com sucesso!');
       navigation.goBack();
     } catch {
@@ -225,6 +329,11 @@ export default function PerfilScreen({ navigation }: any) {
                 )}
             </TouchableOpacity>
 
+            <TouchableOpacity style={styles.mapBtn} onPress={() => void handleOpenMapPicker()}>
+                <MaterialCommunityIcons name="map-marker-plus-outline" size={20} color={COLORS.info} style={{marginRight: 8}} />
+                <Text style={styles.mapBtnText}>Selecionar no mapa</Text>
+            </TouchableOpacity>
+
             <View style={styles.row}>
                 <View style={{flex: 1, marginRight: 10}}>
                     <Text style={styles.label}>Latitude</Text>
@@ -254,6 +363,43 @@ export default function PerfilScreen({ navigation }: any) {
         <TouchableOpacity style={styles.saveBtn} onPress={handleSaveProfile} disabled={saving}>
             {saving ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.saveText}>Guardar Perfil</Text>}
         </TouchableOpacity>
+
+        <Modal visible={mapVisible} animationType="slide" onRequestClose={() => setMapVisible(false)}>
+          <View style={styles.mapModalContainer}>
+            <View style={styles.mapHeader}>
+              <Text style={styles.mapTitle}>Marque a localizacao da estufa</Text>
+              <TouchableOpacity onPress={() => setMapVisible(false)} disabled={mapSaving}>
+                <MaterialCommunityIcons name="close" size={24} color={COLORS.textDark} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.mapHint}>
+              Use quando voce nao estiver no local. Toque no mapa para posicionar o marcador.
+            </Text>
+
+            <MapView
+              style={styles.map}
+              initialRegion={mapRegion}
+              mapType="satellite"
+              onPress={(event) => setSelectedPoint(event.nativeEvent.coordinate)}
+              onRegionChangeComplete={setMapRegion}
+            >
+              {selectedPoint ? <Marker coordinate={selectedPoint} /> : null}
+            </MapView>
+
+            <TouchableOpacity
+              style={[styles.mapConfirmBtn, (!selectedPoint || mapSaving) && styles.mapConfirmBtnDisabled]}
+              onPress={() => void handleConfirmMapPoint()}
+              disabled={!selectedPoint || mapSaving}
+            >
+              {mapSaving ? (
+                <ActivityIndicator color={COLORS.textLight} />
+              ) : (
+                <Text style={styles.mapConfirmBtnText}>Confirmar localizacao</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </Modal>
 
       </ScrollView>
     </KeyboardAvoidingView>
@@ -325,6 +471,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row' },
   gpsBtn: { flexDirection: 'row', backgroundColor: COLORS.primaryLight, height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 20, borderWidth: 1, borderColor: COLORS.cA7F3D0 },
   gpsBtnText: { color: COLORS.primary, fontWeight: '800', fontSize: 15 },
+  mapBtn: { flexDirection: 'row', backgroundColor: COLORS.infoSoft, height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 20, borderWidth: 1, borderColor: COLORS.info },
+  mapBtnText: { color: COLORS.info, fontWeight: '800', fontSize: 15 },
   gpsHelpText: { fontSize: 12, color: COLORS.textSecondary, fontStyle: 'italic', textAlign: 'center', marginTop: 15 },
   
   // Estilo do Botão de Partilha
@@ -333,4 +481,12 @@ const styles = StyleSheet.create({
 
   saveBtn: { backgroundColor: COLORS.primary, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 40, elevation: 4 },
   saveText: { color: COLORS.textLight, fontWeight: '800', fontSize: 18 },
+  mapModalContainer: { flex: 1, backgroundColor: COLORS.background, paddingTop: 48, paddingHorizontal: 16, paddingBottom: 24 },
+  mapHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  mapTitle: { color: COLORS.textDark, fontWeight: '800', fontSize: 20 },
+  mapHint: { color: COLORS.textSecondary, marginBottom: 10, fontSize: 12 },
+  map: { flex: 1, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
+  mapConfirmBtn: { marginTop: 12, height: 48, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
+  mapConfirmBtnDisabled: { opacity: 0.5 },
+  mapConfirmBtnText: { color: COLORS.textLight, fontWeight: '800', fontSize: 16 },
 });
