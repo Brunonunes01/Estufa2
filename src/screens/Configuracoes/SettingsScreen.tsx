@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Switch,
+  Alert,
 } from 'react-native';
 import { useNetInfo } from '@react-native-community/netinfo';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -17,7 +18,13 @@ import { useAuth } from '../../hooks/useAuth';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { changeCurrentUserPassword } from '../../services/securityService';
 import { getPasswordChangeErrorMessage } from '../../services/securityUiHelpers';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import {
+  COLORS,
+  RADIUS,
+  SHADOWS,
+  SPACING,
+  TYPOGRAPHY,
+} from '../../constants/theme';
 import SectionHeading from '../../components/ui/SectionHeading';
 import { useFeedback } from '../../hooks/useFeedback';
 import { useDashboardActions } from '../../hooks/useDashboardActions';
@@ -28,9 +35,19 @@ import {
   type OfflineSyncState,
 } from '../../services/offline/syncService';
 import { getSupabaseClient } from '../../services/supabaseClient';
+import { exportTenantDatabase } from '../../services/databaseExportService';
 
 const SettingsScreen = ({ navigation }: any) => {
-  const { user, accessRoleLabel, canManageSecurity, isManager, isOwner, refreshUserProfile } = useAuth();
+  const {
+    user,
+    selectedTenant,
+    selectedTenantId,
+    accessRoleLabel,
+    canManageSecurity,
+    isManager,
+    isOwner,
+    refreshUserProfile,
+  } = useAuth();
   const { signOut } = useDashboardActions();
   const { settings, updateSettings } = useAppSettings();
   const { showSuccess, showError, showWarning } = useFeedback();
@@ -45,8 +62,11 @@ const SettingsScreen = ({ navigation }: any) => {
   const [senhaNova, setSenhaNova] = useState('');
   const [senhaConfirmacao, setSenhaConfirmacao] = useState('');
   const [savingSecurity, setSavingSecurity] = useState(false);
-  const [syncState, setSyncState] = useState<OfflineSyncState>(getOfflineSyncState());
+  const [syncState, setSyncState] = useState<OfflineSyncState>(
+    getOfflineSyncState()
+  );
   const [syncingNow, setSyncingNow] = useState(false);
+  const [exportingDatabase, setExportingDatabase] = useState(false);
 
   const roleLabel = useMemo(() => accessRoleLabel, [accessRoleLabel]);
   const appVersion = Constants.expoConfig?.version || '1.0.0';
@@ -57,7 +77,11 @@ const SettingsScreen = ({ navigation }: any) => {
       setLoadingProfile(true);
       try {
         const supabase = getSupabaseClient();
-        const { data, error } = await supabase.from('profiles').select('*').eq('id', user.uid).maybeSingle();
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.uid)
+          .maybeSingle();
         if (!error && data) {
           setNome(data.name || user.name || '');
           setEmail(data.email || user.email || '');
@@ -103,7 +127,9 @@ const SettingsScreen = ({ navigation }: any) => {
       if (authError) throw authError;
       await refreshUserProfile();
       if (netInfo.isConnected === false) {
-        showWarning('Sem internet: alterações salvas localmente. Sincronizando...');
+        showWarning(
+          'Sem internet: alterações salvas localmente. Sincronizando...'
+        );
       } else {
         showSuccess('Dados da conta atualizados.');
       }
@@ -117,7 +143,9 @@ const SettingsScreen = ({ navigation }: any) => {
 
   const handleAlterarSenha = async () => {
     if (!canManageSecurity) {
-      showWarning('Apenas proprietario ou gerente podem alterar a senha critica.');
+      showWarning(
+        'Apenas proprietario ou gerente podem alterar a senha critica.'
+      );
       return;
     }
     if (!senhaAtual || !senhaNova || !senhaConfirmacao) {
@@ -140,7 +168,9 @@ const SettingsScreen = ({ navigation }: any) => {
       setSenhaNova('');
       setSenhaConfirmacao('');
       if (netInfo.isConnected === false) {
-        showWarning('Sem internet: alteração salva localmente. Sincronizando...');
+        showWarning(
+          'Sem internet: alteração salva localmente. Sincronizando...'
+        );
       } else {
         showSuccess('Senha de administrador alterada com sucesso.');
       }
@@ -160,7 +190,9 @@ const SettingsScreen = ({ navigation }: any) => {
       if (result.lastError) {
         showError(result.lastError);
       } else if (result.queued > 0) {
-        showWarning(`Sincronização parcial. Ainda restam ${result.queued} item(ns) na fila.`);
+        showWarning(
+          `Sincronização parcial. Ainda restam ${result.queued} item(ns) na fila.`
+        );
       } else {
         showSuccess('Sincronização concluída com sucesso.');
       }
@@ -172,15 +204,71 @@ const SettingsScreen = ({ navigation }: any) => {
   };
 
   const handleCampoModePress = () => {
-    showWarning('Modo Campo em desenvolvimento. Esta opção ainda não pode ser ativada.');
+    showWarning(
+      'Modo Campo em desenvolvimento. Esta opção ainda não pode ser ativada.'
+    );
+  };
+
+  const runDatabaseExport = async () => {
+    if (exportingDatabase) return;
+    if (!isOwner) {
+      showWarning('Somente o proprietário pode exportar os dados desta conta.');
+      return;
+    }
+    if (netInfo.isConnected === false) {
+      showWarning('Conecte-se à internet para preparar a exportação.');
+      return;
+    }
+    if (syncState.queued > 0) {
+      showWarning('Sincronize os itens pendentes antes de criar o backup.');
+      return;
+    }
+
+    setExportingDatabase(true);
+    try {
+      const result = await exportTenantDatabase(
+        selectedTenantId,
+        selectedTenant?.name || 'Minha Estufa'
+      );
+      if (result.delivery === 'download') {
+        showSuccess('Arquivo de exportação baixado com sucesso.');
+      }
+    } catch (error: unknown) {
+      console.error(error);
+      showError(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível exportar os dados.'
+      );
+    } finally {
+      setExportingDatabase(false);
+    }
+  };
+
+  const handleDatabaseExport = () => {
+    Alert.alert(
+      'Exportar dados da conta?',
+      'Será criado um backup SQL completo desta conta, compatível com PostgreSQL e com a restauração pelo aplicativo. Compartilhe apenas com pessoas de confiança.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Exportar', onPress: () => void runDatabaseExport() },
+      ]
+    );
   };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <SectionHeading title="Configurações" subtitle="Conta, segurança e preferências do sistema" />
+      <SectionHeading
+        title="Configurações"
+        subtitle="Conta, segurança e preferências do sistema"
+      />
 
       <View style={styles.roleBadge}>
-        <MaterialCommunityIcons name={isOwner || isManager ? 'shield-account' : 'account'} size={16} color={COLORS.textLight} />
+        <MaterialCommunityIcons
+          name={isOwner || isManager ? 'shield-account' : 'account'}
+          size={16}
+          color={COLORS.textLight}
+        />
         <Text style={styles.roleBadgeText}>{roleLabel}</Text>
       </View>
 
@@ -191,149 +279,281 @@ const SettingsScreen = ({ navigation }: any) => {
         ) : (
           <>
             <Text style={styles.label}>Nome</Text>
-            <TextInput style={styles.input} value={nome} onChangeText={setNome} placeholder="Seu nome" />
+            <TextInput
+              style={styles.input}
+              value={nome}
+              onChangeText={setNome}
+              placeholder="Seu nome"
+            />
 
             <Text style={styles.label}>E-mail</Text>
-            <TextInput style={[styles.input, styles.inputDisabled]} value={email} editable={false} />
+            <TextInput
+              style={[styles.input, styles.inputDisabled]}
+              value={email}
+              editable={false}
+            />
 
-            <TouchableOpacity style={styles.primaryBtn} onPress={handleSaveConta} disabled={savingProfile}>
-              {savingProfile ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.primaryBtnText}>Salvar Conta</Text>}
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={handleSaveConta}
+              disabled={savingProfile}
+            >
+              {savingProfile ? (
+                <ActivityIndicator color={COLORS.textLight} />
+              ) : (
+                <Text style={styles.primaryBtnText}>Salvar Conta</Text>
+              )}
             </TouchableOpacity>
           </>
         )}
       </View>
 
       <View style={styles.card}>
-        <SectionHeading title="Segurança" subtitle="Senha de administrador para ações críticas" />
+        <SectionHeading
+          title="Segurança"
+          subtitle="Senha de administrador para ações críticas"
+        />
         <Text style={styles.securityInfo}>
-          A exclusão de estufa e operações críticas exigem validação da senha do administrador.
+          A exclusão de estufa e operações críticas exigem validação da senha do
+          administrador.
         </Text>
         <Text style={styles.label}>Senha atual</Text>
-        <TextInput style={styles.input} value={senhaAtual} onChangeText={setSenhaAtual} secureTextEntry />
+        <TextInput
+          style={styles.input}
+          value={senhaAtual}
+          onChangeText={setSenhaAtual}
+          secureTextEntry
+        />
         <Text style={styles.label}>Nova senha</Text>
-        <TextInput style={styles.input} value={senhaNova} onChangeText={setSenhaNova} secureTextEntry />
+        <TextInput
+          style={styles.input}
+          value={senhaNova}
+          onChangeText={setSenhaNova}
+          secureTextEntry
+        />
         <Text style={styles.label}>Confirmar nova senha</Text>
-        <TextInput style={styles.input} value={senhaConfirmacao} onChangeText={setSenhaConfirmacao} secureTextEntry />
+        <TextInput
+          style={styles.input}
+          value={senhaConfirmacao}
+          onChangeText={setSenhaConfirmacao}
+          secureTextEntry
+        />
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={handleAlterarSenha} disabled={savingSecurity || !canManageSecurity}>
+        <TouchableOpacity
+          style={styles.primaryBtn}
+          onPress={handleAlterarSenha}
+          disabled={savingSecurity || !canManageSecurity}
+        >
           {savingSecurity ? (
             <ActivityIndicator color={COLORS.textLight} />
           ) : (
-            <Text style={styles.primaryBtnText}>{canManageSecurity ? 'Atualizar Senha Critica' : 'Apenas Proprietario/Gerente'}</Text>
+            <Text style={styles.primaryBtnText}>
+              {canManageSecurity
+                ? 'Atualizar Senha Critica'
+                : 'Apenas Proprietario/Gerente'}
+            </Text>
           )}
         </TouchableOpacity>
       </View>
 
       <View style={styles.card}>
-        <SectionHeading title="Notificações" subtitle="Ajuste alertas do dia a dia" />
+        <SectionHeading
+          title="Notificações"
+          subtitle="Ajuste alertas do dia a dia"
+        />
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Alertas críticos de estufa</Text>
           <Switch
             value={settings.notifyCritical}
             onValueChange={(value) => updateSettings({ notifyCritical: value })}
             trackColor={{ false: COLORS.borderDark, true: COLORS.primaryLight }}
-            thumbColor={settings.notifyCritical ? COLORS.primary : COLORS.textMuted}
+            thumbColor={
+              settings.notifyCritical ? COLORS.primary : COLORS.textMuted
+            }
           />
         </View>
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Resumo diário</Text>
           <Switch
             value={settings.notifyDailySummary}
-            onValueChange={(value) => updateSettings({ notifyDailySummary: value })}
+            onValueChange={(value) =>
+              updateSettings({ notifyDailySummary: value })
+            }
             trackColor={{ false: COLORS.borderDark, true: COLORS.primaryLight }}
-            thumbColor={settings.notifyDailySummary ? COLORS.primary : COLORS.textMuted}
+            thumbColor={
+              settings.notifyDailySummary ? COLORS.primary : COLORS.textMuted
+            }
           />
         </View>
       </View>
 
       <View style={styles.card}>
-        <SectionHeading title="Modo de Operação" subtitle="Mostra apenas as telas do modo selecionado" />
+        <SectionHeading
+          title="Modo de Operação"
+          subtitle="Mostra apenas as telas do modo selecionado"
+        />
         <View style={styles.modeRow}>
           <TouchableOpacity
-            style={[styles.modeBtn, settings.activeProductionMode === 'ciclo_longo' && styles.modeBtnActive]}
-            onPress={() => updateSettings({ activeProductionMode: 'ciclo_longo' })}
+            style={[
+              styles.modeBtn,
+              settings.activeProductionMode === 'ciclo_longo' &&
+                styles.modeBtnActive,
+            ]}
+            onPress={() =>
+              updateSettings({ activeProductionMode: 'ciclo_longo' })
+            }
           >
             <MaterialCommunityIcons
               name="sprout"
               size={16}
-              color={settings.activeProductionMode === 'ciclo_longo' ? COLORS.textLight : COLORS.textSecondary}
+              color={
+                settings.activeProductionMode === 'ciclo_longo'
+                  ? COLORS.textLight
+                  : COLORS.textSecondary
+              }
             />
-            <Text style={[styles.modeBtnText, settings.activeProductionMode === 'ciclo_longo' && styles.modeBtnTextActive]}>
+            <Text
+              style={[
+                styles.modeBtnText,
+                settings.activeProductionMode === 'ciclo_longo' &&
+                  styles.modeBtnTextActive,
+              ]}
+            >
               Ciclo Longo
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.modeBtn, settings.activeProductionMode === 'campo' && styles.modeBtnActive]}
+            style={[
+              styles.modeBtn,
+              settings.activeProductionMode === 'campo' && styles.modeBtnActive,
+            ]}
             onPress={handleCampoModePress}
           >
             <MaterialCommunityIcons
               name="tractor-variant"
               size={16}
-              color={settings.activeProductionMode === 'campo' ? COLORS.textLight : COLORS.textSecondary}
+              color={
+                settings.activeProductionMode === 'campo'
+                  ? COLORS.textLight
+                  : COLORS.textSecondary
+              }
             />
-            <Text style={[styles.modeBtnText, settings.activeProductionMode === 'campo' && styles.modeBtnTextActive]}>
+            <Text
+              style={[
+                styles.modeBtnText,
+                settings.activeProductionMode === 'campo' &&
+                  styles.modeBtnTextActive,
+              ]}
+            >
               Campo
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.modeBtn, settings.activeProductionMode === 'hidroponia' && styles.modeBtnActive]}
-            onPress={() => updateSettings({ activeProductionMode: 'hidroponia' })}
+            style={[
+              styles.modeBtn,
+              settings.activeProductionMode === 'hidroponia' &&
+                styles.modeBtnActive,
+            ]}
+            onPress={() =>
+              updateSettings({ activeProductionMode: 'hidroponia' })
+            }
           >
             <MaterialCommunityIcons
               name="water"
               size={16}
-              color={settings.activeProductionMode === 'hidroponia' ? COLORS.textLight : COLORS.textSecondary}
+              color={
+                settings.activeProductionMode === 'hidroponia'
+                  ? COLORS.textLight
+                  : COLORS.textSecondary
+              }
             />
-            <Text style={[styles.modeBtnText, settings.activeProductionMode === 'hidroponia' && styles.modeBtnTextActive]}>
+            <Text
+              style={[
+                styles.modeBtnText,
+                settings.activeProductionMode === 'hidroponia' &&
+                  styles.modeBtnTextActive,
+              ]}
+            >
               Hidroponia
             </Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.helpText}>
-          Ao trocar o modo, o app reinicia a navegação para exibir somente os módulos da operação escolhida.
+          Ao trocar o modo, o app reinicia a navegação para exibir somente os
+          módulos da operação escolhida.
         </Text>
         {settings.activeProductionMode === 'campo' ? (
-          <TouchableOpacity style={styles.secondaryBtn} onPress={() => navigation.navigate('TalhoesList')}>
-            <MaterialCommunityIcons name="map-marker-radius-outline" size={18} color={COLORS.primary} />
-            <Text style={styles.secondaryBtnText}>Gerenciar Talhoes de Campo</Text>
+          <TouchableOpacity
+            style={styles.secondaryBtn}
+            onPress={() => navigation.navigate('TalhoesList')}
+          >
+            <MaterialCommunityIcons
+              name="map-marker-radius-outline"
+              size={18}
+              color={COLORS.primary}
+            />
+            <Text style={styles.secondaryBtnText}>
+              Gerenciar Talhoes de Campo
+            </Text>
           </TouchableOpacity>
         ) : null}
       </View>
 
       <View style={styles.card}>
-        <SectionHeading title="Nova Interface" subtitle="Ative a navegação modular com ações rápidas" />
+        <SectionHeading
+          title="Nova Interface"
+          subtitle="Ative a navegação modular com ações rápidas"
+        />
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>UI V2 (beta estável)</Text>
           <Switch
             value={settings.uiV2Enabled}
             onValueChange={(value) => updateSettings({ uiV2Enabled: value })}
             trackColor={{ false: COLORS.borderDark, true: COLORS.primaryLight }}
-            thumbColor={settings.uiV2Enabled ? COLORS.primary : COLORS.textMuted}
+            thumbColor={
+              settings.uiV2Enabled ? COLORS.primary : COLORS.textMuted
+            }
           />
         </View>
         <Text style={styles.helpText}>
-          Quando ativo, o app usa barra inferior modular e menu de ações rápidas (FAB).
+          Quando ativo, o app usa barra inferior modular e menu de ações rápidas
+          (FAB).
         </Text>
       </View>
 
       <View style={styles.card}>
-        <SectionHeading title="Fluxo de Vendas" subtitle="Controle como o peso das caixas é preenchido" />
+        <SectionHeading
+          title="Fluxo de Vendas"
+          subtitle="Controle como o peso das caixas é preenchido"
+        />
         <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Usar perfis de peso cadastrados no ciclo</Text>
+          <Text style={styles.switchLabel}>
+            Usar perfis de peso cadastrados no ciclo
+          </Text>
           <Switch
             value={settings.useCycleBoxWeightProfiles}
-            onValueChange={(value) => updateSettings({ useCycleBoxWeightProfiles: value })}
+            onValueChange={(value) =>
+              updateSettings({ useCycleBoxWeightProfiles: value })
+            }
             trackColor={{ false: COLORS.borderDark, true: COLORS.primaryLight }}
-            thumbColor={settings.useCycleBoxWeightProfiles ? COLORS.primary : COLORS.textMuted}
+            thumbColor={
+              settings.useCycleBoxWeightProfiles
+                ? COLORS.primary
+                : COLORS.textMuted
+            }
           />
         </View>
         <Text style={styles.helpText}>
-          Quando ativo, o vendedor escolhe um tipo de caixa do ciclo e o app calcula peso bruto e líquido automaticamente pela quantidade.
+          Quando ativo, o vendedor escolhe um tipo de caixa do ciclo e o app
+          calcula peso bruto e líquido automaticamente pela quantidade.
         </Text>
       </View>
 
       <View style={styles.card}>
-        <SectionHeading title="Aparência" subtitle="Personalize o visual do aplicativo" />
+        <SectionHeading
+          title="Aparência"
+          subtitle="Personalize o visual do aplicativo"
+        />
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Modo escuro (experimental)</Text>
           <Switch
@@ -343,7 +563,9 @@ const SettingsScreen = ({ navigation }: any) => {
             thumbColor={settings.darkMode ? COLORS.primary : COLORS.textMuted}
           />
         </View>
-        <Text style={styles.helpText}>O modo escuro já é aplicado nas telas principais de operação.</Text>
+        <Text style={styles.helpText}>
+          O modo escuro já é aplicado nas telas principais de operação.
+        </Text>
       </View>
 
       <View style={styles.card}>
@@ -353,18 +575,27 @@ const SettingsScreen = ({ navigation }: any) => {
           <Text style={styles.systemValue}>{appVersion}</Text>
         </View>
         <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Itens pendentes para sincronizar</Text>
+          <Text style={styles.switchLabel}>
+            Itens pendentes para sincronizar
+          </Text>
           <Text style={styles.systemValue}>{syncState.queued}</Text>
         </View>
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Última sincronização</Text>
           <Text style={styles.systemValue}>
-            {syncState.lastSyncAt ? new Date(syncState.lastSyncAt).toLocaleString('pt-BR') : 'Ainda não sincronizado'}
+            {syncState.lastSyncAt
+              ? new Date(syncState.lastSyncAt).toLocaleString('pt-BR')
+              : 'Ainda não sincronizado'}
           </Text>
         </View>
-        {syncState.lastError ? <Text style={styles.errorText}>{syncState.lastError}</Text> : null}
+        {syncState.lastError ? (
+          <Text style={styles.errorText}>{syncState.lastError}</Text>
+        ) : null}
         <TouchableOpacity
-          style={[styles.primaryBtn, (syncState.syncing || syncingNow) && styles.buttonDisabled]}
+          style={[
+            styles.primaryBtn,
+            (syncState.syncing || syncingNow) && styles.buttonDisabled,
+          ]}
           onPress={handleSyncNow}
           disabled={syncState.syncing || syncingNow}
         >
@@ -376,8 +607,48 @@ const SettingsScreen = ({ navigation }: any) => {
         </TouchableOpacity>
       </View>
 
+      {isOwner ? (
+        <View style={styles.card}>
+          <SectionHeading
+            title="Backup da conta"
+            subtitle="Arquivo SQL para recuperação administrativa"
+          />
+          <Text style={styles.securityInfo}>
+            Inclui os dados operacionais, financeiros e cadastrais da conta. A
+            recuperação é feita somente por um administrador no PostgreSQL.
+          </Text>
+          <TouchableOpacity
+            style={[
+              styles.whatsappBtn,
+              exportingDatabase && styles.buttonDisabled,
+            ]}
+            onPress={handleDatabaseExport}
+            disabled={exportingDatabase}
+          >
+            {exportingDatabase ? (
+              <ActivityIndicator color={COLORS.textLight} />
+            ) : (
+              <>
+                <MaterialCommunityIcons
+                  name="whatsapp"
+                  size={20}
+                  color={COLORS.textLight}
+                />
+                <Text style={styles.primaryBtnText}>
+                  Exportar e enviar pelo WhatsApp
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       <TouchableOpacity style={styles.logoutBtn} onPress={signOut}>
-        <MaterialCommunityIcons name="logout" size={18} color={COLORS.textLight} />
+        <MaterialCommunityIcons
+          name="logout"
+          size={18}
+          color={COLORS.textLight}
+        />
         <Text style={styles.logoutBtnText}>Sair da Conta</Text>
       </TouchableOpacity>
     </ScrollView>
@@ -408,7 +679,12 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
     ...SHADOWS.card,
   },
-  label: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 6 },
+  label: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: 6,
+  },
   input: {
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -420,7 +696,11 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   inputDisabled: { color: COLORS.textMuted },
-  securityInfo: { fontSize: 12, color: COLORS.textSecondary, marginBottom: SPACING.md },
+  securityInfo: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.md,
+  },
   primaryBtn: {
     height: 46,
     borderRadius: RADIUS.sm,
@@ -437,9 +717,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
   },
-  switchLabel: { color: COLORS.textPrimary, fontSize: TYPOGRAPHY.body, fontWeight: '600', flex: 1, marginRight: 10 },
+  switchLabel: {
+    color: COLORS.textPrimary,
+    fontSize: TYPOGRAPHY.body,
+    fontWeight: '600',
+    flex: 1,
+    marginRight: 10,
+  },
   systemValue: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
-  errorText: { color: COLORS.danger, fontSize: 12, fontWeight: '600', marginTop: 4, marginBottom: 8 },
+  errorText: {
+    color: COLORS.danger,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+    marginBottom: 8,
+  },
   helpText: { marginTop: 8, color: COLORS.textSecondary, fontSize: 12 },
   modeRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
   modeBtn: {
@@ -454,7 +746,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
   },
-  modeBtnActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary },
+  modeBtnActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary,
+  },
   modeBtnText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   modeBtnTextActive: { color: COLORS.textLight },
   secondaryBtn: {
@@ -469,7 +764,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
-  secondaryBtnText: { color: COLORS.textPrimary, fontSize: 13, fontWeight: '800' },
+  secondaryBtnText: {
+    color: COLORS.textPrimary,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  whatsappBtn: {
+    minHeight: 46,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.whatsapp,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
   logoutBtn: {
     height: 48,
     borderRadius: RADIUS.sm,
