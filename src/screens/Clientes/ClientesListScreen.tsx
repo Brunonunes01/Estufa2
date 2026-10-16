@@ -36,7 +36,7 @@ const ClientesListScreen = ({ navigation }: any) => {
   const normalizeStatus = (venda: any): 'PAGO' | 'PENDENTE' | 'CANCELADO' => {
     const st = String(venda?.statusPagamento || '').toLowerCase().trim();
     if (st === 'cancelado') return 'CANCELADO';
-    if (st === 'pendente' || st === 'atrasado' || (!st && venda.metodoPagamento === 'prazo')) return 'PENDENTE';
+    if (st === 'pendente' || st === 'atrasado' || (!st && (venda.metodoPagamento === 'prazo' || venda.metodoPagamento === 'cheque'))) return 'PENDENTE';
     return 'PAGO';
   };
 

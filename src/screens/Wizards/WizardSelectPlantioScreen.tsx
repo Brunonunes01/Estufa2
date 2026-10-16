@@ -1,20 +1,38 @@
 import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
+} from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigation } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAuth } from '../../hooks/useAuth';
 import { listActivePlantiosByUser } from '../../services/plantioService';
 import { Plantio } from '../../types/domain';
 import { RootStackParamList } from '../../navigation/types';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import {
+  COLORS,
+  RADIUS,
+  SHADOWS,
+  SPACING,
+  TYPOGRAPHY,
+} from '../../constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-type ScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'WizardSelectPlantio'>;
+type ScreenNavigationProp = NativeStackNavigationProp<
+  RootStackParamList,
+  'WizardSelectPlantio'
+>;
+type ScreenRouteProp = RouteProp<RootStackParamList, 'WizardSelectPlantio'>;
 
 const WizardSelectPlantioScreen = () => {
   const navigation = useNavigation<ScreenNavigationProp>();
+  const route = useRoute<ScreenRouteProp>();
   const { user, selectedTenantId } = useAuth();
   const tenantId = selectedTenantId || user?.uid;
 
@@ -24,21 +42,42 @@ const WizardSelectPlantioScreen = () => {
     enabled: !!tenantId,
   });
 
+  const plantiosDisponiveis =
+    route.params?.origem === 'campo'
+      ? (activePlantios || []).filter((plantio) => !!plantio.talhaoId)
+      : activePlantios;
+
   const handleSelectPlantio = (plantio: Plantio) => {
-    navigation.navigate('WizardSelectActivity', { plantio });
+    navigation.navigate('WizardSelectActivity', {
+      plantio,
+      origem: route.params?.origem,
+    });
   };
 
   const renderPlantioCard = ({ item }: { item: Plantio }) => (
-    <TouchableOpacity style={styles.card} onPress={() => handleSelectPlantio(item)}>
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() => handleSelectPlantio(item)}
+    >
       <View style={styles.cardIcon}>
-        <MaterialCommunityIcons name="sprout" size={32} color={COLORS.primary} />
+        <MaterialCommunityIcons
+          name="sprout"
+          size={32}
+          color={COLORS.primary}
+        />
       </View>
       <View style={styles.cardTextContainer}>
-        <Text style={styles.cardTitle}>{item.cultura} ({item.variedade || 'N/A'})</Text>
+        <Text style={styles.cardTitle}>
+          {item.cultura} ({item.variedade || 'N/A'})
+        </Text>
         <Text style={styles.cardSubtitle}>Lote: {item.codigoLote}</Text>
         <Text style={styles.cardStatus}>{item.status?.replace('_', ' ')}</Text>
       </View>
-      <MaterialCommunityIcons name="chevron-right" size={24} color={COLORS.textSecondary} />
+      <MaterialCommunityIcons
+        name="chevron-right"
+        size={24}
+        color={COLORS.textSecondary}
+      />
     </TouchableOpacity>
   );
 
@@ -52,19 +91,23 @@ const WizardSelectPlantioScreen = () => {
 
   return (
     <FlatList
-      data={activePlantios}
+      data={plantiosDisponiveis}
       renderItem={renderPlantioCard}
       keyExtractor={(item) => item.id}
       contentContainerStyle={styles.container}
       ListHeaderComponent={
         <View style={styles.header}>
           <Text style={styles.title}>Assistente de Atividades</Text>
-          <Text style={styles.subtitle}>Passo 1: Selecione o ciclo de produção que recebeu a atividade hoje.</Text>
+          <Text style={styles.subtitle}>
+            Passo 1: Selecione o ciclo de produção que recebeu a atividade hoje.
+          </Text>
         </View>
       }
       ListEmptyComponent={
         <View style={styles.centered}>
-          <Text style={styles.emptyText}>Nenhum ciclo de produção ativo encontrado.</Text>
+          <Text style={styles.emptyText}>
+            Nenhum ciclo de produção ativo encontrado.
+          </Text>
         </View>
       }
     />

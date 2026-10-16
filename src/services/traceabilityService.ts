@@ -5,10 +5,6 @@ import { assertTenantId } from './tenantGuard';
 
 export type TraceabilityEntityType =
   | 'plantio'
-  | 'hydro_lote'
-  | 'hydro_movimentacao'
-  | 'hydro_leitura'
-  | 'hydro_colheita'
   | 'colheita'
   | 'venda'
   | 'aplicacao'
@@ -22,7 +18,9 @@ export type TraceabilityAction =
   | 'status_alterado'
   | 'excluido'
   | 'recebimento_registrado'
+  | 'recebimento_removido'
   | 'desbloqueio_ciclo'
+  | 'autorizacao_admin'
   | 'cancelado'
   | 'semeado'
   | 'movido'
@@ -33,7 +31,6 @@ export type TraceabilityAction =
 
 export interface CreateTraceabilityEventInput {
   plantioId?: string | null;
-  hydroLoteId?: string | null;
   estufaId?: string | null;
   entidade: TraceabilityEntityType;
   entidadeId: string;
@@ -52,7 +49,6 @@ const mapSupabaseTraceabilityToDomain = (row: any): RastreabilidadeEvento => ({
   createdBy: row.created_by || row.tenant_id,
   plantioId: row.plantio_id || undefined,
   estufaId: row.estufa_id || undefined,
-  hydroLoteId: row.hydro_lote_id || undefined,
   entidade: row.entidade,
   entidadeId: row.entidade_id,
   acao: row.acao,
@@ -73,7 +69,6 @@ export const createTraceabilityEvent = async (userId: string, data: CreateTracea
   const basePayload = {
     tenant_id: tenantId,
     plantio_id: data.plantioId || null,
-    hydro_lote_id: data.hydroLoteId || null,
     estufa_id: data.estufaId || null,
     entidade: data.entidade,
     entidade_id: data.entidadeId,
@@ -140,24 +135,3 @@ export const listTraceabilityEventsByPlantio = async (
   }
   return (data || []).map(mapSupabaseTraceabilityToDomain);
 };
-
-export const listTraceabilityEventsByHydroLote = async (
-  userId: string,
-  hydroLoteId: string,
-  maxItems = 100
-): Promise<RastreabilidadeEvento[]> => {
-  const tenantId = assertTenantId(userId);
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('rastreabilidade_eventos')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .eq('hydro_lote_id', hydroLoteId)
-    .order('event_at', { ascending: false })
-    .limit(maxItems);
-  if (error) {
-    throw new Error(`Erro ao listar rastreabilidade do lote hidropônico. ${error.message}`);
-  }
-  return (data || []).map(mapSupabaseTraceabilityToDomain);
-};
-

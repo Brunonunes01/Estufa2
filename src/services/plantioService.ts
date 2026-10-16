@@ -1,12 +1,17 @@
 import { Timestamp } from '../lib/timestamp';
 import { Plantio } from '../types/domain';
 import { OfflineWriteOptions } from './offline/offlineStorage';
-import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWrite';
+import {
+  buildOfflinePlaceholderId,
+  runOfflineWrite,
+} from './offline/offlineWrite';
 import { getSupabaseClient } from './supabaseClient';
 import { assertTenantId } from './tenantGuard';
 import { createTraceabilityEventSafely } from './traceabilityService';
+import { assertProductionOriginNotMixed } from './productionOriginGuard';
 
-const toTs = (value?: string | null) => (value ? Timestamp.fromDate(new Date(value)) : undefined);
+const toTs = (value?: string | null) =>
+  value ? Timestamp.fromDate(new Date(value)) : undefined;
 const toIso = (value: any): string | null => {
   if (!value) return null;
   if (typeof value?.toDate === 'function') {
@@ -33,8 +38,10 @@ const mapPlantioRowToDomain = (row: any): Plantio => ({
   dataPrevisaoColheita: toTs(row.data_previsao_colheita),
   dataEncerramento: toTs(row.data_encerramento),
   status: row.status,
-  ocupacaoEstimada: row.ocupacao_estimada != null ? Number(row.ocupacao_estimada) : undefined,
-  custoAcumulado: row.custo_acumulado != null ? Number(row.custo_acumulado) : undefined,
+  ocupacaoEstimada:
+    row.ocupacao_estimada != null ? Number(row.ocupacao_estimada) : undefined,
+  custoAcumulado:
+    row.custo_acumulado != null ? Number(row.custo_acumulado) : undefined,
   custoTotal: row.custo_total != null ? Number(row.custo_total) : undefined,
   cicloDias: row.ciclo_dias ?? undefined,
   cicloDesbloqueadoPorAdmin: !!row.ciclo_desbloqueado_por_admin,
@@ -44,12 +51,21 @@ const mapPlantioRowToDomain = (row: any): Plantio => ({
   desbloqueioAdminReason: row.desbloqueio_admin_reason || undefined,
   codigoLote: row.codigo_lote || undefined,
   origemSemente: row.origem_semente || undefined,
-  quantidadePlantada: row.quantidade_plantada != null ? Number(row.quantidade_plantada) : undefined,
+  quantidadePlantada:
+    row.quantidade_plantada != null
+      ? Number(row.quantidade_plantada)
+      : undefined,
   quantidadeBandejas: row.quantidade_bandejas ?? undefined,
   mudasPorBandeja: row.mudas_por_bandeja ?? undefined,
-  precoEstimadoUnidade: row.preco_estimado_unidade != null ? Number(row.preco_estimado_unidade) : undefined,
+  precoEstimadoUnidade:
+    row.preco_estimado_unidade != null
+      ? Number(row.preco_estimado_unidade)
+      : undefined,
   unidadePrecoEstimado: row.unidade_preco_estimado || undefined,
-  custoEstimadoInicial: row.custo_estimado_inicial != null ? Number(row.custo_estimado_inicial) : undefined,
+  custoEstimadoInicial:
+    row.custo_estimado_inicial != null
+      ? Number(row.custo_estimado_inicial)
+      : undefined,
   unidadeQuantidade: row.unidade_quantidade || undefined,
   observacoes: row.observacoes || undefined,
   caixaPerfis: Array.isArray(row.caixa_pesos)
@@ -108,37 +124,59 @@ const buildPlantioPatch = (data: Partial<Plantio>) => {
   if (data.cultura !== undefined) patch.cultura = data.cultura;
   if (data.variedade !== undefined) patch.variedade = data.variedade;
   if (data.dataInicio !== undefined) patch.data_inicio = toIso(data.dataInicio);
-  if (data.dataPlantio !== undefined) patch.data_plantio = toIso(data.dataPlantio);
-  if (data.dataPrevisaoColheita !== undefined) patch.data_previsao_colheita = toIso(data.dataPrevisaoColheita);
-  if (data.dataEncerramento !== undefined) patch.data_encerramento = toIso(data.dataEncerramento);
+  if (data.dataPlantio !== undefined)
+    patch.data_plantio = toIso(data.dataPlantio);
+  if (data.dataPrevisaoColheita !== undefined)
+    patch.data_previsao_colheita = toIso(data.dataPrevisaoColheita);
+  if (data.dataEncerramento !== undefined)
+    patch.data_encerramento = toIso(data.dataEncerramento);
   if (data.status !== undefined) patch.status = data.status;
-  if (data.ocupacaoEstimada !== undefined) patch.ocupacao_estimada = data.ocupacaoEstimada;
-  if (data.custoAcumulado !== undefined) patch.custo_acumulado = data.custoAcumulado;
+  if (data.ocupacaoEstimada !== undefined)
+    patch.ocupacao_estimada = data.ocupacaoEstimada;
+  if (data.custoAcumulado !== undefined)
+    patch.custo_acumulado = data.custoAcumulado;
   if (data.custoTotal !== undefined) patch.custo_total = data.custoTotal;
   if (data.cicloDias !== undefined) patch.ciclo_dias = data.cicloDias;
   if (data.cicloDesbloqueadoPorAdmin !== undefined) {
     patch.ciclo_desbloqueado_por_admin = data.cicloDesbloqueadoPorAdmin;
   }
-  if (data.desbloqueioAdminByUid !== undefined) patch.desbloqueio_admin_by_uid = data.desbloqueioAdminByUid;
-  if (data.desbloqueioAdminByName !== undefined) patch.desbloqueio_admin_by_name = data.desbloqueioAdminByName;
-  if (data.desbloqueioAdminAt !== undefined) patch.desbloqueio_admin_at = toIso(data.desbloqueioAdminAt);
-  if (data.desbloqueioAdminReason !== undefined) patch.desbloqueio_admin_reason = data.desbloqueioAdminReason;
+  if (data.desbloqueioAdminByUid !== undefined)
+    patch.desbloqueio_admin_by_uid = data.desbloqueioAdminByUid;
+  if (data.desbloqueioAdminByName !== undefined)
+    patch.desbloqueio_admin_by_name = data.desbloqueioAdminByName;
+  if (data.desbloqueioAdminAt !== undefined)
+    patch.desbloqueio_admin_at = toIso(data.desbloqueioAdminAt);
+  if (data.desbloqueioAdminReason !== undefined)
+    patch.desbloqueio_admin_reason = data.desbloqueioAdminReason;
   if (data.codigoLote !== undefined) patch.codigo_lote = data.codigoLote;
-  if (data.origemSemente !== undefined) patch.origem_semente = data.origemSemente;
-  if (data.quantidadePlantada !== undefined) patch.quantidade_plantada = data.quantidadePlantada;
-  if (data.quantidadeBandejas !== undefined) patch.quantidade_bandejas = data.quantidadeBandejas;
-  if (data.mudasPorBandeja !== undefined) patch.mudas_por_bandeja = data.mudasPorBandeja;
-  if (data.precoEstimadoUnidade !== undefined) patch.preco_estimado_unidade = data.precoEstimadoUnidade;
-  if (data.unidadePrecoEstimado !== undefined) patch.unidade_preco_estimado = data.unidadePrecoEstimado;
-  if (data.custoEstimadoInicial !== undefined) patch.custo_estimado_inicial = data.custoEstimadoInicial;
-  if (data.unidadeQuantidade !== undefined) patch.unidade_quantidade = data.unidadeQuantidade;
+  if (data.origemSemente !== undefined)
+    patch.origem_semente = data.origemSemente;
+  if (data.quantidadePlantada !== undefined)
+    patch.quantidade_plantada = data.quantidadePlantada;
+  if (data.quantidadeBandejas !== undefined)
+    patch.quantidade_bandejas = data.quantidadeBandejas;
+  if (data.mudasPorBandeja !== undefined)
+    patch.mudas_por_bandeja = data.mudasPorBandeja;
+  if (data.precoEstimadoUnidade !== undefined)
+    patch.preco_estimado_unidade = data.precoEstimadoUnidade;
+  if (data.unidadePrecoEstimado !== undefined)
+    patch.unidade_preco_estimado = data.unidadePrecoEstimado;
+  if (data.custoEstimadoInicial !== undefined)
+    patch.custo_estimado_inicial = data.custoEstimadoInicial;
+  if (data.unidadeQuantidade !== undefined)
+    patch.unidade_quantidade = data.unidadeQuantidade;
   if (data.observacoes !== undefined) patch.observacoes = data.observacoes;
   if (data.caixaPerfis !== undefined) patch.caixa_pesos = data.caixaPerfis;
   return patch;
 };
 
-export const createPlantio = async (data: Partial<Plantio>, userId: string, options?: OfflineWriteOptions) => {
+export const createPlantio = async (
+  data: Partial<Plantio>,
+  userId: string,
+  options?: OfflineWriteOptions
+) => {
   const tenantId = assertTenantId(userId);
+  assertProductionOriginNotMixed(data, 'Plantio');
   return runOfflineWrite({
     action: 'createPlantio',
     payload: { data, userId: tenantId },
@@ -152,24 +190,30 @@ export const createPlantio = async (data: Partial<Plantio>, userId: string, opti
         .select('id')
         .single();
       if (error || !inserted?.id) {
-        throw new Error(`Não foi possível criar plantio. ${error?.message || ''}`.trim());
+        throw new Error(
+          `Não foi possível criar plantio. ${error?.message || ''}`.trim()
+        );
       }
 
       const custoInicial = Number(data.custoEstimadoInicial || 0);
       if (custoInicial > 0) {
+        const dataRegistroCusto = new Date().toISOString();
         const { error: despesaError } = await supabase.from('despesas').insert({
           tenant_id: tenantId,
           descricao: `Custo inicial: ${data.cultura || 'Plantio'} (${data.quantidadePlantada || 0} ${data.unidadeQuantidade || ''})`,
           categoria: 'outro',
           valor: custoInicial,
-          data_despesa: new Date().toISOString(),
+          data_despesa: dataRegistroCusto,
+          data_pagamento: dataRegistroCusto,
           status_pagamento: 'pago',
           plantio_id: inserted.id,
           estufa_id: data.estufaId || null,
           tipo_gasto: 'investimento_inicial',
         });
         if (despesaError) {
-          throw new Error(`Plantio criado, mas nao foi possivel registrar o gasto inicial. ${despesaError.message}`);
+          throw new Error(
+            `Plantio criado, mas nao foi possivel registrar o gasto inicial. ${despesaError.message}`
+          );
         }
       }
 
@@ -196,19 +240,29 @@ export const createPlantio = async (data: Partial<Plantio>, userId: string, opti
   });
 };
 
-export const listPlantiosByEstufa = async (userId: string, estufaId: string): Promise<Plantio[]> => {
+export const listPlantiosByEstufa = async (
+  userId: string,
+  estufaId: string
+): Promise<Plantio[]> => {
   const tenantId = assertTenantId(userId);
   if (!estufaId) return [];
 
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase.from('plantios').select('*').eq('tenant_id', tenantId).eq('estufa_id', estufaId);
+  const { data, error } = await supabase
+    .from('plantios')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('estufa_id', estufaId);
   if (error) {
     throw new Error(`Erro ao listar plantios por estufa. ${error.message}`);
   }
   return (data || []).map(mapPlantioRowToDomain);
 };
 
-export const getPlantioById = async (plantioId: string, userId: string): Promise<Plantio | null> => {
+export const getPlantioById = async (
+  plantioId: string,
+  userId: string
+): Promise<Plantio | null> => {
   const tenantId = assertTenantId(userId);
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
@@ -243,7 +297,9 @@ export const updatePlantioStatus = async (
         .eq('id', plantioId)
         .eq('tenant_id', tenantId);
       if (error) {
-        throw new Error(`Erro ao atualizar status do plantio. ${error.message}`);
+        throw new Error(
+          `Erro ao atualizar status do plantio. ${error.message}`
+        );
       }
     },
   });
@@ -285,7 +341,12 @@ export const unlockPlantioCycleForEarlySale = async (
   return payload;
 };
 
-export const updatePlantio = async (id: string, data: Partial<Plantio>, userId: string, options?: OfflineWriteOptions) => {
+export const updatePlantio = async (
+  id: string,
+  data: Partial<Plantio>,
+  userId: string,
+  options?: OfflineWriteOptions
+) => {
   const tenantId = assertTenantId(userId);
   return runOfflineWrite({
     action: 'updatePlantio',
@@ -297,6 +358,16 @@ export const updatePlantio = async (id: string, data: Partial<Plantio>, userId: 
       if (!plantio) {
         throw new Error('Plantio não encontrado.');
       }
+
+      assertProductionOriginNotMixed(
+        {
+          estufaId:
+            data.estufaId !== undefined ? data.estufaId : plantio.estufaId,
+          talhaoId:
+            data.talhaoId !== undefined ? data.talhaoId : plantio.talhaoId,
+        },
+        'Plantio'
+      );
 
       const supabase = getSupabaseClient();
       const patch = buildPlantioPatch(data);
@@ -342,35 +413,143 @@ export const deletePlantio = async (id: string, userId: string) => {
   return deletePlantioSafely(id, userId);
 };
 
-export const deletePlantioSafely = async (id: string, userId: string) => {
-  const tenantId = assertTenantId(userId);
+export type RemoveFieldCycleResult = {
+  deleted: true;
+  archived: false;
+  hadHistory: boolean;
+  deletedVendas: number;
+  deletedColheitas: number;
+  deletedAplicacoes: number;
+  deletedManejos: number;
+  deletedTarefas: number;
+  deletedDespesas: number;
+  deletedOperationalDespesas: number;
+  deletedTraceEvents: number;
+  restoredInsumos: number;
+};
+
+export const removeFieldCycle = async (
+  id: string,
+  userId: string
+): Promise<RemoveFieldCycleResult> => {
+  assertTenantId(userId);
+  if (!id) throw new Error('Ciclo inválido.');
+
   const supabase = getSupabaseClient();
-  const [vendasRes, colheitasRes, aplicacoesRes, despesasRes] = await Promise.all([
-    supabase.from('vendas').select('id').eq('tenant_id', tenantId).eq('plantio_id', id),
-    supabase.from('colheitas').select('id').eq('tenant_id', tenantId).eq('plantio_id', id),
-    supabase.from('aplicacoes').select('id').eq('tenant_id', tenantId).eq('plantio_id', id),
-    supabase.from('despesas').select('id,tipo_gasto').eq('tenant_id', tenantId).eq('plantio_id', id),
-  ]);
-  if (vendasRes.error || colheitasRes.error || aplicacoesRes.error || despesasRes.error) {
-    throw new Error('Não foi possível validar vínculos do plantio para exclusão.');
-  }
+  const { data, error } = await supabase.rpc('remove_field_cycle', {
+    p_plantio_id: id,
+  });
 
-  const hasSales = (vendasRes.data || []).length > 0 || (colheitasRes.data || []).length > 0;
-  const hasApplications = (aplicacoesRes.data || []).length > 0;
-  const nonInitialExpenses = (despesasRes.data || []).filter((d: any) => d.tipo_gasto !== 'investimento_inicial');
-
-  if (hasSales || hasApplications || nonInitialExpenses.length > 0) {
+  if (error) {
+    console.error('Supabase RPC remove_field_cycle error:', error);
     throw new Error(
-      'Exclusão bloqueada: este ciclo possui movimentações (vendas, aplicações ou despesas operacionais). Use cancelamento para manter histórico.'
+      error.message || 'Não foi possível excluir permanentemente o ciclo.'
     );
   }
 
-  const { error: delExpError } = await supabase.from('despesas').delete().eq('tenant_id', tenantId).eq('plantio_id', id);
-  if (delExpError) {
-    throw new Error(`Erro ao remover despesas de investimento. ${delExpError.message}`);
+  if (
+    !data ||
+    typeof data !== 'object' ||
+    (data as { deleted?: unknown }).deleted !== true
+  ) {
+    throw new Error('O banco não confirmou a exclusão permanente do ciclo.');
   }
 
-  const { error: delPlantioError } = await supabase.from('plantios').delete().eq('id', id).eq('tenant_id', tenantId);
+  return data as RemoveFieldCycleResult;
+};
+
+export const deletePlantioSafely = async (id: string, userId: string) => {
+  const tenantId = assertTenantId(userId);
+  const supabase = getSupabaseClient();
+  const [
+    vendasRes,
+    colheitasRes,
+    aplicacoesRes,
+    manejosRes,
+    tarefasRes,
+    despesasRes,
+  ] = await Promise.all([
+    supabase
+      .from('vendas')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('plantio_id', id),
+    supabase
+      .from('colheitas')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('plantio_id', id),
+    supabase
+      .from('aplicacoes')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('plantio_id', id),
+    supabase
+      .from('manejos')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('plantio_id', id),
+    supabase
+      .from('tarefas_agricolas')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('plantio_id', id),
+    supabase
+      .from('despesas')
+      .select('id,tipo_gasto')
+      .eq('tenant_id', tenantId)
+      .eq('plantio_id', id),
+  ]);
+  if (
+    vendasRes.error ||
+    colheitasRes.error ||
+    aplicacoesRes.error ||
+    manejosRes.error ||
+    tarefasRes.error ||
+    despesasRes.error
+  ) {
+    throw new Error(
+      'Não foi possível validar vínculos do plantio para exclusão.'
+    );
+  }
+
+  const hasSales =
+    (vendasRes.data || []).length > 0 || (colheitasRes.data || []).length > 0;
+  const hasApplications = (aplicacoesRes.data || []).length > 0;
+  const hasManagement = (manejosRes.data || []).length > 0;
+  const hasTasks = (tarefasRes.data || []).length > 0;
+  const nonInitialExpenses = (despesasRes.data || []).filter(
+    (d: any) => d.tipo_gasto !== 'investimento_inicial'
+  );
+
+  if (
+    hasSales ||
+    hasApplications ||
+    hasManagement ||
+    hasTasks ||
+    nonInitialExpenses.length > 0
+  ) {
+    throw new Error(
+      'Exclusão bloqueada: este ciclo possui movimentações (vendas, colheitas, aplicações, manejos, tarefas ou despesas). Use cancelamento para manter o histórico.'
+    );
+  }
+
+  const { error: delExpError } = await supabase
+    .from('despesas')
+    .delete()
+    .eq('tenant_id', tenantId)
+    .eq('plantio_id', id);
+  if (delExpError) {
+    throw new Error(
+      `Erro ao remover despesas de investimento. ${delExpError.message}`
+    );
+  }
+
+  const { error: delPlantioError } = await supabase
+    .from('plantios')
+    .delete()
+    .eq('id', id)
+    .eq('tenant_id', tenantId);
   if (delPlantioError) {
     throw new Error(`Erro ao excluir plantio. ${delPlantioError.message}`);
   }
@@ -379,25 +558,42 @@ export const deletePlantioSafely = async (id: string, userId: string) => {
 export const listAllPlantios = async (userId: string): Promise<Plantio[]> => {
   const tenantId = assertTenantId(userId);
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase.from('plantios').select('*').eq('tenant_id', tenantId);
+  const { data, error } = await supabase
+    .from('plantios')
+    .select('*')
+    .eq('tenant_id', tenantId);
   if (error) {
     throw new Error(`Erro ao listar plantios. ${error.message}`);
   }
   return (data || []).map(mapPlantioRowToDomain);
 };
 
-export const listActivePlantiosByUser = async (userId: string): Promise<Plantio[]> => {
+export const listActivePlantiosByUser = async (
+  userId: string
+): Promise<Plantio[]> => {
   const tenantId = assertTenantId(userId);
-  const activeStatuses = ['em_desenvolvimento', 'em_colheita', 'em_crescimento', 'colheita_iniciada'];
+  const activeStatuses = [
+    'em_desenvolvimento',
+    'em_colheita',
+    'em_crescimento',
+    'colheita_iniciada',
+  ];
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase.from('plantios').select('*').eq('tenant_id', tenantId).in('status', activeStatuses);
+  const { data, error } = await supabase
+    .from('plantios')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .in('status', activeStatuses);
   if (error) {
     throw new Error(`Erro ao listar plantios ativos. ${error.message}`);
   }
   return (data || []).map(mapPlantioRowToDomain);
 };
 
-export const cancelActivePlantiosByEstufa = async (userId: string, estufaId: string) => {
+export const cancelActivePlantiosByEstufa = async (
+  userId: string,
+  estufaId: string
+) => {
   const tenantId = assertTenantId(userId);
   if (!estufaId) return;
 
@@ -416,7 +612,9 @@ export const cancelActivePlantiosByEstufa = async (userId: string, estufaId: str
     .eq('estufa_id', estufaId)
     .in('status', activeStatuses as string[]);
   if (queryError) {
-    throw new Error(`Erro ao listar plantios ativos da estufa. ${queryError.message}`);
+    throw new Error(
+      `Erro ao listar plantios ativos da estufa. ${queryError.message}`
+    );
   }
   if (!data?.length) return;
 
@@ -430,7 +628,9 @@ export const cancelActivePlantiosByEstufa = async (userId: string, estufaId: str
     .eq('estufa_id', estufaId)
     .in('status', activeStatuses as string[]);
   if (error) {
-    throw new Error(`Erro ao cancelar plantios ativos da estufa. ${error.message}`);
+    throw new Error(
+      `Erro ao cancelar plantios ativos da estufa. ${error.message}`
+    );
   }
 
   await Promise.all(
@@ -454,4 +654,3 @@ export const cancelActivePlantiosByEstufa = async (userId: string, estufaId: str
     )
   );
 };
-

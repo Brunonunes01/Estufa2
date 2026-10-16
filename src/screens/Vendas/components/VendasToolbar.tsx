@@ -4,6 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, RADIUS, SHADOWS, SPACING } from '../../../constants/theme';
 
 interface VendasToolbarProps {
+  searchPlaceholder?: string;
   searchText: string;
   onSearchChange: (text: string) => void;
   onShowFilters: () => void;
@@ -12,10 +13,12 @@ interface VendasToolbarProps {
   onGenerateStatement?: () => void;
   activeFiltersCount: number;
   showStatementBtn: boolean;
+  statementClientName?: string | null;
   theme: any;
 }
 
 const VendasToolbar = ({
+  searchPlaceholder = 'Buscar cliente, local ou produto...',
   searchText,
   onSearchChange,
   onShowFilters,
@@ -24,6 +27,7 @@ const VendasToolbar = ({
   onGenerateStatement,
   activeFiltersCount,
   showStatementBtn,
+  statementClientName,
   theme,
 }: VendasToolbarProps) => {
   return (
@@ -32,7 +36,7 @@ const VendasToolbar = ({
         <MaterialCommunityIcons name="magnify" size={20} color={theme.textSecondary} />
         <TextInput
           style={[styles.searchInput, { color: theme.textPrimary }]}
-          placeholder="Buscar cliente, estufa ou produto..."
+          placeholder={searchPlaceholder}
           placeholderTextColor={theme.textMuted}
           value={searchText}
           onChangeText={onSearchChange}
@@ -83,7 +87,9 @@ const VendasToolbar = ({
             onPress={onGenerateStatement}
           >
             <MaterialCommunityIcons name="account-details-outline" size={20} color={COLORS.success} />
-            <Text style={[styles.actionBtnText, { color: COLORS.success }]}>Gerar Extrato do Cliente</Text>
+            <Text style={[styles.actionBtnText, { color: COLORS.success }]}>
+              {statementClientName ? `Extrato: ${statementClientName}` : 'Gerar Extrato do Cliente'}
+            </Text>
           </TouchableOpacity>
         )}
       </View>

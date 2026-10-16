@@ -1,22 +1,46 @@
-import { useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { deleteDespesa, updateDespesaStatus } from '../services/despesaService';
 import { useTenantId } from './useTenantId';
 import { useDespesasListData } from './queries/useDespesasListData';
 import { queryKeys } from '../lib/queryClient';
+import { invalidateDespesasQueries } from '../lib/queryInvalidation';
+import { listAllPlantios } from '../services/plantioService';
+import {
+  FinanceProductionMode,
+  matchesDespesaProductionMode,
+} from '../services/financeProductionScope';
 
-export const useDespesasList = () => {
+export const useDespesasList = (productionMode?: FinanceProductionMode) => {
   const targetId = useTenantId();
-  const queryClient = useQueryClient();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [payingId, setPayingId] = useState<string | null>(null);
 
   const query = useDespesasListData(targetId);
+  const plantiosQuery = useQuery({
+    queryKey: queryKeys.plantiosList(targetId || 'none'),
+    enabled: !!targetId && !!productionMode,
+    queryFn: () => listAllPlantios(targetId as string),
+  });
   const despesasRaw = query.data || [];
+  const refetchDespesas = query.refetch;
+  const refetchPlantios = plantiosQuery.refetch;
+  const plantiosMap = useMemo(
+    () =>
+      Object.fromEntries(
+        (plantiosQuery.data || []).map((plantio) => [plantio.id, plantio])
+      ),
+    [plantiosQuery.data]
+  );
 
   const despesas = useMemo(() => {
-    return despesasRaw.filter(d => d.tipoGasto !== 'investimento_inicial');
-  }, [despesasRaw]);
+    return despesasRaw.filter(
+      (despesa) =>
+        despesa.tipoGasto !== 'investimento_inicial' &&
+        (!productionMode ||
+          matchesDespesaProductionMode(despesa, productionMode, plantiosMap))
+    );
+  }, [despesasRaw, plantiosMap, productionMode]);
 
   const totals = useMemo(() => {
     const totalGasto = despesas.reduce((acc, curr) => acc + curr.valor, 0);
@@ -29,12 +53,19 @@ export const useDespesasList = () => {
 
   const invalidateList = async () => {
     if (!targetId) return;
-    await queryClient.invalidateQueries({ queryKey: queryKeys.despesasList(targetId) });
+    await invalidateDespesasQueries(targetId);
   };
+
+  const refetch = useCallback(async () => {
+    await Promise.all([
+      refetchDespesas(),
+      productionMode ? refetchPlantios() : Promise.resolve(),
+    ]);
+  }, [productionMode, refetchDespesas, refetchPlantios]);
 
   const deleteMutation = useMutation({
     mutationFn: async (despesaId: string) => {
-      if (!targetId) throw new Error("Tenant inválido");
+      if (!targetId) throw new Error('Tenant inválido');
       setDeletingId(despesaId);
       await deleteDespesa(despesaId, targetId);
     },
@@ -43,10 +74,25 @@ export const useDespesasList = () => {
   });
 
   const markAsPaidMutation = useMutation({
-    mutationFn: async (despesaId: string) => {
-      if (!targetId) throw new Error("Tenant inválido");
+    mutationFn: async ({
+      despesaId,
+      pagamentoPara,
+      dataPagamento,
+    }: {
+      despesaId: string;
+      pagamentoPara: string;
+      dataPagamento: Date;
+    }) => {
+      if (!targetId) throw new Error('Tenant inválido');
       setPayingId(despesaId);
-      await updateDespesaStatus(despesaId, 'pago', targetId);
+      await updateDespesaStatus(
+        despesaId,
+        'pago',
+        targetId,
+        pagamentoPara,
+        undefined,
+        dataPagamento
+      );
     },
     onSuccess: invalidateList,
     onSettled: () => setPayingId(null),
@@ -57,10 +103,12 @@ export const useDespesasList = () => {
     despesas,
     totalGasto: totals.totalGasto,
     totalPendente: totals.totalPendente,
-    loading: query.isLoading,
-    refreshing: query.isFetching,
-    isError: query.isError,
-    refetch: query.refetch,
+    loading:
+      query.isLoading || (productionMode ? plantiosQuery.isLoading : false),
+    refreshing:
+      query.isFetching || (productionMode ? plantiosQuery.isFetching : false),
+    isError: query.isError || (productionMode ? plantiosQuery.isError : false),
+    refetch,
     deleteDespesa: deleteMutation.mutateAsync,
     markDespesaAsPaid: markAsPaidMutation.mutateAsync,
     deletingId,

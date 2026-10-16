@@ -30,25 +30,20 @@ const EstufasListScreen = ({ navigation, route }: any) => {
   const theme = useThemeMode();
   const { settings } = useAppSettings();
   const { showError, showWarning } = useFeedback();
-  const mode = route?.params?.mode as 'colheita' | 'plantio' | 'manejo' | 'hidro_layout' | undefined;
+  const mode = route?.params?.mode as 'colheita' | 'plantio' | 'manejo' | undefined;
   const talhaoId = route?.params?.talhaoId as string | undefined;
   const targetId = selectedTenantId || user?.uid;
   const { data, isLoading, isFetching, isError, refetch } = useEstufasListData(targetId);
   const estufasRaw: Estufa[] = data?.estufas || [];
   const plantios: Plantio[] = data?.activePlantios || [];
   const loading = isLoading || isFetching;
-  const isHydroMode = settings.activeProductionMode === 'hidroponia';
-
+  
   const estufas = useMemo(
     () =>
       estufasRaw.filter((estufa) => {
-        const isHydroponicEstufa =
-          !!estufa.productionModes?.includes('hydroponics') ||
-          estufa.tipo === 'hidroponia' ||
-          !!estufa.hydroponicSystemType;
-        return isHydroMode ? isHydroponicEstufa : !isHydroponicEstufa;
+        return true;
       }),
-    [estufasRaw, isHydroMode]
+    [estufasRaw]
   );
 
   useEffect(() => {
@@ -78,10 +73,6 @@ const EstufasListScreen = ({ navigation, route }: any) => {
 
   const irParaVenda = useCallback(
     (estufaId: string) => {
-      if (isHydroMode) {
-        navigation.navigate('HidroponiaLotes', { estufaId });
-        return;
-      }
       const plantioAtivo = activePlantioByEstufa[estufaId];
       if (!plantioAtivo) {
         Alert.alert('Sem ciclo ativo', 'Crie um novo ciclo nesta estufa para registrar venda.', [
@@ -94,7 +85,7 @@ const EstufasListScreen = ({ navigation, route }: any) => {
 
       navigation.navigate('ColheitaForm', { plantioId: plantioAtivo.id, estufaId });
     },
-    [activePlantioByEstufa, navigation, showWarning, isHydroMode]
+    [activePlantioByEstufa, navigation, showWarning]
   );
 
   const compartilharLocalizacao = useCallback(async (estufa: Estufa) => {
@@ -150,10 +141,7 @@ const EstufasListScreen = ({ navigation, route }: any) => {
         irParaManejo(estufaId);
         return;
       }
-      if (mode === 'hidro_layout') {
-        navigation.navigate('HidroponiaEstufaLayout', { estufaId });
-        return;
-      }
+      
       navigation.navigate('EstufaDetail', { estufaId });
     },
     [mode, irParaVenda, irParaManejo, navigation]
@@ -166,8 +154,7 @@ const EstufasListScreen = ({ navigation, route }: any) => {
         ? 'Escolha a estufa para o plantio'
         : mode === 'manejo'
           ? 'Onde registrar o manejo?'
-          : mode === 'hidro_layout'
-            ? 'Escolha a estufa para layout'
+          
           : 'Hubs de Estufa';
 
   const headerSubtitle =
@@ -177,11 +164,7 @@ const EstufasListScreen = ({ navigation, route }: any) => {
         ? 'Selecione a estufa para iniciar uma nova produção.'
         : mode === 'manejo'
           ? 'Selecione a estufa para abrir o diário de manejo.'
-          : mode === 'hidro_layout'
-            ? 'Selecione a estufa para abrir movimentação e ocupação de bancadas.'
-          : isHydroMode
-            ? 'Monitore as estufas hidropônicas e acesse layout/produção com um toque.'
-            : 'Monitore status, ciclo e venda por unidade com um toque.';
+          : 'Monitore status, ciclo e venda por unidade com um toque.';
 
   const renderItem = ({ item }: { item: Estufa }) => {
     const isAtiva = item.status === 'ativa';
@@ -248,7 +231,7 @@ const EstufasListScreen = ({ navigation, route }: any) => {
         </View>
 
         <Text style={[styles.cycleInfo, { color: theme.textPrimary }]} numberOfLines={1}>
-          {isHydroMode ? 'Operação hidropônica' : plantioAtivo ? `Ciclo ativo: ${plantioAtivo.cultura}` : 'Sem ciclo ativo'}
+          {plantioAtivo ? `Ciclo ativo: ${plantioAtivo.cultura}` : 'Sem ciclo ativo'}
         </Text>
 
         {!mode && (
@@ -267,14 +250,7 @@ const EstufasListScreen = ({ navigation, route }: any) => {
               <Text style={[styles.actionBtnText, { color: theme.textPrimary }]}>Hub</Text>
             </TouchableOpacity>
 
-            {isHydroMode ? (
-              <TouchableOpacity
-                style={[styles.actionBtn, { borderColor: theme.border }]}
-                onPress={() => navigation.navigate('HidroponiaEstufaLayout', { estufaId: item.id })}
-              >
-                <Text style={[styles.actionBtnText, { color: theme.textPrimary }]}>Layout</Text>
-              </TouchableOpacity>
-            ) : (
+            { (
               <TouchableOpacity
                 style={[styles.actionBtn, { borderColor: theme.border }]}
                 onPress={() =>
@@ -290,8 +266,8 @@ const EstufasListScreen = ({ navigation, route }: any) => {
             )}
 
             <TouchableOpacity style={styles.actionBtnPrimary} onPress={() => irParaVenda(item.id)}>
-              <MaterialCommunityIcons name={isHydroMode ? 'water' : 'basket-plus'} size={14} color={COLORS.textLight} />
-              <Text style={styles.actionBtnPrimaryText}>{isHydroMode ? 'Hidroponia' : 'Vender'}</Text>
+              <MaterialCommunityIcons name={'basket-plus'} size={14} color={COLORS.textLight} />
+              <Text style={styles.actionBtnPrimaryText}>{'Vender'}</Text>
             </TouchableOpacity>
           </View>
         )}

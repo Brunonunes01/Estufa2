@@ -20,12 +20,18 @@ interface DespesaItemCardProps {
 
 const getIcon = (cat: string) => {
   switch (cat) {
-    case 'energia': return 'lightning-bolt';
-    case 'agua': return 'water';
-    case 'mao_de_obra': return 'account-hard-hat';
-    case 'combustivel': return 'gas-station';
-    case 'manutencao': return 'tools';
-    default: return 'cash-minus';
+    case 'energia':
+      return 'lightning-bolt';
+    case 'agua':
+      return 'water';
+    case 'mao_de_obra':
+      return 'account-hard-hat';
+    case 'combustivel':
+      return 'gas-station';
+    case 'manutencao':
+      return 'tools';
+    default:
+      return 'cash-minus';
   }
 };
 
@@ -54,14 +60,17 @@ const DespesaItemCard = ({
         <View style={styles.cardTitleArea}>
           <Text style={[styles.title, { color: theme.textPrimary }]}>{item.descricao}</Text>
           <Text style={[styles.categoryText, { color: theme.textSecondary }]}>{item.categoria.replace(/_/g, ' ')}</Text>
-          <Text style={[styles.date, { color: theme.textMuted }]}>
-            {formatDateSafe(item.dataDespesa)}
-          </Text>
+          <Text style={[styles.date, { color: theme.textMuted }]}>{formatDateSafe(item.dataDespesa)}</Text>
         </View>
-        <View style={[styles.statusPill, { backgroundColor: isPendente ? theme.warningSoft : theme.successSoft }]}>
-          <Text style={[styles.statusPillText, { color: isPendente ? COLORS.warning : COLORS.success }]}>
-            {isPendente ? 'PENDENTE' : 'PAGO'}
-          </Text>
+        <View
+          style={[
+            styles.statusPill,
+            {
+              backgroundColor: isPendente ? theme.warningSoft : theme.successSoft,
+            },
+          ]}
+        >
+          <Text style={[styles.statusPillText, { color: isPendente ? COLORS.warning : COLORS.success }]}>{isPendente ? 'PENDENTE' : 'PAGO'}</Text>
         </View>
       </View>
 
@@ -71,7 +80,7 @@ const DespesaItemCard = ({
           <Text style={[styles.infoValueStrong, { color: COLORS.danger }]}>R$ {item.valor.toFixed(2)}</Text>
         </View>
         <View style={[styles.infoCard, { backgroundColor: theme.surfaceMuted }]}>
-          <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Destino</Text>
+          <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Caixa responsável</Text>
           <Text style={[styles.infoValue, { color: theme.textPrimary }]} numberOfLines={1}>
             {caixaPessoaNome}
           </Text>
@@ -80,9 +89,7 @@ const DespesaItemCard = ({
 
       <View style={[styles.metaPanel, { backgroundColor: theme.surfaceMuted }]}>
         {isPendente && item.dataVencimento ? (
-          <Text style={[styles.metaText, { color: theme.textSecondary }]}>
-            Vencimento: {formatDateSafe(item.dataVencimento)}
-          </Text>
+          <Text style={[styles.metaText, { color: theme.textSecondary }]}>Vencimento: {formatDateSafe(item.dataVencimento)}</Text>
         ) : (
           <Text style={[styles.metaText, { color: theme.textSecondary }]}>Pagamento registrado</Text>
         )}
@@ -96,14 +103,12 @@ const DespesaItemCard = ({
 
       <View style={[styles.actionsRow, { borderTopColor: theme.divider }]}>
         {isOwner && canWrite ? (
-          <TouchableOpacity 
-            style={styles.deleteBtn} 
-            onPress={() => onDelete(item)}
-            disabled={isDeleting}
-          >
+          <TouchableOpacity style={styles.deleteBtn} onPress={() => onDelete(item)} disabled={isDeleting}>
             <Text style={styles.deleteText}>Excluir</Text>
           </TouchableOpacity>
-        ) : <View />}
+        ) : (
+          <View />
+        )}
 
         {isPendente && canWrite && (
           <LoadingButton
@@ -139,16 +144,37 @@ const styles = StyleSheet.create({
   },
   cardTitleArea: { flex: 1 },
   title: { fontSize: 16, fontWeight: '900', letterSpacing: -0.2 },
-  categoryText: { marginTop: 2, fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  categoryText: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   date: { marginTop: 4, fontSize: 12, fontWeight: '600' },
   statusPill: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 },
   statusPillText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
 
   infoGrid: { flexDirection: 'row', gap: 10, marginTop: 16 },
-  infoCard: { flex: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10 },
-  infoLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  infoCard: {
+    flex: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  infoLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   infoValue: { marginTop: 4, fontSize: 13, fontWeight: '800' },
-  infoValueStrong: { marginTop: 4, fontSize: 24, fontWeight: '900', letterSpacing: -0.5 },
+  infoValueStrong: {
+    marginTop: 4,
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+  },
 
   metaPanel: {
     marginTop: 12,

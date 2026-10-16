@@ -203,12 +203,6 @@ const SettingsScreen = ({ navigation }: any) => {
     }
   };
 
-  const handleCampoModePress = () => {
-    showWarning(
-      'Modo Campo em desenvolvimento. Esta opção ainda não pode ser ativada.'
-    );
-  };
-
   const runDatabaseExport = async () => {
     if (exportingDatabase) return;
     if (!isOwner) {
@@ -385,118 +379,6 @@ const SettingsScreen = ({ navigation }: any) => {
             }
           />
         </View>
-      </View>
-
-      <View style={styles.card}>
-        <SectionHeading
-          title="Modo de Operação"
-          subtitle="Mostra apenas as telas do modo selecionado"
-        />
-        <View style={styles.modeRow}>
-          <TouchableOpacity
-            style={[
-              styles.modeBtn,
-              settings.activeProductionMode === 'ciclo_longo' &&
-                styles.modeBtnActive,
-            ]}
-            onPress={() =>
-              updateSettings({ activeProductionMode: 'ciclo_longo' })
-            }
-          >
-            <MaterialCommunityIcons
-              name="sprout"
-              size={16}
-              color={
-                settings.activeProductionMode === 'ciclo_longo'
-                  ? COLORS.textLight
-                  : COLORS.textSecondary
-              }
-            />
-            <Text
-              style={[
-                styles.modeBtnText,
-                settings.activeProductionMode === 'ciclo_longo' &&
-                  styles.modeBtnTextActive,
-              ]}
-            >
-              Ciclo Longo
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.modeBtn,
-              settings.activeProductionMode === 'campo' && styles.modeBtnActive,
-            ]}
-            onPress={handleCampoModePress}
-          >
-            <MaterialCommunityIcons
-              name="tractor-variant"
-              size={16}
-              color={
-                settings.activeProductionMode === 'campo'
-                  ? COLORS.textLight
-                  : COLORS.textSecondary
-              }
-            />
-            <Text
-              style={[
-                styles.modeBtnText,
-                settings.activeProductionMode === 'campo' &&
-                  styles.modeBtnTextActive,
-              ]}
-            >
-              Campo
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.modeBtn,
-              settings.activeProductionMode === 'hidroponia' &&
-                styles.modeBtnActive,
-            ]}
-            onPress={() =>
-              updateSettings({ activeProductionMode: 'hidroponia' })
-            }
-          >
-            <MaterialCommunityIcons
-              name="water"
-              size={16}
-              color={
-                settings.activeProductionMode === 'hidroponia'
-                  ? COLORS.textLight
-                  : COLORS.textSecondary
-              }
-            />
-            <Text
-              style={[
-                styles.modeBtnText,
-                settings.activeProductionMode === 'hidroponia' &&
-                  styles.modeBtnTextActive,
-              ]}
-            >
-              Hidroponia
-            </Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.helpText}>
-          Ao trocar o modo, o app reinicia a navegação para exibir somente os
-          módulos da operação escolhida.
-        </Text>
-        {settings.activeProductionMode === 'campo' ? (
-          <TouchableOpacity
-            style={styles.secondaryBtn}
-            onPress={() => navigation.navigate('TalhoesList')}
-          >
-            <MaterialCommunityIcons
-              name="map-marker-radius-outline"
-              size={18}
-              color={COLORS.primary}
-            />
-            <Text style={styles.secondaryBtnText}>
-              Gerenciar Talhoes de Campo
-            </Text>
-          </TouchableOpacity>
-        ) : null}
       </View>
 
       <View style={styles.card}>
@@ -733,42 +615,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   helpText: { marginTop: 8, color: COLORS.textSecondary, fontSize: 12 },
-  modeRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
-  modeBtn: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surfaceMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
-  },
-  modeBtnActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primary,
-  },
-  modeBtnText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
-  modeBtnTextActive: { color: COLORS.textLight },
-  secondaryBtn: {
-    marginTop: 12,
-    minHeight: 44,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surfaceMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-  },
-  secondaryBtnText: {
-    color: COLORS.textPrimary,
-    fontSize: 13,
-    fontWeight: '800',
-  },
   whatsappBtn: {
     minHeight: 46,
     borderRadius: RADIUS.sm,

@@ -17,8 +17,7 @@ import {
   getPasswordVerificationErrorMessage,
   resolveServiceErrorMessage,
 } from '../../services/securityUiHelpers';
-import { HydroponicSystemType, ProductionMode } from '../../types/domain';
-import { HYDRO_SYSTEM_OPTIONS } from '../../modules/hidroponia/constants';
+import { ProductionMode } from '../../types/domain';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../lib/queryClient';
@@ -41,7 +40,6 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
   const queryClient = useQueryClient();
   const editingId = route.params?.estufaId;
   const isEditMode = !!editingId;
-  const isHydroMode = settings.activeProductionMode === 'hidroponia';
 
   // Estados base e rastreabilidade
   const [nome, setNome] = useState('');
@@ -62,8 +60,6 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
 
   // --- NOVO ESTADO: STATUS ---
   const [status, setStatus] = useState<"ativa" | "manutencao" | "desativada">('ativa');
-  const [isHydroponic, setIsHydroponic] = useState(isHydroMode);
-  const [hydroponicSystemType, setHydroponicSystemType] = useState<HydroponicSystemType>('nft');
   
   const [loading, setLoading] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
@@ -77,28 +73,18 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: isEditMode
-        ? 'Editar Estufa'
-        : isHydroMode
-        ? 'Nova Estufa Hidropônica'
-        : 'Nova Estufa de Ciclo Longo',
+      title: isEditMode ? 'Editar Estufa' : 'Nova Estufa de Ciclo Longo',
       headerRight: () => isEditMode && canDeleteEstufa ? (
         <TouchableOpacity onPress={handleDelete} style={{marginRight: 15}}>
           <MaterialCommunityIcons name="trash-can-outline" size={24} color={COLORS.textLight} />
         </TouchableOpacity>
       ) : null,
     });
-  }, [navigation, isEditMode, canDeleteEstufa, isHydroMode]);
+  }, [navigation, isEditMode, canDeleteEstufa]);
 
   useEffect(() => {
     if (isEditMode) loadEstufa();
   }, [editingId]);
-
-  useEffect(() => {
-    if (!isEditMode) {
-      setIsHydroponic(isHydroMode);
-    }
-  }, [isEditMode, isHydroMode]);
 
   const loadEstufa = async () => {
     const targetId = selectedTenantId || user?.uid;
@@ -124,8 +110,6 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
         }
         // Carrega o status (se não existir, cai no padrão 'ativa')
         setStatus(data.status || 'ativa');
-        setIsHydroponic(!!data.productionModes?.includes('hydroponics') || data.tipo === 'hidroponia');
-        setHydroponicSystemType(data.hydroponicSystemType || 'nft');
       }
     } catch (error) {
       console.error(error);
@@ -303,8 +287,7 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
     const altNum = parseFloat(altura.replace(',', '.')) || 0;
     const areaCalc = compNum * largNum;
     
-    const persistAsHydroponic = isEditMode ? isHydroponic : isHydroMode;
-    const productionModes: ProductionMode[] = persistAsHydroponic ? ['hydroponics'] : ['long_cycle'];
+    const productionModes: ProductionMode[] = ['long_cycle'];
     const estufaData = {
       nome,
       cidade,
@@ -320,9 +303,8 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
       observacoes,
       dataInicioOperacao: Timestamp.fromDate(dataConstrucao),
       status, // <-- SALVANDO O STATUS AQUI
-      tipo: persistAsHydroponic ? 'hidroponia' : 'solo',
+      tipo: 'solo',
       productionModes,
-      hydroponicSystemType: persistAsHydroponic ? hydroponicSystemType : null,
     };
 
     try {
@@ -365,14 +347,12 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
 
         <View style={styles.modeBadge}>
           <MaterialCommunityIcons
-            name={isHydroMode ? 'water' : 'sprout'}
+            name="sprout"
             size={16}
-            color={isHydroMode ? COLORS.info : COLORS.success}
+            color={COLORS.success}
           />
           <Text style={styles.modeBadgeText}>
-            {isHydroMode
-              ? 'Cadastro no modo Hidroponia (esta estufa aparecerá só em Hidroponia).'
-              : 'Cadastro no modo Ciclo Longo (esta estufa aparecerá só no Ciclo Longo).'}
+            Cadastro no modo Ciclo Longo.
           </Text>
         </View>
 
@@ -400,26 +380,6 @@ const EstufaFormScreen = ({ route, navigation }: any) => {
             <Text style={[styles.statusText, status === 'desativada' && styles.statusTextActive]}>Desativada</Text>
           </TouchableOpacity>
         </View>
-
-        {(isHydroMode || isHydroponic) && (
-          <>
-            <Text style={styles.sectionTitle}>Configuração Hidropônica</Text>
-            <Text style={styles.label}>Sistema hidropônico</Text>
-            <View style={styles.systemContainer}>
-              {HYDRO_SYSTEM_OPTIONS.map((option) => (
-                <TouchableOpacity
-                  key={option.value}
-                  style={[styles.systemBtn, hydroponicSystemType === option.value && styles.systemBtnActive]}
-                  onPress={() => setHydroponicSystemType(option.value)}
-                >
-                  <Text style={[styles.systemText, hydroponicSystemType === option.value && styles.systemTextActive]}>
-                    {option.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </>
-        )}
 
         <Text style={styles.sectionTitle}>Dimensões e Estrutura</Text>
 

@@ -75,6 +75,10 @@ const TarefasScreen = ({ navigation }: TarefasScreenProps) => {
   const [priorityFilter, setPriorityFilter] = useState<'all' | TarefaAgricola['prioridade']>('all');
 
   const targetId = selectedTenantId || user?.uid;
+  const auditActor = useMemo(
+    () => (user?.uid ? { uid: user.uid, name: user.displayName || user.name || null } : null),
+    [user?.displayName, user?.name, user?.uid]
+  );
 
   const normalizeDueDate = (value: Date) => {
     const normalized = new Date(value);
@@ -184,7 +188,8 @@ const TarefasScreen = ({ navigation }: TarefasScreenProps) => {
           prioridade,
           observacoes: observacoes.trim() || null,
         },
-        targetId
+        targetId,
+        auditActor
       );
 
       setObservacoes('');
@@ -206,7 +211,7 @@ const TarefasScreen = ({ navigation }: TarefasScreenProps) => {
   const handleMarkDone = async (taskId: string) => {
     if (!targetId) return;
     try {
-      await updateTarefaStatus(taskId, 'concluida', targetId);
+      await updateTarefaStatus(taskId, 'concluida', targetId, { actor: auditActor });
       await loadData();
       await syncDashboard();
     } catch (error: any) {
@@ -217,7 +222,7 @@ const TarefasScreen = ({ navigation }: TarefasScreenProps) => {
   const handleMarkInProgress = async (taskId: string) => {
     if (!targetId) return;
     try {
-      await updateTarefaStatus(taskId, 'em_andamento', targetId);
+      await updateTarefaStatus(taskId, 'em_andamento', targetId, { actor: auditActor });
       await loadData();
       await syncDashboard();
     } catch (error: any) {
@@ -238,7 +243,7 @@ const TarefasScreen = ({ navigation }: TarefasScreenProps) => {
       return;
     }
     try {
-      await cancelTarefaAgricola(taskToCancel, cancelReason, targetId);
+      await cancelTarefaAgricola(taskToCancel, cancelReason, targetId, auditActor);
       setCancelModalVisible(false);
       setTaskToCancel(null);
       setCancelReason('');

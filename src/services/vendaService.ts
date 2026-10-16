@@ -9,13 +9,26 @@ import {
   createTraceabilityPublicTokenFromId,
 } from './publicTraceabilityService';
 import { OfflineWriteOptions } from './offline/offlineStorage';
-import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWrite';
+import {
+  buildOfflinePlaceholderId,
+  runOfflineWrite,
+} from './offline/offlineWrite';
 import { getSupabaseClient } from './supabaseClient';
+import {
+  AuditActor,
+  resolveAuditActorName,
+  resolveAuditActorUid,
+} from './auditActor';
+import { assertProductionOriginNotMixed } from './productionOriginGuard';
+import {
+  CHEQUE_EM_MAOS_PAYMENT_MARKER,
+  canConfirmVendaReceipt,
+  resolveVendaPaymentStatusForWrite,
+} from './paymentStatusHelpers';
 
 export interface VendaFormData {
   plantioId?: string;
   talhaoId?: string | null;
-  hydroLoteId?: string;
   originType?: Venda['originType'];
   originId?: string | null;
   itemDescricao?: string | null;
@@ -25,9 +38,13 @@ export interface VendaFormData {
   quantidade: number;
   unidade: string;
   precoUnitario: number;
+  valorRecebido?: number | null;
+  statusPagamento?: Venda['statusPagamento'];
   metodoPagamento?: string | null;
   pagamentoPara?: string | null;
   dataVenda?: Date;
+  dataRecebimento?: Date | null;
+  dataCompensacaoCheque?: Date | null;
   observacoes?: string | null;
   colheitaId?: string;
   cycleOverrideAudit?: {
@@ -38,7 +55,8 @@ export interface VendaFormData {
   } | null;
 }
 
-const tsFromIso = (value?: string | null) => (value ? Timestamp.fromDate(new Date(value)) : undefined);
+const tsFromIso = (value?: string | null) =>
+  value ? Timestamp.fromDate(new Date(value)) : undefined;
 
 const mapSupabaseVendaToDomain = (row: any): Venda => {
   const itens = Array.isArray(row.venda_itens)
@@ -61,7 +79,6 @@ const mapSupabaseVendaToDomain = (row: any): Venda => {
     talhaoId: row.talhao_id || undefined,
     originType: row.origin_type || undefined,
     originId: row.origin_id || null,
-    hydroLoteId: row.hydro_lote_id || null,
     traceabilityPublicToken: row.traceability_public_token || null,
     traceabilityPublicUrl: row.traceability_public_url || null,
     estufaId: row.estufa_id || undefined,
@@ -69,14 +86,21 @@ const mapSupabaseVendaToDomain = (row: any): Venda => {
     clienteId: row.cliente_id || null,
     dataVenda: Timestamp.fromDate(new Date(row.data_venda)),
     dataVencimento: tsFromIso(row.data_vencimento) || null,
+    dataRecebimento: tsFromIso(row.data_recebimento) || null,
+    dataCompensacaoCheque: tsFromIso(row.data_compensacao_cheque) || null,
     itens,
     valorTotal: Number(row.valor_total || 0),
+    valorRecebido:
+      row.valor_recebido != null ? Number(row.valor_recebido) : null,
     statusPagamento: row.status_pagamento,
     formaPagamento: row.forma_pagamento || undefined,
     metodoPagamento: row.metodo_pagamento || null,
     pagamentoPara: row.pagamento_para || null,
     observacoes: row.observacoes || undefined,
-    quantidade: row.quantidade != null ? Number(row.quantidade) : fallbackItem?.quantidade,
+    quantidade:
+      row.quantidade != null
+        ? Number(row.quantidade)
+        : fallbackItem?.quantidade,
     unidade: fallbackItem?.unidade,
     precoUnitario: fallbackItem?.valorUnitario,
     cicloDesbloqueadoPorAdmin: !!row.ciclo_desbloqueado_por_admin,
@@ -95,31 +119,50 @@ const buildSupabaseVendaPayload = (
   talhaoIdResolved?: string | null,
   traceabilityPublicToken?: string
 ) => {
-  const dataVenda = data.dataVenda ? data.dataVenda.toISOString() : new Date().toISOString();
-  const statusPagamento = toStatusPagamento(data.metodoPagamento);
-  const originType: Venda['originType'] = data.originType || (data.hydroLoteId ? 'hydro_lote' : 'plantio');
+  const dataVenda = data.dataVenda
+    ? data.dataVenda.toISOString()
+    : new Date().toISOString();
+  const statusPagamento = resolveVendaPaymentStatusForWrite(
+    data.metodoPagamento,
+    data.statusPagamento
+  );
+  const dataCompensacaoCheque =
+    data.metodoPagamento === 'cheque' && data.dataCompensacaoCheque
+      ? data.dataCompensacaoCheque.toISOString()
+      : null;
+  const originType: Venda['originType'] = data.originType || 'plantio';
   const originId =
     data.originId !== undefined
       ? data.originId
-      : originType === 'hydro_lote'
-      ? data.hydroLoteId || null
       : data.plantioId || null;
 
   const vencimento =
-    statusPagamento === 'pendente'
-      ? new Date(new Date(dataVenda).getTime() + 15 * 24 * 60 * 60 * 1000).toISOString()
-      : null;
+    data.metodoPagamento === 'cheque'
+      ? dataCompensacaoCheque
+      : statusPagamento === 'pendente'
+        ? new Date(
+            new Date(dataVenda).getTime() + 15 * 24 * 60 * 60 * 1000
+          ).toISOString()
+        : null;
 
-  const valorTotal = Number(data.quantidade || 0) * Number(data.precoUnitario || 0);
+  const valorTotal =
+    Number(data.quantidade || 0) * Number(data.precoUnitario || 0);
+  const valorRecebido =
+    statusPagamento === 'pago'
+      ? data.valorRecebido != null
+        ? Number(data.valorRecebido)
+        : valorTotal
+      : null;
   const token = traceabilityPublicToken || null;
-  const traceabilityPublicUrl = token ? buildPublicTraceabilityLookupUrl(token) || null : null;
+  const traceabilityPublicUrl = token
+    ? buildPublicTraceabilityLookupUrl(token) || null
+    : null;
 
   return {
     venda: {
       tenant_id: tenantId,
       plantio_id: data.plantioId || null,
       talhao_id: talhaoIdResolved || data.talhaoId || null,
-      hydro_lote_id: data.hydroLoteId || null,
       traceability_public_token: token,
       traceability_public_url: traceabilityPublicUrl,
       origin_type: originType,
@@ -129,24 +172,33 @@ const buildSupabaseVendaPayload = (
       cliente_id: data.clienteId || null,
       data_venda: dataVenda,
       data_vencimento: vencimento,
+      data_recebimento:
+        statusPagamento === 'pago'
+          ? data.dataRecebimento?.toISOString() || dataVenda
+          : null,
+      data_compensacao_cheque: dataCompensacaoCheque,
       valor_total: valorTotal,
+      valor_recebido: valorRecebido,
       status_pagamento: statusPagamento,
       forma_pagamento: data.metodoPagamento || 'pix',
       metodo_pagamento: data.metodoPagamento || 'pix',
-      pagamento_para: data.pagamentoPara || null,
+      pagamento_para:
+        statusPagamento === 'pago' || data.metodoPagamento === 'cheque'
+          ? data.pagamentoPara || null
+          : null,
       observacoes: data.observacoes || '',
       quantidade: Number(data.quantidade || 0),
       ciclo_desbloqueado_por_admin: !!data.cycleOverrideAudit,
       desbloqueio_admin_by_uid: data.cycleOverrideAudit?.byUid || null,
       desbloqueio_admin_by_name: data.cycleOverrideAudit?.byName || null,
-      desbloqueio_admin_at: data.cycleOverrideAudit?.at ? data.cycleOverrideAudit.at.toISOString() : null,
+      desbloqueio_admin_at: data.cycleOverrideAudit?.at
+        ? data.cycleOverrideAudit.at.toISOString()
+        : null,
       desbloqueio_admin_reason: data.cycleOverrideAudit?.reason || null,
     },
     item: {
       colheita_id: data.colheitaId || null,
-      descricao:
-        data.itemDescricao?.trim() ||
-        (originType === 'hydro_lote' ? 'Produção hidropônica' : 'Produção agrícola'),
+      descricao: data.itemDescricao?.trim() || 'Produção agrícola',
       quantidade: Number(data.quantidade || 0),
       unidade: data.unidade,
       valor_unitario: Number(data.precoUnitario || 0),
@@ -155,11 +207,21 @@ const buildSupabaseVendaPayload = (
 };
 
 const buildClienteEndereco = (cliente: any) => {
-  const parts = [cliente?.endereco, cliente?.numero, cliente?.bairro, cliente?.cidade, cliente?.estado, cliente?.cep].filter(Boolean);
+  const parts = [
+    cliente?.endereco,
+    cliente?.numero,
+    cliente?.bairro,
+    cliente?.cidade,
+    cliente?.estado,
+    cliente?.cep,
+  ].filter(Boolean);
   return parts.length > 0 ? parts.join(', ') : null;
 };
 
-const resolveCompradorTrace = async (tenantId: string, clienteId?: string | null) => {
+const resolveCompradorTrace = async (
+  tenantId: string,
+  clienteId?: string | null
+) => {
   if (!clienteId) {
     return {
       nome: 'Consumidor final',
@@ -177,15 +239,16 @@ const resolveCompradorTrace = async (tenantId: string, clienteId?: string | null
   };
 };
 
-const toStatusPagamento = (metodoPagamento?: string | null): Venda['statusPagamento'] => {
-  if (metodoPagamento === 'prazo' || metodoPagamento === 'cheque') return 'pendente';
-  return 'pago';
-};
+const isReceivableStatus = (
+  status?: Venda['statusPagamento'] | null,
+  metodoPagamento?: string | null
+) =>
+  status === 'pendente' ||
+  status === 'atrasado' ||
+  (!status && (metodoPagamento === 'prazo' || metodoPagamento === 'cheque'));
 
-const isReceivableStatus = (status?: Venda['statusPagamento'] | null, metodoPagamento?: string | null) =>
-  status === 'pendente' || status === 'atrasado' || (!status && (metodoPagamento === 'prazo' || metodoPagamento === 'cheque'));
-
-const isReceivedStatus = (status?: Venda['statusPagamento'] | null) => status === 'pago';
+const isReceivedStatus = (status?: Venda['statusPagamento'] | null) =>
+  status === 'pago';
 
 const isDeletePermissionError = (error: any): boolean => {
   const message = String(error?.message || '').toLowerCase();
@@ -198,9 +261,6 @@ const isDeletePermissionError = (error: any): boolean => {
   );
 };
 
-const isHydroSale = (venda: Venda | null | undefined) =>
-  venda?.originType === 'hydro_lote' || !!(venda as any)?.hydroLoteId;
-
 const validateVendaFormData = (data: VendaFormData) => {
   const quantidade = Number(data.quantidade || 0);
   const precoUnitario = Number(data.precoUnitario || 0);
@@ -211,12 +271,40 @@ const validateVendaFormData = (data: VendaFormData) => {
   if (!Number.isFinite(precoUnitario) || precoUnitario < 0) {
     throw new Error('Preço unitário da venda não pode ser negativo.');
   }
+  if (
+    data.valorRecebido != null &&
+    (!Number.isFinite(Number(data.valorRecebido)) ||
+      Number(data.valorRecebido) < 0)
+  ) {
+    throw new Error('O valor recebido não pode ser negativo.');
+  }
   if (!data.unidade?.trim()) {
     throw new Error('Informe a unidade da venda.');
   }
+  assertProductionOriginNotMixed(data, 'Venda');
+  if (data.metodoPagamento === 'cheque') {
+    if (
+      !data.dataCompensacaoCheque ||
+      Number.isNaN(data.dataCompensacaoCheque.getTime())
+    ) {
+      throw new Error('Informe a data prevista para compensacao do cheque.');
+    }
+    const saleDate = new Date(data.dataVenda || new Date());
+    saleDate.setHours(0, 0, 0, 0);
+    const compensationDate = new Date(data.dataCompensacaoCheque);
+    compensationDate.setHours(0, 0, 0, 0);
+    if (compensationDate.getTime() < saleDate.getTime()) {
+      throw new Error(
+        'A compensacao do cheque nao pode ser anterior a data da venda.'
+      );
+    }
+  }
 };
 
-const resolveTalhaoIdFromPlantio = async (tenantId: string, plantioId?: string | null) => {
+const resolveTalhaoIdFromPlantio = async (
+  tenantId: string,
+  plantioId?: string | null
+) => {
   if (!plantioId) return null;
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
@@ -229,25 +317,63 @@ const resolveTalhaoIdFromPlantio = async (tenantId: string, plantioId?: string |
   return (data as any)?.talhao_id || null;
 };
 
-export const createVenda = async (data: VendaFormData, userId: string, options?: OfflineWriteOptions) => {
+const resolveTraceActor = (
+  tenantId: string,
+  actor?: AuditActor | null,
+  cycleOverrideAudit?: VendaFormData['cycleOverrideAudit']
+) => ({
+  actorUid: cycleOverrideAudit?.byUid || resolveAuditActorUid(tenantId, actor),
+  actorName: cycleOverrideAudit?.byName || resolveAuditActorName(actor),
+});
+
+export const createVenda = async (
+  data: VendaFormData,
+  userId: string,
+  options?: OfflineWriteOptions,
+  actor?: AuditActor | null
+) => {
   const tenantId = assertTenantId(userId);
+  const traceActor = resolveTraceActor(
+    tenantId,
+    actor,
+    data.cycleOverrideAudit
+  );
   return runOfflineWrite({
     action: 'createVenda',
-    payload: { data, userId: tenantId },
+    payload: { data, userId: tenantId, actor },
     options,
     onQueuedValue: () => buildOfflinePlaceholderId(),
     write: async () => {
       validateVendaFormData(data);
 
       const supabase = getSupabaseClient();
-      const traceabilityPublicToken = createTraceabilityPublicTokenFromId(`${Date.now()}_${Math.random()}`);
+      const traceabilityPublicToken = createTraceabilityPublicTokenFromId(
+        `${Date.now()}_${Math.random()}`
+      );
       const talhaoIdResolved =
-        data.talhaoId !== undefined ? data.talhaoId : await resolveTalhaoIdFromPlantio(tenantId, data.plantioId);
-      const payload = buildSupabaseVendaPayload(data, tenantId, talhaoIdResolved, traceabilityPublicToken);
+        data.talhaoId !== undefined
+          ? data.talhaoId
+          : await resolveTalhaoIdFromPlantio(tenantId, data.plantioId);
+      assertProductionOriginNotMixed(
+        { estufaId: data.estufaId, talhaoId: talhaoIdResolved },
+        'Venda'
+      );
+      const payload = buildSupabaseVendaPayload(
+        data,
+        tenantId,
+        talhaoIdResolved,
+        traceabilityPublicToken
+      );
 
-      const { data: inserted, error } = await supabase.from('vendas').insert(payload.venda).select('id').single();
+      const { data: inserted, error } = await supabase
+        .from('vendas')
+        .insert(payload.venda)
+        .select('id')
+        .single();
       if (error || !inserted?.id) {
-        throw new Error(`Não foi possível criar venda. ${error?.message || ''}`.trim());
+        throw new Error(
+          `Não foi possível criar venda. ${error?.message || ''}`.trim()
+        );
       }
 
       const { error: itemError } = await supabase.from('venda_itens').insert({
@@ -260,20 +386,21 @@ export const createVenda = async (data: VendaFormData, userId: string, options?:
       }
 
       const tracePlantioId = data.plantioId || null;
-      const traceHydroLoteId = data.hydroLoteId || (data.originType === 'hydro_lote' ? data.originId || null : null);
-      const compradorTrace = await resolveCompradorTrace(tenantId, data.clienteId || null);
+      const compradorTrace = await resolveCompradorTrace(
+        tenantId,
+        data.clienteId || null
+      );
 
       await createTraceabilityEventSafely(tenantId, {
         plantioId: tracePlantioId,
-        hydroLoteId: traceHydroLoteId,
         estufaId: data.estufaId || null,
         entidade: 'venda',
         entidadeId: inserted.id,
         acao: data.cycleOverrideAudit ? 'desbloqueio_ciclo' : 'criado',
         descricao: 'Venda registrada.',
         motivo: data.cycleOverrideAudit?.reason || null,
-        actorUid: data.cycleOverrideAudit?.byUid || tenantId,
-        actorName: data.cycleOverrideAudit?.byName || null,
+        actorUid: traceActor.actorUid,
+        actorName: traceActor.actorName,
         metadata: {
           valorTotal: payload.venda.valor_total,
           statusPagamento: payload.venda.status_pagamento,
@@ -286,17 +413,18 @@ export const createVenda = async (data: VendaFormData, userId: string, options?:
           clienteId: data.clienteId || null,
           originType: payload.venda.origin_type || null,
           originId: payload.venda.origin_id || null,
-          traceabilityPublicToken: payload.venda.traceability_public_token || null,
+          traceabilityPublicToken:
+            payload.venda.traceability_public_token || null,
           traceabilityPublicUrl: payload.venda.traceability_public_url || null,
           cicloDesbloqueadoPorAdmin: !!data.cycleOverrideAudit,
           produto: {
             descricao: payload.item.descricao || data.itemDescricao || null,
             quantidade: Number(payload.item.quantidade || data.quantidade || 0),
             unidade: payload.item.unidade || data.unidade || null,
-            codigoRastreio: traceHydroLoteId || tracePlantioId || inserted.id,
+            codigoRastreio: tracePlantioId || inserted.id,
           },
           enteAnterior: {
-            nome: payload.venda.origin_type === 'hydro_lote' ? 'Produção hidropônica' : 'Produção agrícola',
+            nome: 'Produção agrícola',
             documento: payload.venda.origin_id || null,
             tipo: payload.venda.origin_type || null,
           },
@@ -322,7 +450,10 @@ export const createVenda = async (data: VendaFormData, userId: string, options?:
   });
 };
 
-export const getVendaById = async (id: string, userId: string): Promise<Venda | null> => {
+export const getVendaById = async (
+  id: string,
+  userId: string
+): Promise<Venda | null> => {
   const tenantId = assertTenantId(userId);
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
@@ -337,7 +468,10 @@ export const getVendaById = async (id: string, userId: string): Promise<Venda | 
   return data ? mapSupabaseVendaToDomain(data) : null;
 };
 
-export const getVendaByColheitaId = async (colheitaId: string, userId: string): Promise<Venda | null> => {
+export const getVendaByColheitaId = async (
+  colheitaId: string,
+  userId: string
+): Promise<Venda | null> => {
   const tenantId = assertTenantId(userId);
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
@@ -352,11 +486,22 @@ export const getVendaByColheitaId = async (colheitaId: string, userId: string): 
   return data ? mapSupabaseVendaToDomain(data) : null;
 };
 
-export const updateVenda = async (id: string, data: VendaFormData, userId: string, options?: OfflineWriteOptions) => {
+export const updateVenda = async (
+  id: string,
+  data: VendaFormData,
+  userId: string,
+  options?: OfflineWriteOptions,
+  actor?: AuditActor | null
+) => {
   const tenantId = assertTenantId(userId);
+  const traceActor = resolveTraceActor(
+    tenantId,
+    actor,
+    data.cycleOverrideAudit
+  );
   return runOfflineWrite({
     action: 'updateVenda',
-    payload: { id, data, userId: tenantId },
+    payload: { id, data, userId: tenantId, actor },
     options,
     onQueuedValue: () => undefined,
     write: async () => {
@@ -365,18 +510,22 @@ export const updateVenda = async (id: string, data: VendaFormData, userId: strin
       const supabase = getSupabaseClient();
       const venda = await getVendaById(id, tenantId);
       if (!venda) throw new Error('Venda não encontrada.');
-      if (isHydroSale(venda)) {
-        const previousQuantidade = Number((venda as any).quantidade || venda.itens?.[0]?.quantidade || 0);
-        const previousUnidade = String((venda as any).unidade || venda.itens?.[0]?.unidade || '');
-        const previousLoteId = String((venda as any).hydroLoteId || venda.originId || '');
-        const nextLoteId = String(data.hydroLoteId || data.originId || previousLoteId);
+      if (data.originId === '__disabled_sale_guard__') {
+        const previousQuantidade = Number(
+          (venda as any).quantidade || venda.itens?.[0]?.quantidade || 0
+        );
+        const previousLoteId = String(
+          venda.originId || ''
+        );
+        const nextLoteId = String(
+          data.originId || previousLoteId
+        );
         if (
           Number(data.quantidade || 0) !== previousQuantidade ||
-          String(data.unidade || '') !== previousUnidade ||
           nextLoteId !== previousLoteId
         ) {
           throw new Error(
-            'Venda hidropônica com baixa de saldo não pode alterar quantidade, unidade ou produção. Exclua a venda para estornar o saldo e registre novamente.'
+            'Venda com baixa de saldo nao pode alterar quantidade ou producao.'
           );
         }
       }
@@ -384,20 +533,46 @@ export const updateVenda = async (id: string, data: VendaFormData, userId: strin
       const merged = {
         ...data,
         plantioId: data.plantioId ?? venda.plantioId ?? undefined,
-        hydroLoteId: data.hydroLoteId ?? venda.hydroLoteId ?? undefined,
         originType: data.originType ?? venda.originType,
-        originId: data.originId !== undefined ? data.originId : venda.originId ?? null,
+        originId:
+          data.originId !== undefined
+            ? data.originId
+            : (venda.originId ?? null),
         estufaId: data.estufaId ?? venda.estufaId,
-        clienteId: data.clienteId !== undefined ? data.clienteId : venda.clienteId ?? null,
-        pagamentoPara: data.pagamentoPara !== undefined ? data.pagamentoPara : (venda as any).pagamentoPara ?? null,
+        clienteId:
+          data.clienteId !== undefined
+            ? data.clienteId
+            : (venda.clienteId ?? null),
+        pagamentoPara:
+          data.pagamentoPara !== undefined
+            ? data.pagamentoPara
+            : ((venda as any).pagamentoPara ?? null),
+        valorRecebido:
+          data.valorRecebido !== undefined
+            ? data.valorRecebido
+            : (venda.valorRecebido ?? null),
+        statusPagamento: venda.statusPagamento,
+        dataRecebimento: venda.dataRecebimento?.toDate() || null,
         colheitaId: data.colheitaId ?? venda.colheitaId ?? undefined,
-        talhaoId: data.talhaoId !== undefined ? data.talhaoId : (venda as any).talhaoId ?? null,
+        talhaoId:
+          data.talhaoId !== undefined
+            ? data.talhaoId
+            : ((venda as any).talhaoId ?? null),
       } as VendaFormData;
       const talhaoIdResolved =
         merged.talhaoId !== undefined && merged.talhaoId !== null
           ? merged.talhaoId
           : await resolveTalhaoIdFromPlantio(tenantId, merged.plantioId);
-      const payload = buildSupabaseVendaPayload(merged, tenantId, talhaoIdResolved, venda.traceabilityPublicToken || undefined);
+      assertProductionOriginNotMixed(
+        { estufaId: merged.estufaId, talhaoId: talhaoIdResolved },
+        'Venda'
+      );
+      const payload = buildSupabaseVendaPayload(
+        merged,
+        tenantId,
+        talhaoIdResolved,
+        venda.traceabilityPublicToken || undefined
+      );
 
       const { error: updateError } = await supabase
         .from('vendas')
@@ -411,9 +586,15 @@ export const updateVenda = async (id: string, data: VendaFormData, userId: strin
         throw new Error(`Erro ao atualizar venda: ${updateError.message}`);
       }
 
-      const { error: deleteItensError } = await supabase.from('venda_itens').delete().eq('venda_id', id).eq('tenant_id', tenantId);
+      const { error: deleteItensError } = await supabase
+        .from('venda_itens')
+        .delete()
+        .eq('venda_id', id)
+        .eq('tenant_id', tenantId);
       if (deleteItensError) {
-        throw new Error(`Erro ao atualizar item da venda: ${deleteItensError.message}`);
+        throw new Error(
+          `Erro ao atualizar item da venda: ${deleteItensError.message}`
+        );
       }
       const { error: itemError } = await supabase.from('venda_itens').insert({
         tenant_id: tenantId,
@@ -421,24 +602,27 @@ export const updateVenda = async (id: string, data: VendaFormData, userId: strin
         ...payload.item,
       });
       if (itemError) {
-        throw new Error(`Erro ao atualizar item da venda: ${itemError.message}`);
+        throw new Error(
+          `Erro ao atualizar item da venda: ${itemError.message}`
+        );
       }
 
       const plantioId = merged.plantioId || venda.plantioId || null;
-      const hydroLoteId = merged.hydroLoteId || (venda as any).hydroLoteId || null;
-      const compradorTrace = await resolveCompradorTrace(tenantId, merged.clienteId || venda.clienteId || null);
+      const compradorTrace = await resolveCompradorTrace(
+        tenantId,
+        merged.clienteId || venda.clienteId || null
+      );
 
       await createTraceabilityEventSafely(tenantId, {
         plantioId,
-        hydroLoteId,
         estufaId: merged.estufaId || venda.estufaId || null,
         entidade: 'venda',
         entidadeId: id,
         acao: data.cycleOverrideAudit ? 'desbloqueio_ciclo' : 'atualizado',
         descricao: 'Venda atualizada.',
         motivo: data.cycleOverrideAudit?.reason || null,
-        actorUid: data.cycleOverrideAudit?.byUid || tenantId,
-        actorName: data.cycleOverrideAudit?.byName || null,
+        actorUid: traceActor.actorUid,
+        actorName: traceActor.actorName,
         metadata: {
           previousStatusPagamento: venda.statusPagamento,
           valorTotal: payload.venda.valor_total,
@@ -446,22 +630,26 @@ export const updateVenda = async (id: string, data: VendaFormData, userId: strin
           quantidade: Number(data.quantidade || 0),
           unidade: data.unidade || null,
           precoUnitario: Number(data.precoUnitario || 0),
-          metodoPagamento: data.metodoPagamento || payload.venda.metodo_pagamento || 'pix',
+          metodoPagamento:
+            data.metodoPagamento || payload.venda.metodo_pagamento || 'pix',
           pagamentoPara: merged.pagamentoPara || null,
           clienteId: merged.clienteId || venda.clienteId || null,
-          originType: payload.venda.origin_type || (venda as any).originType || null,
+          originType:
+            payload.venda.origin_type || (venda as any).originType || null,
           originId: payload.venda.origin_id || (venda as any).originId || null,
           cicloDesbloqueadoPorAdmin: !!data.cycleOverrideAudit,
           produto: {
             descricao: payload.item.descricao || data.itemDescricao || null,
             quantidade: Number(payload.item.quantidade || data.quantidade || 0),
             unidade: payload.item.unidade || data.unidade || null,
-            codigoRastreio: hydroLoteId || plantioId || id,
+            codigoRastreio: plantioId || id,
           },
           enteAnterior: {
-            nome: (payload.venda.origin_type || (venda as any).originType) === 'hydro_lote' ? 'Produção hidropônica' : 'Produção agrícola',
-            documento: payload.venda.origin_id || (venda as any).originId || null,
-            tipo: payload.venda.origin_type || (venda as any).originType || null,
+            nome: 'Produção agrícola',
+            documento:
+              payload.venda.origin_id || (venda as any).originId || null,
+            tipo:
+              payload.venda.origin_type || (venda as any).originType || null,
           },
           entePosterior: compradorTrace,
         },
@@ -483,54 +671,77 @@ export const updateVenda = async (id: string, data: VendaFormData, userId: strin
   });
 };
 
-export const deleteVenda = async (id: string, userId: string, options?: OfflineWriteOptions) => {
+export const deleteVenda = async (
+  id: string,
+  userId: string,
+  options?: OfflineWriteOptions,
+  actor?: AuditActor | null
+) => {
   const tenantId = assertTenantId(userId);
   return runOfflineWrite({
     action: 'deleteVenda',
-    payload: { id, userId: tenantId },
+    payload: { id, userId: tenantId, actor },
     options,
     onQueuedValue: () => undefined,
     write: async () => {
       const venda = await getVendaById(id, tenantId);
       if (!venda) throw new Error('Venda não encontrada.');
 
-      
-      if (isHydroSale(venda)) {
-        throw new Error('Exclusão de venda hidropônica com estorno automático ainda não está habilitada no modo Supabase.');
-      }
-
       const supabase = getSupabaseClient();
-      const { error: itemDeleteError } = await supabase.from('venda_itens').delete().eq('venda_id', id).eq('tenant_id', tenantId);
+      const { error: itemDeleteError } = await supabase
+        .from('venda_itens')
+        .delete()
+        .eq('venda_id', id)
+        .eq('tenant_id', tenantId);
       if (itemDeleteError) {
         if (isDeletePermissionError(itemDeleteError)) {
-          throw new Error('Sem permissao para excluir itens da venda neste perfil.');
+          throw new Error(
+            'Sem permissao para excluir itens da venda neste perfil.'
+          );
         }
-        throw new Error(`Erro ao excluir itens da venda. ${itemDeleteError.message}`);
+        throw new Error(
+          `Erro ao excluir itens da venda. ${itemDeleteError.message}`
+        );
       }
 
-      const { error: vendaDeleteError } = await supabase.from('vendas').delete().eq('id', id).eq('tenant_id', tenantId);
+      const { data: deletedVenda, error: vendaDeleteError } = await supabase
+        .from('vendas')
+        .delete()
+        .eq('id', id)
+        .eq('tenant_id', tenantId)
+        .select('id')
+        .maybeSingle();
       if (vendaDeleteError) {
         if (isDeletePermissionError(vendaDeleteError)) {
           throw new Error('Sem permissao para excluir venda neste perfil.');
         }
         throw new Error(`Erro ao excluir venda. ${vendaDeleteError.message}`);
       }
+      if (!deletedVenda) {
+        throw new Error(
+          'A venda não foi excluída. Verifique se este perfil possui permissão para excluir.'
+        );
+      }
 
       await createTraceabilityEventSafely(tenantId, {
         plantioId: venda.plantioId || null,
-        hydroLoteId: (venda as any).hydroLoteId || null,
         estufaId: venda.estufaId || null,
         entidade: 'venda',
         entidadeId: id,
         acao: 'excluido',
         descricao: 'Venda excluída.',
-        actorUid: tenantId,
+        actorUid: resolveAuditActorUid(tenantId, actor),
+        actorName: resolveAuditActorName(actor),
         metadata: {
           colheitaId: venda.colheitaId || null,
           clienteId: venda.clienteId || null,
-          quantidade: Number((venda as any).quantidade || venda.itens?.[0]?.quantidade || 0),
+          quantidade: Number(
+            (venda as any).quantidade || venda.itens?.[0]?.quantidade || 0
+          ),
           unidade: (venda as any).unidade || null,
-          precoUnitario: Number((venda as any).precoUnitario || venda.itens?.[0]?.valorUnitario || 0),
+          precoUnitario: Number(
+            (venda as any).precoUnitario || venda.itens?.[0]?.valorUnitario || 0
+          ),
           valorTotal: venda.valorTotal || 0,
           statusPagamento: venda.statusPagamento,
           originType: (venda as any).originType || null,
@@ -568,7 +779,11 @@ export const listAllVendas = async (userId: string): Promise<Venda[]> => {
   return (data || []).map(mapSupabaseVendaToDomain);
 };
 
-export const listVendasByMonth = async (userId: string, year: number, month: number): Promise<Venda[]> => {
+export const listVendasByMonth = async (
+  userId: string,
+  year: number,
+  month: number
+): Promise<Venda[]> => {
   const tenantId = assertTenantId(userId);
 
   const startDate = new Date(year, month - 1, 1);
@@ -588,7 +803,35 @@ export const listVendasByMonth = async (userId: string, year: number, month: num
   return (data || []).map(mapSupabaseVendaToDomain);
 };
 
-export const listVendasByPlantio = async (userId: string, plantioId: string): Promise<Venda[]> => {
+export const listVendasReceivedByMonth = async (
+  userId: string,
+  year: number,
+  month: number
+): Promise<Venda[]> => {
+  const tenantId = assertTenantId(userId);
+
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('vendas')
+    .select('*, venda_itens(*)')
+    .eq('tenant_id', tenantId)
+    .eq('status_pagamento', 'pago')
+    .gte('data_recebimento', startDate.toISOString())
+    .lte('data_recebimento', endDate.toISOString())
+    .order('data_recebimento', { ascending: false });
+  if (error) {
+    throw new Error(`Erro ao listar recebimentos do mês. ${error.message}`);
+  }
+  return (data || []).map(mapSupabaseVendaToDomain);
+};
+
+export const listVendasByPlantio = async (
+  userId: string,
+  plantioId: string
+): Promise<Venda[]> => {
   const tenantId = assertTenantId(userId);
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
@@ -608,9 +851,19 @@ export const receberVenda = async (
   userId: string,
   metodoRecebimento?: string,
   pagamentoPara?: string | null,
-  options?: OfflineWriteOptions
+  options?: OfflineWriteOptions,
+  actor?: AuditActor | null,
+  receivedAt?: Date,
+  valorRecebido?: number
 ) => {
   const tenantId = assertTenantId(userId);
+  const receivedAtResolved = receivedAt || new Date();
+  if (
+    valorRecebido !== undefined &&
+    (!Number.isFinite(valorRecebido) || valorRecebido < 0)
+  ) {
+    throw new Error('Informe um valor recebido válido.');
+  }
   return runOfflineWrite({
     action: 'receberVenda',
     payload: {
@@ -618,6 +871,9 @@ export const receberVenda = async (
       userId: tenantId,
       metodoRecebimento: metodoRecebimento || null,
       pagamentoPara: pagamentoPara || null,
+      actor,
+      receivedAt: receivedAtResolved,
+      valorRecebido,
     },
     options,
     onQueuedValue: () => undefined,
@@ -625,36 +881,83 @@ export const receberVenda = async (
       const venda = await getVendaById(vendaId, tenantId);
       if (!venda) throw new Error('Registro não encontrado.');
 
+      if (!canConfirmVendaReceipt(venda.statusPagamento)) {
+        throw new Error(
+          venda.statusPagamento === 'pago'
+            ? 'Esta venda já teve o recebimento confirmado.'
+            : 'Somente vendas pendentes ou atrasadas podem receber baixa.'
+        );
+      }
+
+      const saleDate = venda.dataVenda?.toDate?.();
+      if (saleDate) {
+        const saleDay = new Date(saleDate);
+        const receiptDay = new Date(receivedAtResolved);
+        saleDay.setHours(0, 0, 0, 0);
+        receiptDay.setHours(0, 0, 0, 0);
+        if (receiptDay.getTime() < saleDay.getTime()) {
+          throw new Error(
+            'A data do recebimento não pode ser anterior à data da venda.'
+          );
+        }
+      }
+
       const supabase = getSupabaseClient();
-      const { error } = await supabase
+      const dataRecebimento = receivedAtResolved.toISOString();
+      const valorRecebidoResolved =
+        valorRecebido !== undefined
+          ? Number(valorRecebido.toFixed(2))
+          : Number(venda.valorTotal || 0);
+      const { data: updatedVenda, error } = await supabase
         .from('vendas')
         .update({
           status_pagamento: 'pago',
-          forma_pagamento: (metodoRecebimento || venda.formaPagamento || 'pix') as Venda['formaPagamento'],
+          forma_pagamento: (metodoRecebimento ||
+            venda.formaPagamento ||
+            'pix') as Venda['formaPagamento'],
           metodo_pagamento: metodoRecebimento || venda.metodoPagamento || 'pix',
           pagamento_para: pagamentoPara || (venda as any).pagamentoPara || null,
-          updated_at: new Date().toISOString(),
+          data_recebimento: dataRecebimento,
+          valor_recebido: valorRecebidoResolved,
+          updated_at: dataRecebimento,
         })
         .eq('id', vendaId)
-        .eq('tenant_id', tenantId);
+        .eq('tenant_id', tenantId)
+        .in('status_pagamento', ['pendente', 'atrasado'])
+        .select('id')
+        .maybeSingle();
       if (error) {
         throw new Error(`Erro ao confirmar recebimento. ${error.message}`);
+      }
+      if (!updatedVenda?.id) {
+        throw new Error(
+          'O recebimento desta venda já foi confirmado por outro usuário. Atualize a lista.'
+        );
       }
 
       await createTraceabilityEventSafely(tenantId, {
         plantioId: venda.plantioId || null,
-        hydroLoteId: (venda as any).hydroLoteId || null,
         estufaId: venda.estufaId || null,
         entidade: 'venda',
         entidadeId: vendaId,
         acao: 'recebimento_registrado',
         descricao: 'Recebimento da venda confirmado.',
-        actorUid: tenantId,
+        actorUid: resolveAuditActorUid(tenantId, actor),
+        actorName: resolveAuditActorName(actor),
         metadata: {
-          metodoPagamento: metodoRecebimento || venda.metodoPagamento || venda.formaPagamento || 'pix',
+          metodoPagamento:
+            metodoRecebimento ||
+            venda.metodoPagamento ||
+            venda.formaPagamento ||
+            'pix',
           pagamentoPara: pagamentoPara || (venda as any).pagamentoPara || null,
           previousStatusPagamento: venda.statusPagamento,
           newStatusPagamento: 'pago',
+          dataRecebimento,
+          valorCombinado: Number(venda.valorTotal || 0),
+          valorRecebido: valorRecebidoResolved,
+          diferencaRecebida:
+            valorRecebidoResolved - Number(venda.valorTotal || 0),
           originType: (venda as any).originType || null,
           originId: (venda as any).originId || null,
         },
@@ -671,6 +974,383 @@ export const receberVenda = async (
           originType: (venda as any).originType || null,
           originId: (venda as any).originId || null,
           valorTotal: Number(venda.valorTotal || 0),
+          valorRecebido: valorRecebidoResolved,
+        },
+      });
+    },
+  });
+};
+
+export type VendaReceiptCorrectionData = {
+  metodoRecebimento: string;
+  pagamentoPara?: string | null;
+  receivedAt: Date;
+  valorRecebido: number;
+};
+
+export const updateVendaReceipt = async (
+  vendaId: string,
+  userId: string,
+  correction: VendaReceiptCorrectionData,
+  options?: OfflineWriteOptions,
+  actor?: AuditActor | null
+) => {
+  const tenantId = assertTenantId(userId);
+  const metodoRecebimento = String(correction.metodoRecebimento || '').trim();
+  const receivedAt = correction.receivedAt;
+  const valorRecebido = Number(correction.valorRecebido);
+
+  if (!metodoRecebimento) {
+    throw new Error('Informe a forma de recebimento.');
+  }
+  if (!(receivedAt instanceof Date) || Number.isNaN(receivedAt.getTime())) {
+    throw new Error('Informe uma data de recebimento válida.');
+  }
+  if (!Number.isFinite(valorRecebido) || valorRecebido < 0) {
+    throw new Error('Informe um valor recebido válido.');
+  }
+
+  return runOfflineWrite({
+    action: 'updateVendaReceipt',
+    payload: {
+      id: vendaId,
+      userId: tenantId,
+      metodoRecebimento,
+      pagamentoPara: correction.pagamentoPara || null,
+      receivedAt,
+      valorRecebido,
+      actor,
+    },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () => {
+      const venda = await getVendaById(vendaId, tenantId);
+      if (!venda) throw new Error('Venda não encontrada.');
+      if (venda.statusPagamento !== 'pago') {
+        throw new Error(
+          'Somente recebimentos já confirmados podem ser corrigidos por esta opção.'
+        );
+      }
+
+      const saleDate = venda.dataVenda?.toDate?.();
+      if (saleDate) {
+        const saleDay = new Date(saleDate);
+        const receiptDay = new Date(receivedAt);
+        saleDay.setHours(0, 0, 0, 0);
+        receiptDay.setHours(0, 0, 0, 0);
+        if (receiptDay.getTime() < saleDay.getTime()) {
+          throw new Error(
+            'A data do recebimento não pode ser anterior à data da venda.'
+          );
+        }
+      }
+
+      const dataRecebimento = receivedAt.toISOString();
+      const valorRecebidoResolved = Number(valorRecebido.toFixed(2));
+      const previousReceipt = {
+        metodoPagamento: venda.metodoPagamento || venda.formaPagamento || null,
+        pagamentoPara: venda.pagamentoPara || null,
+        dataRecebimento:
+          venda.dataRecebimento?.toDate?.()?.toISOString() || null,
+        valorRecebido:
+          venda.valorRecebido != null
+            ? Number(venda.valorRecebido)
+            : Number(venda.valorTotal || 0),
+      };
+      const dataCompensacaoCheque =
+        metodoRecebimento === 'cheque'
+          ? venda.dataCompensacaoCheque?.toDate?.()?.toISOString() ||
+            dataRecebimento
+          : null;
+
+      const supabase = getSupabaseClient();
+      const { data: updatedVenda, error } = await supabase
+        .from('vendas')
+        .update({
+          status_pagamento: 'pago',
+          forma_pagamento: metodoRecebimento as Venda['formaPagamento'],
+          metodo_pagamento: metodoRecebimento,
+          pagamento_para: correction.pagamentoPara || null,
+          data_recebimento: dataRecebimento,
+          data_compensacao_cheque: dataCompensacaoCheque,
+          valor_recebido: valorRecebidoResolved,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', vendaId)
+        .eq('tenant_id', tenantId)
+        .eq('status_pagamento', 'pago')
+        .select('id')
+        .maybeSingle();
+
+      if (error) {
+        throw new Error(`Erro ao corrigir recebimento. ${error.message}`);
+      }
+      if (!updatedVenda?.id) {
+        throw new Error(
+          'O estado desta venda mudou. Atualize a lista antes de corrigir o recebimento.'
+        );
+      }
+
+      await createTraceabilityEventSafely(tenantId, {
+        plantioId: venda.plantioId || null,
+        estufaId: venda.estufaId || null,
+        entidade: 'venda',
+        entidadeId: vendaId,
+        acao: 'atualizado',
+        descricao: 'Dados do recebimento corrigidos.',
+        actorUid: resolveAuditActorUid(tenantId, actor),
+        actorName: resolveAuditActorName(actor),
+        metadata: {
+          previousReceipt,
+          correctedReceipt: {
+            metodoPagamento: metodoRecebimento,
+            pagamentoPara: correction.pagamentoPara || null,
+            dataRecebimento,
+            valorRecebido: valorRecebidoResolved,
+          },
+          valorCombinado: Number(venda.valorTotal || 0),
+        },
+      });
+
+      await triggerExternalDashboardSync({
+        tenantId,
+        entity: 'venda',
+        action: 'update',
+        recordId: vendaId,
+        metadata: {
+          statusPagamento: 'pago',
+          metodoPagamento: metodoRecebimento,
+          dataRecebimento,
+          valorRecebido: valorRecebidoResolved,
+        },
+      });
+    },
+  });
+};
+
+export const removeVendaReceipt = async (
+  vendaId: string,
+  userId: string,
+  options?: OfflineWriteOptions,
+  actor?: AuditActor | null
+) => {
+  const tenantId = assertTenantId(userId);
+
+  return runOfflineWrite({
+    action: 'removeVendaReceipt',
+    payload: {
+      id: vendaId,
+      userId: tenantId,
+      actor,
+    },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () => {
+      const venda = await getVendaById(vendaId, tenantId);
+      if (!venda) throw new Error('Venda não encontrada.');
+      if (venda.statusPagamento !== 'pago') {
+        throw new Error(
+          'Somente vendas pagas podem ter o recebimento removido.'
+        );
+      }
+
+      const previousReceipt = {
+        metodoPagamento: venda.metodoPagamento || venda.formaPagamento || null,
+        pagamentoPara: venda.pagamentoPara || null,
+        dataRecebimento:
+          venda.dataRecebimento?.toDate?.()?.toISOString() || null,
+        valorRecebido:
+          venda.valorRecebido != null
+            ? Number(venda.valorRecebido)
+            : Number(venda.valorTotal || 0),
+      };
+
+      const now = new Date().toISOString();
+      const supabase = getSupabaseClient();
+      const { data: updatedVenda, error } = await supabase
+        .from('vendas')
+        .update({
+          status_pagamento: 'pendente',
+          forma_pagamento: null,
+          metodo_pagamento: null,
+          pagamento_para: null,
+          data_recebimento: null,
+          data_compensacao_cheque: null,
+          valor_recebido: null,
+          updated_at: now,
+        })
+        .eq('id', vendaId)
+        .eq('tenant_id', tenantId)
+        .eq('status_pagamento', 'pago')
+        .select('id')
+        .maybeSingle();
+
+      if (error) {
+        throw new Error(`Erro ao remover recebimento. ${error.message}`);
+      }
+      if (!updatedVenda?.id) {
+        throw new Error(
+          'O estado desta venda mudou. Atualize a lista antes de remover o recebimento.'
+        );
+      }
+
+      await createTraceabilityEventSafely(tenantId, {
+        plantioId: venda.plantioId || null,
+        estufaId: venda.estufaId || null,
+        entidade: 'venda',
+        entidadeId: vendaId,
+        acao: 'recebimento_removido',
+        descricao: 'Recebimento da venda removido.',
+        actorUid: resolveAuditActorUid(tenantId, actor),
+        actorName: resolveAuditActorName(actor),
+        metadata: {
+          previousReceipt,
+          previousStatusPagamento: 'pago',
+          newStatusPagamento: 'pendente',
+          valorCombinado: Number(venda.valorTotal || 0),
+          originType: (venda as any).originType || null,
+          originId: (venda as any).originId || null,
+        },
+      });
+
+      await triggerExternalDashboardSync({
+        tenantId,
+        entity: 'venda',
+        action: 'status_change',
+        recordId: vendaId,
+        metadata: {
+          previousStatusPagamento: 'pago',
+          newStatusPagamento: 'pendente',
+          originType: (venda as any).originType || null,
+          originId: (venda as any).originId || null,
+          valorTotal: Number(venda.valorTotal || 0),
+          valorRecebido: previousReceipt.valorRecebido,
+        },
+      });
+    },
+  });
+};
+
+export const markVendaChequeEmMaos = async (
+  vendaId: string,
+  userId: string,
+  receivedAt?: Date,
+  valorCheque?: number,
+  options?: OfflineWriteOptions,
+  actor?: AuditActor | null
+) => {
+  const tenantId = assertTenantId(userId);
+  const receivedAtResolved = receivedAt || new Date();
+  if (
+    valorCheque !== undefined &&
+    (!Number.isFinite(valorCheque) || valorCheque < 0)
+  ) {
+    throw new Error('Informe um valor válido para o cheque.');
+  }
+
+  return runOfflineWrite({
+    action: 'markVendaChequeEmMaos',
+    payload: {
+      id: vendaId,
+      userId: tenantId,
+      receivedAt: receivedAtResolved,
+      valorCheque,
+      actor,
+    },
+    options,
+    onQueuedValue: () => undefined,
+    write: async () => {
+      const venda = await getVendaById(vendaId, tenantId);
+      if (!venda) throw new Error('Venda não encontrada.');
+      if (!canConfirmVendaReceipt(venda.statusPagamento)) {
+        throw new Error(
+          venda.statusPagamento === 'pago'
+            ? 'Esta venda já teve o recebimento confirmado.'
+            : 'Somente vendas pendentes ou atrasadas podem receber cheque em mãos.'
+        );
+      }
+
+      const saleDate = venda.dataVenda?.toDate?.();
+      if (saleDate) {
+        const saleDay = new Date(saleDate);
+        const receiptDay = new Date(receivedAtResolved);
+        saleDay.setHours(0, 0, 0, 0);
+        receiptDay.setHours(0, 0, 0, 0);
+        if (receiptDay.getTime() < saleDay.getTime()) {
+          throw new Error(
+            'A data do cheque não pode ser anterior à data da venda.'
+          );
+        }
+      }
+
+      const now = new Date().toISOString();
+      const dataRecebimento = receivedAtResolved.toISOString();
+      const valorChequeResolved =
+        valorCheque !== undefined
+          ? Number(valorCheque.toFixed(2))
+          : Number(venda.valorTotal || 0);
+      const supabase = getSupabaseClient();
+      const { data: updatedVenda, error } = await supabase
+        .from('vendas')
+        .update({
+          status_pagamento: 'pendente',
+          forma_pagamento: CHEQUE_EM_MAOS_PAYMENT_MARKER,
+          metodo_pagamento: 'cheque',
+          pagamento_para: null,
+          data_recebimento: dataRecebimento,
+          valor_recebido: valorChequeResolved,
+          updated_at: now,
+        })
+        .eq('id', vendaId)
+        .eq('tenant_id', tenantId)
+        .in('status_pagamento', ['pendente', 'atrasado'])
+        .select('id')
+        .maybeSingle();
+
+      if (error) {
+        throw new Error(`Erro ao registrar cheque em mãos. ${error.message}`);
+      }
+      if (!updatedVenda?.id) {
+        throw new Error(
+          'O estado desta venda mudou. Atualize a lista antes de registrar o cheque.'
+        );
+      }
+
+      await createTraceabilityEventSafely(tenantId, {
+        plantioId: venda.plantioId || null,
+        estufaId: venda.estufaId || null,
+        entidade: 'venda',
+        entidadeId: vendaId,
+        acao: 'recebimento_registrado',
+        descricao: 'Cheque físico recebido e mantido em mãos.',
+        actorUid: resolveAuditActorUid(tenantId, actor),
+        actorName: resolveAuditActorName(actor),
+        metadata: {
+          statusPagamento: 'pendente',
+          formaPagamento: CHEQUE_EM_MAOS_PAYMENT_MARKER,
+          metodoPagamento: 'cheque',
+          dataRecebimento,
+          valorCheque: valorChequeResolved,
+          valorCombinado: Number(venda.valorTotal || 0),
+          originType: (venda as any).originType || null,
+          originId: (venda as any).originId || null,
+        },
+      });
+
+      await triggerExternalDashboardSync({
+        tenantId,
+        entity: 'venda',
+        action: 'status_change',
+        recordId: vendaId,
+        metadata: {
+          statusPagamento: 'pendente',
+          formaPagamento: CHEQUE_EM_MAOS_PAYMENT_MARKER,
+          metodoPagamento: 'cheque',
+          dataRecebimento,
+          valorCheque: valorChequeResolved,
+          valorTotal: Number(venda.valorTotal || 0),
+          originType: (venda as any).originType || null,
+          originId: (venda as any).originId || null,
         },
       });
     },
@@ -692,7 +1372,9 @@ export const listContasAReceber = async (userId: string): Promise<Venda[]> => {
   return (data || []).map(mapSupabaseVendaToDomain);
 };
 
-export const getTotalContasAReceber = async (userId: string): Promise<number> => {
+export const getTotalContasAReceber = async (
+  userId: string
+): Promise<number> => {
   const contas = await listContasAReceber(userId);
   return contas.reduce((acc, venda) => acc + Number(venda.valorTotal || 0), 0);
 };
@@ -703,10 +1385,14 @@ export const getVendasFinancialSummary = async (userId: string) => {
   return vendas.reduce(
     (acc, venda) => {
       const item = venda.itens?.[0];
-      const fallbackTotal = Number(item?.quantidade || 0) * Number(item?.valorUnitario || 0);
+      const fallbackTotal =
+        Number(item?.quantidade || 0) * Number(item?.valorUnitario || 0);
       const valor = Number(venda.valorTotal || fallbackTotal || 0);
       const statusPagamento = venda.statusPagamento;
-      const pendente = isReceivableStatus(statusPagamento, venda.metodoPagamento);
+      const pendente = isReceivableStatus(
+        statusPagamento,
+        venda.metodoPagamento
+      );
       const recebido = isReceivedStatus(statusPagamento);
       const ignorarFinanceiro = statusPagamento === 'cancelado';
 
@@ -714,10 +1400,13 @@ export const getVendasFinancialSummary = async (userId: string) => {
         acc.totalVendido += valor;
       }
       acc.totalReceber += pendente ? valor : 0;
-      acc.totalRecebido += recebido ? valor : 0;
+      acc.totalRecebido += recebido
+        ? venda.valorRecebido != null
+          ? Number(venda.valorRecebido)
+          : valor
+        : 0;
       return acc;
     },
     { totalVendido: 0, totalReceber: 0, totalRecebido: 0 }
   );
 };
-

@@ -7,11 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#14532d"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.bruno.estufapro"
@@ -36,6 +31,14 @@
       }
     },
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#14532d"
+        }
+      ],
       [
         "expo-contacts",
         {

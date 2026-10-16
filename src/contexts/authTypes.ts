@@ -20,6 +20,7 @@ export type AvailableTenant = {
 export interface AuthContextData {
   user: User | null;
   loading: boolean;
+  authBootstrapError?: string | null;
   selectedTenantId: string;
   changeTenant: (uid: string) => void;
   availableTenants: AvailableTenant[];

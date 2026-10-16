@@ -21,7 +21,11 @@ export interface User extends BaseDoc {
   supportLevel?: 'read' | 'write' | 'owner';
   photoURL?: string;
   activeSafraId?: string;
-  sharedAccess?: Array<{ tenantId: string; ownerName?: string; tenantName?: string }>;
+  sharedAccess?: Array<{
+    tenantId: string;
+    ownerName?: string;
+    tenantName?: string;
+  }>;
 }
 
 export interface UserProfile extends User {
@@ -103,58 +107,36 @@ export interface SubdivisaoEstufa {
   tipo?: 'canteiro' | 'setor' | 'lote' | 'bancada';
 }
 
-export type ProductionMode = 'long_cycle' | 'hydroponics' | 'seedlings' | 'seedling_resale';
+export type ProductionMode = 'long_cycle';
 
-export type HydroponicSystemType = 'nft' | 'dwc' | 'floating' | 'substrate' | 'semi_hydroponic' | 'other';
-
-export interface HydroEstrutura {
-  id: string;
-  nome: string;
-  codigo?: string;
-  tipo: 'bancada' | 'canal' | 'perfil' | 'mesa' | 'bercario' | 'outro';
-  capacidadePlantas?: number;
-  quantidadeFuros?: number;
-  reservatorioId?: string | null;
-  x?: number;
-  y?: number;
-  ativo: boolean;
+export interface EstufaMotor {
+  id?: string;
+  nome?: string;
+  tipo?: string;
+  status?: string;
+  ultimoAcionamento?: Timestamp | number | string | null;
 }
 
-export interface HydroSetor {
-  id: string;
-  nome: string;
-  motorId: string;
-  estruturas?: HydroEstrutura[];
+export interface EstufaReservatorio {
+  id?: string;
+  nome?: string;
+  capacidadeLitros?: number;
+  nivelAtual?: number;
+  status?: string;
 }
 
-export interface HydroReservatorio {
-  id: string;
-  nome: string;
-  volumeLitros?: number;
-  setorId?: string | null;
-  ativo: boolean;
-}
-
-export interface HydroMotor {
-  id: string;
-  nome: string;
-  codigo?: string;
-  status: 'ativo' | 'inativo' | 'manutencao';
-  observacoes?: string;
-}
 
 export interface Estufa extends BaseDoc {
   nome: string;
-  tipo?: 'hidroponia' | 'solo' | 'semi-hidroponia';
+  tipo?: 'solo';
   productionModes?: ProductionMode[];
-  hydroponicSystemType?: HydroponicSystemType;
-  setores?: HydroSetor[];
-  motores?: HydroMotor[];
-  reservatorios?: HydroReservatorio[];
   capacidadeTotal?: number;
   unidadeMedida?: 'm2' | 'plantas' | 'bancadas';
   subdivisoes?: SubdivisaoEstufa[];
   percentualOcupacao?: number;
+  setores?: SubdivisaoEstufa[];
+  motores?: EstufaMotor[];
+  reservatorios?: EstufaReservatorio[];
 
   // Compatibilidade com dados legados da base atual
   cidade?: string;
@@ -247,7 +229,12 @@ export type UnidadeInsumo = 'kg' | 'L' | 'un' | 'g' | 'ml' | 'l';
 export interface Insumo extends BaseDoc {
   nome: string;
   fabricante?: string;
-  categoria?: 'fertilizante' | 'defensivo' | 'biologico' | 'substrato' | 'outro';
+  categoria?:
+    | 'fertilizante'
+    | 'defensivo'
+    | 'biologico'
+    | 'substrato'
+    | 'outro';
   tipo?: string;
   unidadeMedida?: UnidadeInsumo;
   unidadePadrao?: string;
@@ -329,9 +316,8 @@ export interface VendaItem {
 export interface Venda extends BaseDoc {
   plantioId?: string;
   talhaoId?: string;
-  originType?: 'plantio' | 'hydro_lote' | 'seedling_lote' | 'resale_lote';
+  originType?: 'plantio';
   originId?: string | null;
-  hydroLoteId?: string | null;
   traceabilityPublicToken?: string | null;
   traceabilityPublicUrl?: string | null;
   estufaId?: string;
@@ -339,10 +325,22 @@ export interface Venda extends BaseDoc {
   clienteId?: string | null;
   dataVenda: Timestamp;
   dataVencimento?: Timestamp | null;
+  dataRecebimento?: Timestamp | null;
+  dataCompensacaoCheque?: Timestamp | null;
   itens: VendaItem[];
   valorTotal: number;
+  valorRecebido?: number | null;
   statusPagamento: 'pendente' | 'pago' | 'atrasado' | 'cancelado';
-  formaPagamento?: 'pix' | 'boleto' | 'transferencia' | 'dinheiro' | 'cartao' | 'outro' | 'prazo' | 'cheque';
+  formaPagamento?:
+    | 'pix'
+    | 'boleto'
+    | 'transferencia'
+    | 'dinheiro'
+    | 'cartao'
+    | 'outro'
+    | 'prazo'
+    | 'cheque'
+    | 'cheque_em_maos';
   observacoes?: string;
   quantidade?: number;
 
@@ -363,6 +361,7 @@ export interface Despesa extends BaseDoc {
   valor: number;
   dataVencimento?: Timestamp;
   dataDespesa?: Timestamp;
+  dataPagamento?: Timestamp | null;
   statusPagamento?: 'pendente' | 'pago';
   status?: 'pendente' | 'pago';
   plantioId?: string;
@@ -391,7 +390,13 @@ export interface RegistroManejo extends BaseDoc {
 export interface TarefaAgricola extends BaseDoc {
   plantioId: string;
   estufaId?: string;
-  tipoTarefa: 'irrigacao' | 'adubacao' | 'manejo' | 'colheita' | 'inspecao' | 'outro';
+  tipoTarefa:
+    | 'irrigacao'
+    | 'adubacao'
+    | 'manejo'
+    | 'colheita'
+    | 'inspecao'
+    | 'outro';
   dataPrevista: Timestamp;
   status: 'pendente' | 'em_andamento' | 'concluida' | 'cancelada';
   prioridade: 'baixa' | 'media' | 'alta' | 'critica';
@@ -407,14 +412,10 @@ export interface TarefaAgricola extends BaseDoc {
 
 export interface RastreabilidadeEvento extends BaseDoc {
   plantioId?: string | null;
-  hydroLoteId?: string | null;
+
   estufaId?: string | null;
   entidade:
     | 'plantio'
-    | 'hydro_lote'
-    | 'hydro_movimentacao'
-    | 'hydro_leitura'
-    | 'hydro_colheita'
     | 'colheita'
     | 'venda'
     | 'aplicacao'
@@ -428,12 +429,10 @@ export interface RastreabilidadeEvento extends BaseDoc {
     | 'status_alterado'
     | 'excluido'
     | 'recebimento_registrado'
+    | 'recebimento_removido'
     | 'desbloqueio_ciclo'
+    | 'autorizacao_admin'
     | 'cancelado'
-    | 'semeado'
-    | 'movido'
-    | 'leitura_registrada'
-    | 'nutriente_adicionado'
     | 'colhido'
     | 'etiqueta_gerada';
   descricao: string;
@@ -461,5 +460,3 @@ export interface DashboardSummary extends BaseDoc {
   irrigacoesPendentes?: number;
   manejosPendentes?: number;
 }
-
-

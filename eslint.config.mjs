@@ -7,6 +7,7 @@ export default [
   {
     ignores: [
       'android/**',
+      'dist/**',
       'node_modules/**',
       '.expo/**',
       '.expo-export-check/**',

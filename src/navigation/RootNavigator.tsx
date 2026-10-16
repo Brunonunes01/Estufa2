@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { ActivityIndicator, Dimensions, Platform, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, StatusBar, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { useAuth } from '../hooks/useAuth';
@@ -14,12 +14,12 @@ import { AppStackNavigator } from './AppStackNavigator';
 
 export const RootNavigator = () => {
   const { user, loading } = useAuth();
-  const { settings } = useAppSettings();
+  const { settings, loading: settingsLoading } = useAppSettings();
   const mode = useThemeMode();
+  const { width } = useWindowDimensions();
 
   const isWeb = Platform.OS === 'web';
-  const screenWidth = Dimensions.get('window').width;
-  const isWideScreen = isWeb && screenWidth > 500;
+  const isWideScreen = isWeb && width > 500;
 
   useEffect(() => {
     const stop = startOfflineSyncListener();
@@ -32,7 +32,7 @@ export const RootNavigator = () => {
     }
   }, [user]);
 
-  if (loading) {
+  if (loading || settingsLoading) {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />

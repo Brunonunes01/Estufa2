@@ -1,7 +1,7 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Image } from 'react-native';
+import { Image, Platform } from 'react-native';
 import { Cliente, Colheita, Plantio } from '../types/domain';
 import {
   buildPublicTraceabilityLookupUrl,
@@ -9,6 +9,11 @@ import {
   buildTraceabilityTextPayload,
   resolveTraceabilityPublicToken,
 } from './publicTraceabilityService';
+import { summarizeCaixaReport } from './caixaReportHelpers';
+import type {
+  CaixaMovimento,
+  CaixaMovimentosResumo,
+} from './caixaServiceHelpers';
 
 type PaymentStatus = 'pago' | 'pendente' | 'atrasado' | 'cancelado';
 
@@ -25,9 +30,19 @@ export interface ComprovantePDFInput {
 }
 
 const SHARE_LOCK_KEY = '__sge_pdf_share_lock__';
-const isShareLocked = () => Boolean((globalThis as any)[SHARE_LOCK_KEY]);
+const SHARE_LOCK_TIMEOUT_MS = 15000;
+const isShareLocked = () => {
+  const lockedAt = (globalThis as any)[SHARE_LOCK_KEY];
+  if (!lockedAt) return false;
+  if (typeof lockedAt !== 'number') return true;
+  const isLocked = Date.now() - lockedAt < SHARE_LOCK_TIMEOUT_MS;
+  if (!isLocked) {
+    (globalThis as any)[SHARE_LOCK_KEY] = false;
+  }
+  return isLocked;
+};
 const setShareLocked = (value: boolean) => {
-  (globalThis as any)[SHARE_LOCK_KEY] = value;
+  (globalThis as any)[SHARE_LOCK_KEY] = value ? Date.now() : false;
 };
 const RECEIPT_BRAND_NAME = 'ESTUFA VERDE VIVO';
 const RECEIPT_BRAND_SUBTITLE = 'PRODUTOS PARA ESTUFAS E AGRICULTURA PROTEGIDA';
@@ -45,7 +60,10 @@ const formatCurrency = (value: number) =>
   value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const formatReceiptNumber = (value: number) =>
-  Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  Number(value || 0).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
 const escapeHtml = (value?: string | null) => {
   if (!value) return '';
@@ -83,14 +101,20 @@ const formatAddress = (entity: {
   estado?: string | null;
   cep?: string | null;
 }) => {
-  const part1 = [entity.endereco, entity.numero, entity.complemento].filter(Boolean).join(', ');
-  const part2 = [entity.bairro, entity.cidade, entity.estado, entity.cep].filter(Boolean).join(' - ');
+  const part1 = [entity.endereco, entity.numero, entity.complemento]
+    .filter(Boolean)
+    .join(', ');
+  const part2 = [entity.bairro, entity.cidade, entity.estado, entity.cep]
+    .filter(Boolean)
+    .join(' - ');
   const full = [part1, part2].filter(Boolean).join(' | ');
   return full || 'Nao informado';
 };
 
 const normalizeUnitLabel = (value?: string | null) => {
-  const raw = String(value || '').trim().toLowerCase();
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase();
   if (!raw) return 'un';
 
   const units: Record<string, string> = {
@@ -105,8 +129,8 @@ const normalizeUnitLabel = (value?: string | null) => {
     un: 'un',
     maco: 'maço',
     macos: 'maço',
-    'maço': 'maço',
-    'maços': 'maço',
+    maço: 'maço',
+    maços: 'maço',
   };
 
   return units[raw] || raw;
@@ -123,13 +147,18 @@ const formatDateTime = (value: any) => {
   const dt = toDate(value);
   return {
     date: dt.toLocaleDateString('pt-BR'),
-    time: dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+    time: dt.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
     isoDay: dt.toISOString().slice(0, 10),
   };
 };
 
 const normalizeSaleItems = (sale: any, fallbackCultura: string) => {
-  const unidadePadrao = normalizeUnitLabel(sale.unidade || sale.unidadeMedida || 'un');
+  const unidadePadrao = normalizeUnitLabel(
+    sale.unidade || sale.unidadeMedida || 'un'
+  );
   const rawItems = Array.isArray(sale.itens) ? sale.itens : [];
 
   if (rawItems.length > 0) {
@@ -168,7 +197,8 @@ const normalizeSaleItems = (sale: any, fallbackCultura: string) => {
 const blobToBase64 = async (blob: Blob): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Falha ao converter logo para base64.'));
+    reader.onerror = () =>
+      reject(new Error('Falha ao converter logo para base64.'));
     reader.onloadend = () => {
       const result = String(reader.result || '');
       resolve(result.includes(',') ? result.split(',')[1] : result);
@@ -176,7 +206,10 @@ const blobToBase64 = async (blob: Blob): Promise<string> =>
     reader.readAsDataURL(blob);
   });
 
-const resolveLogoBase64 = async (logoAssetModule?: number, logoBase64?: string) => {
+const resolveLogoBase64 = async (
+  logoAssetModule?: number,
+  logoBase64?: string
+) => {
   if (logoBase64) {
     return logoBase64.includes(',') ? logoBase64.split(',')[1] : logoBase64;
   }
@@ -190,13 +223,26 @@ const resolveLogoBase64 = async (logoAssetModule?: number, logoBase64?: string) 
   return blobToBase64(blob);
 };
 
+const resolveReceiptLogoBase64 = async (input: ComprovantePDFInput) => {
+  try {
+    return await resolveLogoBase64(
+      input.logoAssetModule ?? require('../../assets/icon.png'),
+      input.logoBase64
+    );
+  } catch {
+    return '';
+  }
+};
+
 const downloadPdfOnWeb = async (uri: string, fileName: string) => {
   if (typeof document === 'undefined') return false;
 
   let href = uri;
   if (!href.startsWith('data:')) {
     try {
-      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
       href = `data:application/pdf;base64,${base64}`;
     } catch {
       return false;
@@ -212,6 +258,25 @@ const downloadPdfOnWeb = async (uri: string, fileName: string) => {
   return true;
 };
 
+const preparePdfForNativeSharing = async (
+  sourceUri: string,
+  fileName: string
+) => {
+  if (!FileSystem.cacheDirectory) return sourceUri;
+
+  const destination = `${FileSystem.cacheDirectory}${fileName}`;
+  try {
+    const existing = await FileSystem.getInfoAsync(destination);
+    if (existing.exists) {
+      await FileSystem.deleteAsync(destination, { idempotent: true });
+    }
+    await FileSystem.copyAsync({ from: sourceUri, to: destination });
+    return destination;
+  } catch {
+    return sourceUri;
+  }
+};
+
 const injectHtmlTitle = (html: string, title: string) => {
   const safeTitle = escapeHtml(title);
   if (/<title>.*<\/title>/i.test(html)) {
@@ -219,21 +284,40 @@ const injectHtmlTitle = (html: string, title: string) => {
   }
 
   if (/<head[^>]*>/i.test(html)) {
-    return html.replace(/<head([^>]*)>/i, `<head$1><title>${safeTitle}</title>`);
+    return html.replace(
+      /<head([^>]*)>/i,
+      `<head$1><title>${safeTitle}</title>`
+    );
   }
 
   return `<!DOCTYPE html><html lang="pt-BR"><head><title>${safeTitle}</title></head><body>${html}</body></html>`;
 };
 
-const printHtmlOnWeb = async (html: string, title: string) => {
+const openPrintWindowOnWeb = () => {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
-    return false;
+    return null;
   }
 
   const printWindow = window.open('', '_blank', 'width=1200,height=900');
   if (!printWindow) {
-    throw new Error('Nao foi possivel abrir a janela de impressao no navegador.');
+    throw new Error(
+      'Nao foi possivel abrir a janela de impressao no navegador.'
+    );
   }
+  return printWindow;
+};
+
+const printHtmlOnWeb = async (
+  html: string,
+  title: string,
+  existingWindow?: Window | null
+) => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return false;
+  }
+
+  const printWindow = existingWindow || openPrintWindowOnWeb();
+  if (!printWindow) return false;
 
   const fullHtml = injectHtmlTitle(html, title);
   printWindow.document.open();
@@ -241,13 +325,26 @@ const printHtmlOnWeb = async (html: string, title: string) => {
   printWindow.document.close();
 
   await new Promise<void>((resolve) => {
-    const finish = () => printWindow.setTimeout(resolve, 500);
-    if (printWindow.document.readyState === 'complete' && printWindow.document.body?.children.length) {
-      finish();
+    let finished = false;
+    const finishOnce = () => {
+      if (finished) return;
+      finished = true;
+      printWindow.setTimeout(resolve, 500);
+    };
+    const fallback = window.setTimeout(finishOnce, 1500);
+    if (
+      printWindow.document.readyState === 'complete' &&
+      printWindow.document.body?.children.length
+    ) {
+      window.clearTimeout(fallback);
+      finishOnce();
       return;
     }
 
-    printWindow.onload = finish;
+    printWindow.onload = () => {
+      window.clearTimeout(fallback);
+      finishOnce();
+    };
   });
 
   printWindow.focus();
@@ -258,33 +355,67 @@ const printHtmlOnWeb = async (html: string, title: string) => {
   return true;
 };
 
-export const buildHtmlTemplate = (input: ComprovantePDFInput, logoBase64: string) => {
-  const { colheita, cliente, plantio, nomeEstufa, nomeFazenda, cultura, contatoFazenda } = input;
-  const dataOperacao = formatDateTime(colheita.dataVenda || colheita.dataColheita);
+export const buildHtmlTemplate = (
+  input: ComprovantePDFInput,
+  logoBase64: string
+) => {
+  const {
+    colheita,
+    cliente,
+    plantio,
+    nomeEstufa,
+    nomeFazenda,
+    cultura,
+    contatoFazenda,
+  } = input;
+  const dataOperacao = formatDateTime(
+    colheita.dataVenda || colheita.dataColheita
+  );
   const dataEmissao = formatDateTime(new Date());
   const codigoVenda = friendlyCode(colheita.id, 'VENDA');
   const codigoPdf = `COMP-${dataOperacao.isoDay.replace(/-/g, '')}-${friendlyCode(colheita.id, 'VENDA')}`;
-  const culturaNome = plantio?.cultura || cultura || colheita.cultura || 'Cultura não informada';
+  const culturaNome =
+    plantio?.cultura || cultura || colheita.cultura || 'Cultura não informada';
   const variedadeNome = plantio?.variedade || colheita.variedade || '';
-  const produtoLabel = variedadeNome ? `${culturaNome} - ${variedadeNome}` : culturaNome;
+  const produtoLabel = variedadeNome
+    ? `${culturaNome} - ${variedadeNome}`
+    : culturaNome;
   const itens = normalizeSaleItems(colheita, produtoLabel);
-  const quantidadeTotal = itens.reduce((acc, item) => acc + toNumber(item.quantidade, 0), 0);
-  const unidadeTotal = normalizeUnitLabel(itens[0]?.unidade || colheita.unidade || colheita.unidadeMedida || 'un');
-  const valorTotalItens = itens.reduce((acc, item) => acc + toNumber(item.subtotal, 0), 0);
+  const quantidadeTotal = itens.reduce(
+    (acc, item) => acc + toNumber(item.quantidade, 0),
+    0
+  );
+  const unidadeTotal = normalizeUnitLabel(
+    itens[0]?.unidade || colheita.unidade || colheita.unidadeMedida || 'un'
+  );
+  const valorTotalItens = itens.reduce(
+    (acc, item) => acc + toNumber(item.subtotal, 0),
+    0
+  );
   const valorTotal = toNumber(colheita.valorTotal, valorTotalItens);
-  const precoMedio = quantidadeTotal > 0 ? valorTotal / quantidadeTotal : toNumber(colheita.precoUnitario, 0);
+  const precoMedio =
+    quantidadeTotal > 0
+      ? valorTotal / quantidadeTotal
+      : toNumber(colheita.precoUnitario, 0);
   const statusPagamento = (colheita.statusPagamento || 'pago') as PaymentStatus;
-  const statusClasse = statusPagamento === 'pago' ? 'status-paid' : 'status-pending';
+  const statusClasse =
+    statusPagamento === 'pago' ? 'status-paid' : 'status-pending';
   const statusLabel = statusPagamento.toUpperCase();
   const clienteNome = cliente?.nome || 'Cliente Avulso';
   const clienteDocumento = cliente?.documento || 'Nao informado';
   const clienteTelefone = cliente?.telefone || 'Não informado';
   const clienteCidade = cliente?.cidade || 'Não informada';
   const clienteEndereco = formatAddress(cliente || {});
-  const metodoPagamento = colheita.metodoPagamento || colheita.formaPagamento || 'Não informado';
-  const lotePlantio = plantio?.codigoLote || colheita.codigoLote || friendlyCode(colheita.plantioId, 'PLANTIO');
+  const metodoPagamento =
+    colheita.metodoPagamento || colheita.formaPagamento || 'Não informado';
+  const lotePlantio =
+    plantio?.codigoLote ||
+    colheita.codigoLote ||
+    friendlyCode(colheita.plantioId, 'PLANTIO');
   const loteColheita =
-    colheita.loteColheita || colheita.lote || friendlyCode(colheita.colheitaId, 'COLHEITA');
+    colheita.loteColheita ||
+    colheita.lote ||
+    friendlyCode(colheita.colheitaId, 'COLHEITA');
   const observacoesVenda = String(colheita.observacoes || '').trim();
   const origem = nomeEstufa || nomeFazenda || 'Origem não informada';
   const traceabilityToken = resolveTraceabilityPublicToken({
@@ -539,39 +670,76 @@ export const buildHtmlTemplate = (input: ComprovantePDFInput, logoBase64: string
   `;
 };
 
-const _buildHtmlTemplateV2 = (input: ComprovantePDFInput, logoBase64: string) => {
-  const { colheita, cliente, plantio, nomeEstufa, nomeFazenda, cultura, contatoFazenda } = input;
-  const dataOperacao = formatDateTime(colheita.dataVenda || colheita.dataColheita);
+const _buildHtmlTemplateV2 = (
+  input: ComprovantePDFInput,
+  logoBase64: string
+) => {
+  const {
+    colheita,
+    cliente,
+    plantio,
+    nomeEstufa,
+    nomeFazenda,
+    cultura,
+    contatoFazenda,
+  } = input;
+  const dataOperacao = formatDateTime(
+    colheita.dataVenda || colheita.dataColheita
+  );
   const dataEmissao = formatDateTime(new Date());
   const codigoVenda = friendlyCode(colheita.id, 'VENDA');
   const codigoPdf = `COMP-${dataOperacao.isoDay.replace(/-/g, '')}-${friendlyCode(colheita.id, 'VENDA')}`;
-  const culturaNome = plantio?.cultura || cultura || colheita.cultura || 'Cultura nao informada';
+  const culturaNome =
+    plantio?.cultura || cultura || colheita.cultura || 'Cultura nao informada';
   const variedadeNome = plantio?.variedade || colheita.variedade || '';
-  const produtoLabel = variedadeNome ? `${culturaNome} - ${variedadeNome}` : culturaNome;
+  const produtoLabel = variedadeNome
+    ? `${culturaNome} - ${variedadeNome}`
+    : culturaNome;
   const itens = normalizeSaleItems(colheita, produtoLabel);
-  const quantidadeTotal = itens.reduce((acc, item) => acc + toNumber(item.quantidade, 0), 0);
-  const unidadeTotal = normalizeUnitLabel(itens[0]?.unidade || colheita.unidade || colheita.unidadeMedida || 'un');
-  const valorTotalItens = itens.reduce((acc, item) => acc + toNumber(item.subtotal, 0), 0);
+  const quantidadeTotal = itens.reduce(
+    (acc, item) => acc + toNumber(item.quantidade, 0),
+    0
+  );
+  const unidadeTotal = normalizeUnitLabel(
+    itens[0]?.unidade || colheita.unidade || colheita.unidadeMedida || 'un'
+  );
+  const valorTotalItens = itens.reduce(
+    (acc, item) => acc + toNumber(item.subtotal, 0),
+    0
+  );
   const valorTotal = toNumber(colheita.valorTotal, valorTotalItens);
-  const precoMedio = quantidadeTotal > 0 ? valorTotal / quantidadeTotal : toNumber(colheita.precoUnitario, 0);
+  const precoMedio =
+    quantidadeTotal > 0
+      ? valorTotal / quantidadeTotal
+      : toNumber(colheita.precoUnitario, 0);
   const statusPagamento = (colheita.statusPagamento || 'pago') as PaymentStatus;
-  const statusClasse = statusPagamento === 'pago' ? 'status-paid' : 'status-pending';
+  const statusClasse =
+    statusPagamento === 'pago' ? 'status-paid' : 'status-pending';
   const statusLabel = statusPagamento.toUpperCase();
   const clienteNome = cliente?.nome || 'Cliente avulso';
   const clienteDocumento = cliente?.documento || 'Nao informado';
   const clienteTelefone = cliente?.telefone || 'Nao informado';
   const clienteCidade = cliente?.cidade || 'Nao informada';
   const clienteEndereco = formatAddress(cliente || {});
-  const metodoPagamento = colheita.metodoPagamento || colheita.formaPagamento || 'Nao informado';
-  const lotePlantio = plantio?.codigoLote || colheita.codigoLote || friendlyCode(colheita.plantioId, 'PLANTIO');
-  const loteColheita = colheita.loteColheita || colheita.lote || friendlyCode(colheita.colheitaId, 'COLHEITA');
+  const metodoPagamento =
+    colheita.metodoPagamento || colheita.formaPagamento || 'Nao informado';
+  const lotePlantio =
+    plantio?.codigoLote ||
+    colheita.codigoLote ||
+    friendlyCode(colheita.plantioId, 'PLANTIO');
+  const loteColheita =
+    colheita.loteColheita ||
+    colheita.lote ||
+    friendlyCode(colheita.colheitaId, 'COLHEITA');
   const observacoesVenda = String(colheita.observacoes || '').trim();
   const origem = nomeEstufa || nomeFazenda || 'Origem nao informada';
   const traceabilityToken = resolveTraceabilityPublicToken({
     id: colheita.id,
     traceabilityPublicToken: colheita.traceabilityPublicToken || null,
   });
-  const traceabilityLink = String(colheita.traceabilityPublicUrl || '').trim() || buildPublicTraceabilityLookupUrl(traceabilityToken);
+  const traceabilityLink =
+    String(colheita.traceabilityPublicUrl || '').trim() ||
+    buildPublicTraceabilityLookupUrl(traceabilityToken);
   const traceabilityTextPayload = buildTraceabilityTextPayload({
     token: traceabilityToken || codigoVenda,
     produto: produtoLabel,
@@ -588,8 +756,8 @@ const _buildHtmlTemplateV2 = (input: ComprovantePDFInput, logoBase64: string) =>
     statusPagamento === 'pago'
       ? 'Pagamento liquidado.'
       : statusPagamento === 'cancelado'
-      ? 'Venda cancelada.'
-      : 'Pagamento pendente.';
+        ? 'Venda cancelada.'
+        : 'Pagamento pendente.';
 
   const itensRows = itens
     .map(
@@ -774,16 +942,40 @@ const _buildHtmlTemplateV2 = (input: ComprovantePDFInput, logoBase64: string) =>
   `;
 };
 
-const buildEstufaVerdeVivoReceiptHtml = (input: ComprovantePDFInput, logoBase64: string) => {
-  const { colheita, cliente, plantio, nomeEstufa, nomeFazenda, cultura, contatoFazenda } = input;
-  const dataOperacao = formatDateTime(colheita.dataVenda || colheita.dataColheita);
-  const culturaNome = plantio?.cultura || cultura || colheita.cultura || 'Produto agrícola';
+const buildEstufaVerdeVivoReceiptHtml = (
+  input: ComprovantePDFInput,
+  logoBase64: string
+) => {
+  const {
+    colheita,
+    cliente,
+    plantio,
+    nomeEstufa,
+    nomeFazenda,
+    cultura,
+    contatoFazenda,
+  } = input;
+  const dataOperacao = formatDateTime(
+    colheita.dataVenda || colheita.dataColheita
+  );
+  const culturaNome =
+    plantio?.cultura || cultura || colheita.cultura || 'Produto agrícola';
   const variedadeNome = plantio?.variedade || colheita.variedade || '';
-  const produtoLabel = variedadeNome ? `${culturaNome} - ${variedadeNome}` : culturaNome;
+  const produtoLabel = variedadeNome
+    ? `${culturaNome} - ${variedadeNome}`
+    : culturaNome;
   const itens = normalizeSaleItems(colheita, produtoLabel);
-  const quantidadeTotal = itens.reduce((acc, item) => acc + toNumber(item.quantidade, 0), 0);
-  const unidadeTotal = normalizeUnitLabel(itens[0]?.unidade || colheita.unidade || colheita.unidadeMedida || 'un');
-  const valorTotalItens = itens.reduce((acc, item) => acc + toNumber(item.subtotal, 0), 0);
+  const quantidadeTotal = itens.reduce(
+    (acc, item) => acc + toNumber(item.quantidade, 0),
+    0
+  );
+  const unidadeTotal = normalizeUnitLabel(
+    itens[0]?.unidade || colheita.unidade || colheita.unidadeMedida || 'un'
+  );
+  const valorTotalItens = itens.reduce(
+    (acc, item) => acc + toNumber(item.subtotal, 0),
+    0
+  );
   const valorTotal = toNumber(colheita.valorTotal, valorTotalItens);
   const clienteNome = cliente?.nome || 'Cliente avulso';
   const clienteDocumento = cliente?.documento || 'Nao informado';
@@ -792,32 +984,58 @@ const buildEstufaVerdeVivoReceiptHtml = (input: ComprovantePDFInput, logoBase64:
   const clienteEstado = cliente?.estado || '';
   const clienteCep = cliente?.cep || 'Nao informado';
   const clienteEndereco = formatAddress(cliente || {});
-  const metodoPagamento = colheita.metodoPagamento || colheita.formaPagamento || 'Nao informado';
-  const formaPagamentoLabel = String(metodoPagamento).toLowerCase() === 'prazo' ? '30 DIAS' : 'A VISTA';
+  const metodoPagamento =
+    colheita.metodoPagamento || colheita.formaPagamento || 'Nao informado';
+  const formaPagamentoLabel =
+    String(metodoPagamento).toLowerCase() === 'prazo' ? '30 DIAS' : 'A VISTA';
   const vendedorLabel = nomeFazenda || 'Nao informado';
   const freteLabel = 'Por conta do cliente';
   const quantidadeLabel = `${formatQuantity(quantidadeTotal)} ${String(unidadeTotal).toUpperCase()}`;
   const statusPagamento = (colheita.statusPagamento || 'pago') as PaymentStatus;
-  const valorPago = statusPagamento === 'pago' ? valorTotal : 0;
-  const valorPendente = statusPagamento === 'pago' || statusPagamento === 'cancelado' ? 0 : valorTotal;
-  const dataPagamentoLabel = statusPagamento === 'pago' ? dataOperacao.date : '-';
+  const valorPago =
+    statusPagamento === 'pago'
+      ? toNumber(colheita.valorRecebido, valorTotal)
+      : 0;
+  const valorPendente =
+    statusPagamento === 'pago' || statusPagamento === 'cancelado'
+      ? 0
+      : valorTotal;
+  const dataPagamentoLabel =
+    statusPagamento === 'pago'
+      ? formatDateTime(
+          colheita.dataRecebimento ||
+            colheita.dataVenda ||
+            colheita.dataColheita
+        ).date
+      : '-';
   const vencimentoDate = colheita.dataVencimento
     ? toDate(colheita.dataVencimento)
-    : new Date(toDate(colheita.dataVenda || colheita.dataColheita).getTime() + 30 * 24 * 60 * 60 * 1000);
-  const vencimentoLabel = statusPagamento === 'pago' ? '-' : vencimentoDate.toLocaleDateString('pt-BR');
+    : new Date(
+        toDate(colheita.dataVenda || colheita.dataColheita).getTime() +
+          30 * 24 * 60 * 60 * 1000
+      );
+  const vencimentoLabel =
+    statusPagamento === 'pago'
+      ? '-'
+      : vencimentoDate.toLocaleDateString('pt-BR');
   const codigoDocumento = String(colheita.id || '')
     .replace(/[^A-Za-z0-9]/g, '')
     .slice(-6)
     .padStart(6, '0');
   const observacoesVenda = String(colheita.observacoes || '').trim();
   const contactEmail = contatoFazenda || 'contato@estufaverdevivo.com.br';
-  const website = String(colheita.traceabilityPublicUrl || '').trim() || 'www.estufaverdevivo.com.br';
+  const website =
+    String(colheita.traceabilityPublicUrl || '').trim() ||
+    'www.estufaverdevivo.com.br';
   const observacoesLista = observacoesVenda
     ? observacoesVenda
         .split(/\r?\n+/)
         .map((item) => item.trim())
         .filter(Boolean)
-    : ['Mercadorias entregues conforme pedido.', `Origem: ${nomeEstufa || nomeFazenda}.`];
+    : [
+        'Mercadorias entregues conforme pedido.',
+        `Origem: ${nomeEstufa || nomeFazenda}.`,
+      ];
 
   const itensRows = itens
     .map(
@@ -1011,56 +1229,70 @@ const buildEstufaVerdeVivoReceiptHtml = (input: ComprovantePDFInput, logoBase64:
 };
 
 export const gerarComprovantePDF = async (input: ComprovantePDFInput) => {
-  const logoBase64 = await resolveLogoBase64(
-    input.logoAssetModule ?? require('../../assets/icon.png'),
-    input.logoBase64
-  );
+  const logoBase64 = await resolveReceiptLogoBase64(input);
   const htmlString = buildEstufaVerdeVivoReceiptHtml(input, logoBase64);
   const { uri } = await Print.printToFileAsync({ html: htmlString });
   return uri;
 };
 
 export const compartilharPDF = async (input: ComprovantePDFInput) => {
-  if (isShareLocked()) return;
+  if (isShareLocked()) {
+    throw new Error('Já existe um PDF sendo gerado. Aguarde alguns segundos.');
+  }
   setShareLocked(true);
   try {
     if (typeof document !== 'undefined') {
-      const logoBase64 = await resolveLogoBase64(
-        input.logoAssetModule ?? require('../../assets/icon.png'),
-        input.logoBase64
-      );
-      const htmlString = buildEstufaVerdeVivoReceiptHtml(input, logoBase64);
-      await printHtmlOnWeb(htmlString, 'Comprovante de venda');
+      const printWindow = openPrintWindowOnWeb();
+      try {
+        const logoBase64 = await resolveReceiptLogoBase64(input);
+        const htmlString = buildEstufaVerdeVivoReceiptHtml(input, logoBase64);
+        await printHtmlOnWeb(htmlString, 'Comprovante de venda', printWindow);
+      } catch (error) {
+        printWindow?.close();
+        throw error;
+      }
       return;
     }
 
     const uri = await gerarComprovantePDF(input);
-    const dataOperacao = toDate(input.colheita.dataVenda || input.colheita.dataColheita);
+    const dataOperacao = toDate(
+      input.colheita.dataVenda || input.colheita.dataColheita
+    );
     const dataToken = dataOperacao.toISOString().slice(0, 10);
-    const clienteToken = sanitizeFilenameSegment(input.cliente?.nome || 'cliente-avulso');
-    const codigoToken = sanitizeFilenameSegment(friendlyCode(input.colheita.id, 'VENDA'));
+    const clienteToken = sanitizeFilenameSegment(
+      input.cliente?.nome || 'cliente-avulso'
+    );
+    const codigoToken = sanitizeFilenameSegment(
+      friendlyCode(input.colheita.id, 'VENDA')
+    );
     const nomeArquivo = `Comprovante_${clienteToken}_${dataToken}_${codigoToken}.pdf`;
-    const destinoUri = `${FileSystem.cacheDirectory}${nomeArquivo}`;
-
-    const existing = await FileSystem.getInfoAsync(destinoUri);
-    if (existing.exists) {
-      await FileSystem.deleteAsync(destinoUri, { idempotent: true });
-    }
-    await FileSystem.copyAsync({ from: uri, to: destinoUri });
+    const destinoUri = await preparePdfForNativeSharing(uri, nomeArquivo);
 
     const isAvailable = await Sharing.isAvailableAsync();
     if (isAvailable) {
-      await Sharing.shareAsync(destinoUri, {
-        UTI: '.pdf',
-        mimeType: 'application/pdf',
-        dialogTitle: nomeArquivo,
-      });
+      try {
+        await Sharing.shareAsync(destinoUri, {
+          mimeType: 'application/pdf',
+          dialogTitle: nomeArquivo,
+          ...(Platform.OS === 'ios' ? { UTI: 'com.adobe.pdf' } : {}),
+        });
+      } catch (error) {
+        if (Platform.OS !== 'android') throw error;
+        await Print.printAsync({ uri: destinoUri });
+      }
+      return;
+    }
+
+    if (Platform.OS === 'android') {
+      await Print.printAsync({ uri: destinoUri });
       return;
     }
 
     const downloaded = await downloadPdfOnWeb(destinoUri, nomeArquivo);
     if (!downloaded) {
-      throw new Error('Nao foi possivel compartilhar ou baixar o PDF neste dispositivo.');
+      throw new Error(
+        'Nao foi possivel compartilhar ou baixar o PDF neste dispositivo.'
+      );
     }
   } finally {
     setShareLocked(false);
@@ -1070,104 +1302,282 @@ export const compartilharPDF = async (input: ComprovantePDFInput) => {
 export interface RelatorioCaixaInput {
   tenantNome: string;
   periodo: string;
-  totalEntradas: number;
-  totalSaidas: number;
-  saldoFinal: number;
-  movimentos: Array<{
-    data: Date;
-    descricao: string;
-    pessoa: string;
-    valor: number;
-    tipo: 'entrada' | 'saida';
-    origem: string;
-    metodoPagamento?: string;
-    observacoes?: string;
-  }>;
+  responsavel: string;
+  tipoFiltro: string;
+  busca?: string;
+  resumo: CaixaMovimentosResumo;
+  movimentos: CaixaMovimento[];
 }
 
-export const gerarRelatorioCaixaPDF = async (input: RelatorioCaixaInput) => {
-  const html = `
+const formatOptionalReportDate = (value?: Date) =>
+  value ? formatDateTime(value).date : '-';
+
+const caixaMovementStatusLabel = (movimento: CaixaMovimento) => {
+  if (movimento.status === 'previsto') return 'AGUARDANDO COMPENSAÇÃO';
+  return movimento.tipo === 'entrada' ? 'RECEBIDO' : 'PAGO';
+};
+
+export const buildRelatorioCaixaHtml = (input: RelatorioCaixaInput) => {
+  const stats = summarizeCaixaReport(input.movimentos);
+  const quantitiesLabel = stats.quantidadesPorUnidade.length
+    ? stats.quantidadesPorUnidade
+        .map(
+          (item) =>
+            `${formatQuantity(item.quantidade)} ${item.unidade.toUpperCase()}`
+        )
+        .join(' • ')
+    : 'Sem quantidades informadas';
+
+  const paymentRows = stats.pagamentos
+    .map(
+      (item) => `
+        <tr>
+          <td><strong>${escapeHtml(item.metodo)}</strong></td>
+          <td class="align-right">${item.quantidade}</td>
+          <td class="align-right entrada">${formatCurrency(item.confirmado)}</td>
+          <td class="align-right previsto">${formatCurrency(item.previsto)}</td>
+        </tr>
+      `
+    )
+    .join('');
+
+  const movementRows = input.movimentos
+    .map((movimento) => {
+      const itemDetails = movimento.itens.length
+        ? movimento.itens
+            .map(
+              (item) => `
+                <div class="item-line">
+                  <strong>${escapeHtml(item.descricao)}</strong><br />
+                  ${escapeHtml(formatQuantity(item.quantidade))} ${escapeHtml(String(item.unidade || 'un').toUpperCase())}
+                  × ${formatCurrency(item.valorUnitario)} = ${formatCurrency(item.valorTotal)}
+                </div>
+              `
+            )
+            .join('')
+        : `<div class="item-line"><strong>${escapeHtml(movimento.descricao)}</strong></div>`;
+      const statusLabel = caixaMovementStatusLabel(movimento);
+      const statusClass =
+        movimento.status === 'previsto'
+          ? 'status-pending'
+          : movimento.tipo === 'entrada'
+            ? 'status-paid'
+            : 'status-expense';
+      const combinedValue = Number(
+        movimento.valorCombinado ?? movimento.valor ?? 0
+      );
+      const receivedValue =
+        movimento.valorRecebido != null
+          ? formatCurrency(movimento.valorRecebido)
+          : '-';
+      const notes = [
+        movimento.categoria ? `Categoria: ${movimento.categoria}` : '',
+        movimento.observacoes || '',
+      ]
+        .filter(Boolean)
+        .join(' • ');
+
+      return `
+        <tr>
+          <td>
+            <strong>Caixa:</strong> ${formatOptionalReportDate(movimento.data)}
+            ${movimento.dataVenda ? `<div><strong>Venda:</strong> ${formatOptionalReportDate(movimento.dataVenda)}</div>` : ''}
+            ${movimento.dataRecebimento ? `<div><strong>Baixa:</strong> ${formatOptionalReportDate(movimento.dataRecebimento)}</div>` : ''}
+            ${movimento.dataCompensacaoCheque ? `<div><strong>Compensação:</strong> ${formatOptionalReportDate(movimento.dataCompensacaoCheque)}</div>` : ''}
+            ${movimento.dataVencimento ? `<div><strong>Venc.:</strong> ${formatOptionalReportDate(movimento.dataVencimento)}</div>` : ''}
+          </td>
+          <td>
+            <strong>${escapeHtml(movimento.clienteNome || (movimento.tipo === 'entrada' ? 'Cliente avulso' : '-'))}</strong>
+            <div>Caixa: ${escapeHtml(movimento.caixaPessoaNome)}</div>
+          </td>
+          <td>
+            <strong>${escapeHtml(movimento.origem === 'venda' ? movimento.origemProducao || 'Venda' : 'Despesa')}</strong>
+            <div>${escapeHtml(movimento.descricao)}</div>
+            <div class="reference">Ref.: ${escapeHtml(movimento.referenciaId)}</div>
+          </td>
+          <td>${itemDetails}</td>
+          <td>
+            <strong>${escapeHtml(
+              String(movimento.metodoPagamento || '-')
+                .replace(/_/g, ' ')
+                .toUpperCase()
+            )}</strong>
+            <div><span class="status ${statusClass}">${escapeHtml(statusLabel)}</span></div>
+          </td>
+          <td class="values-cell">
+            ${movimento.origem === 'venda' ? `<div>Combinado: <strong>${formatCurrency(combinedValue)}</strong></div>` : ''}
+            ${movimento.origem === 'venda' ? `<div>Recebido: <strong>${receivedValue}</strong></div>` : ''}
+            <div>Caixa: <strong class="${movimento.tipo === 'entrada' ? 'entrada' : 'saida'}">${movimento.tipo === 'entrada' ? '+' : '-'} ${formatCurrency(movimento.valor)}</strong></div>
+          </td>
+          <td>${escapeHtml(notes || '-')}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  return `
     <!DOCTYPE html>
     <html lang="pt-BR">
       <head>
         <meta charset="UTF-8" />
         <style>
-          body { font-family: sans-serif; padding: 20px; color: #333; }
-          .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-          .summary { display: flex; justify-content: space-around; margin-bottom: 30px; background: #f9f9f9; padding: 15px; border-radius: 8px; }
-          .summary-item { text-align: center; }
-          .summary-item label { display: block; font-size: 12px; color: #666; text-transform: uppercase; }
-          .summary-item value { font-size: 18px; font-weight: bold; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th, td { border: 1px solid #eee; padding: 10px; text-align: left; font-size: 12px; }
-          th { background: #f4f4f4; }
-          .entrada { color: #166534; font-weight: bold; }
-          .saida { color: #991b1b; font-weight: bold; }
-          .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #999; }
+          @page { size: A4 landscape; margin: 10mm; }
+          * { box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; margin: 0; color: #17231c; font-size: 10px; }
+          .header { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; padding: 16px 18px; color: #fff; background: #0f5a2e; border-radius: 10px; }
+          .header h1 { margin: 3px 0; font-size: 24px; }
+          .header p { margin: 2px 0; }
+          .eyebrow { text-transform: uppercase; letter-spacing: 1.2px; font-weight: bold; opacity: .75; }
+          .header-meta { text-align: right; line-height: 1.5; }
+          .filters { display: grid; grid-template-columns: 1.2fr 1fr 1fr 1.5fr; gap: 8px; margin: 12px 0; }
+          .filter { padding: 8px 10px; border: 1px solid #d9e5dc; border-radius: 7px; background: #f7faf8; }
+          .filter span { display: block; color: #66736b; font-size: 8px; text-transform: uppercase; font-weight: bold; margin-bottom: 3px; }
+          .summary { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin: 12px 0; }
+          .summary-item { padding: 10px; border-radius: 8px; border: 1px solid #d9e5dc; background: #fff; }
+          .summary-item label { display: block; color: #66736b; font-size: 8px; text-transform: uppercase; font-weight: bold; margin-bottom: 5px; }
+          .summary-item strong { font-size: 14px; }
+          .section-title { margin: 16px 0 6px; padding-left: 8px; border-left: 4px solid #20a45a; font-size: 14px; }
+          .quantity-line { padding: 8px 10px; border-radius: 7px; background: #edf7f0; color: #244c32; }
+          table { width: 100%; border-collapse: collapse; }
+          thead { display: table-header-group; }
+          tr { page-break-inside: avoid; }
+          th, td { border: 1px solid #dfe7e1; padding: 6px; text-align: left; vertical-align: top; }
+          th { background: #edf4ef; color: #284634; font-size: 8px; text-transform: uppercase; }
+          .payment-table { width: 62%; margin-bottom: 10px; }
+          .details { table-layout: fixed; }
+          .details th:nth-child(1) { width: 13%; }
+          .details th:nth-child(2) { width: 13%; }
+          .details th:nth-child(3) { width: 12%; }
+          .details th:nth-child(4) { width: 21%; }
+          .details th:nth-child(5) { width: 12%; }
+          .details th:nth-child(6) { width: 15%; }
+          .details th:nth-child(7) { width: 14%; }
+          .item-line + .item-line { border-top: 1px dotted #cbd7ce; margin-top: 4px; padding-top: 4px; }
+          .reference { color: #7a857e; font-size: 8px; word-break: break-all; }
+          .values-cell { line-height: 1.5; }
+          .align-right { text-align: right; }
+          .entrada { color: #14733b; font-weight: bold; }
+          .saida { color: #a32a2a; font-weight: bold; }
+          .previsto { color: #a36500; font-weight: bold; }
+          .status { display: inline-block; margin-top: 4px; padding: 3px 5px; border-radius: 999px; font-size: 7px; font-weight: bold; }
+          .status-paid { color: #126534; background: #dcf5e5; }
+          .status-pending { color: #925a00; background: #fff0c7; }
+          .status-expense { color: #8e2828; background: #fde3e3; }
+          .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid #dfe7e1; text-align: center; color: #748078; font-size: 8px; }
         </style>
       </head>
       <body>
         <div class="header">
-          <h1>Relatório de Caixa</h1>
-          <p>${escapeHtml(input.tenantNome)} - Período: ${escapeHtml(input.periodo)}</p>
+          <div>
+            <div class="eyebrow">Financeiro • Caixa</div>
+            <h1>Relatório detalhado do caixa</h1>
+            <p>${escapeHtml(input.tenantNome)}</p>
+          </div>
+          <div class="header-meta">
+            <div><strong>Período:</strong> ${escapeHtml(input.periodo)}</div>
+            <div><strong>Emitido:</strong> ${formatDateTime(new Date()).date} ${formatDateTime(new Date()).time}</div>
+          </div>
         </div>
+
+        <div class="filters">
+          <div class="filter"><span>Responsável do caixa</span>${escapeHtml(input.responsavel)}</div>
+          <div class="filter"><span>Tipo de movimento</span>${escapeHtml(input.tipoFiltro)}</div>
+          <div class="filter"><span>Registros encontrados</span>${input.movimentos.length}</div>
+          <div class="filter"><span>Busca aplicada</span>${escapeHtml(input.busca || 'Nenhuma')}</div>
+        </div>
+
         <div class="summary">
           <div class="summary-item">
-            <label>Total Entradas</label>
-            <span class="entrada">${formatCurrency(input.totalEntradas)}</span>
+            <label>Entradas confirmadas</label>
+            <strong class="entrada">${formatCurrency(input.resumo.entradas)}</strong>
           </div>
           <div class="summary-item">
-            <label>Total Saídas</label>
-            <span class="saida">${formatCurrency(input.totalSaidas)}</span>
+            <label>Saídas confirmadas</label>
+            <strong class="saida">${formatCurrency(input.resumo.saidas)}</strong>
           </div>
           <div class="summary-item">
-            <label>Saldo Final</label>
-            <span style="font-weight: bold;">${formatCurrency(input.saldoFinal)}</span>
+            <label>Saldo confirmado</label>
+            <strong>${formatCurrency(input.resumo.saldo)}</strong>
           </div>
+          <div class="summary-item"><label>Cheques previstos</label><strong class="previsto">${formatCurrency(input.resumo.entradasPrevistas)}</strong></div>
+          <div class="summary-item"><label>Vendas listadas</label><strong>${stats.vendasConfirmadas + stats.vendasPrevistas}</strong></div>
+          <div class="summary-item"><label>Total de caixas</label><strong>${formatQuantity(stats.totalCaixas)}</strong></div>
         </div>
-        <table>
+
+        <div class="quantity-line"><strong>Quantidades vendidas por unidade:</strong> ${escapeHtml(quantitiesLabel)}</div>
+
+        ${
+          paymentRows
+            ? `
+          <h2 class="section-title">Conferência por meio de pagamento</h2>
+          <table class="payment-table">
+            <thead><tr><th>Meio de pagamento</th><th class="align-right">Vendas</th><th class="align-right">Confirmado</th><th class="align-right">Previsto</th></tr></thead>
+            <tbody>${paymentRows}</tbody>
+          </table>
+        `
+            : ''
+        }
+
+        <h2 class="section-title">Movimentações conforme os filtros</h2>
+        <table class="details">
           <thead>
             <tr>
-              <th>Data</th>
-              <th>Descrição</th>
-              <th>Responsável</th>
-              <th>Origem</th>
-              ${input.movimentos.some(m => m.metodoPagamento) ? '<th>Meio Pgto</th>' : ''}
-              ${input.movimentos.some(m => m.observacoes) ? '<th>Observações</th>' : ''}
-              <th>Valor</th>
+              <th>Datas</th>
+              <th>Cliente / responsável</th>
+              <th>Origem / referência</th>
+              <th>Produtos, caixas e valores unitários</th>
+              <th>Pagamento / situação</th>
+              <th>Valores</th>
+              <th>Observações</th>
             </tr>
           </thead>
-          <tbody>
-            ${input.movimentos.map(m => `
-              <tr>
-                <td>${formatDateTime(m.data).date}</td>
-                <td>${escapeHtml(m.descricao)}</td>
-                <td>${escapeHtml(m.pessoa)}</td>
-                <td>${escapeHtml(m.origem.toUpperCase())}</td>
-                ${input.movimentos.some(mov => mov.metodoPagamento) ? `<td>${escapeHtml(String(m.metodoPagamento || '-').toUpperCase())}</td>` : ''}
-                ${input.movimentos.some(mov => mov.observacoes) ? `<td>${escapeHtml(m.observacoes || '-')}</td>` : ''}
-                <td class="${m.tipo}">${m.tipo === 'entrada' ? '+' : '-'} ${formatCurrency(m.valor)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
+          <tbody>${movementRows}</tbody>
         </table>
         <div class="footer">
-          Gerado em ${formatDateTime(new Date()).date} ${formatDateTime(new Date()).time}
+          Relatório gerado a partir de todos os registros encontrados pelos filtros do Extrato do Caixa. Entradas previstas não compõem o saldo confirmado.
         </div>
       </body>
     </html>
   `;
-  
-  const { uri } = await Print.printToFileAsync({ html });
-  
-  const nomeArquivo = `Relatorio_Caixa_${sanitizeFilenameSegment(input.periodo)}.pdf`;
-  const destinoUri = `${FileSystem.cacheDirectory}${nomeArquivo}`;
-  
-  await FileSystem.copyAsync({ from: uri, to: destinoUri });
-  
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(destinoUri);
-  } else {
-    await downloadPdfOnWeb(destinoUri, nomeArquivo);
+};
+
+export const gerarRelatorioCaixaPDF = async (input: RelatorioCaixaInput) => {
+  if (isShareLocked()) {
+    throw new Error('Já existe uma exportação em andamento.');
+  }
+
+  setShareLocked(true);
+  try {
+    const html = buildRelatorioCaixaHtml(input);
+    const { uri } = await Print.printToFileAsync({ html });
+
+    const nomeArquivo = `Relatorio_Caixa_${sanitizeFilenameSegment(input.responsavel)}_${sanitizeFilenameSegment(input.periodo)}.pdf`;
+    const destinoUri = await preparePdfForNativeSharing(uri, nomeArquivo);
+
+    if (await Sharing.isAvailableAsync()) {
+      try {
+        await Sharing.shareAsync(destinoUri, {
+          mimeType: 'application/pdf',
+          dialogTitle: nomeArquivo,
+          ...(Platform.OS === 'ios' ? { UTI: 'com.adobe.pdf' } : {}),
+        });
+      } catch (error) {
+        if (Platform.OS !== 'android') throw error;
+        await Print.printAsync({ uri: destinoUri });
+      }
+      return;
+    }
+
+    if (Platform.OS === 'android') {
+      await Print.printAsync({ uri: destinoUri });
+      return;
+    }
+
+    const downloaded = await downloadPdfOnWeb(destinoUri, nomeArquivo);
+    if (!downloaded) {
+      throw new Error('Não foi possível compartilhar ou baixar o PDF.');
+    }
+  } finally {
+    setShareLocked(false);
   }
 };

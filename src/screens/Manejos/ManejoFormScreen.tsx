@@ -46,10 +46,13 @@ const ManejoFormScreen = ({ route, navigation }: any) => {
 
   const handleSave = async () => {
     if (!canWrite) return;
-    const targetId = (selectedTenantId || user?.uid) as string;
+    const targetId = selectedTenantId || user?.uid;
     
-    if (!plantioId || !estufaId) {
-      return Alert.alert("Erro", "Falta a referência do Lote ou Estufa.");
+    if (!targetId) {
+      return Alert.alert('Atenção', 'Sua sessão expirou. Entre novamente.');
+    }
+    if (!plantioId) {
+      return Alert.alert('Erro', 'Falta a referência do ciclo de produção.');
     }
     if (!descricao) {
       return Alert.alert("Erro", "A descrição do evento é obrigatória.");
@@ -59,7 +62,7 @@ const ManejoFormScreen = ({ route, navigation }: any) => {
 
     const manejoData = {
       plantioId,
-      estufaId,
+      estufaId: estufaId || undefined,
       tipoManejo,
       descricao,
       responsavel,

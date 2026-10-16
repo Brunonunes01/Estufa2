@@ -2,37 +2,29 @@ import { listCaixaPessoas } from './caixaPessoaService';
 import { listDespesas } from './despesaService';
 import { listAllVendas } from './vendaService';
 import { listClientes } from './clienteService';
+import { listAllPlantios } from './plantioService';
+import {
+  FinanceProductionMode,
+  matchesDespesaProductionMode,
+  matchesVendaProductionMode,
+} from './financeProductionScope';
+import { buildCaixaMovimentos, filterCaixaMovimentos, NON_CLASSIFIED_ID, summarizeCaixaMovimentos, summarizeCaixaPorPessoa } from './caixaServiceHelpers';
+import type { CaixaMovimento, CaixaResumoPessoa, CaixaTipoMov } from './caixaServiceHelpers';
+
+export type { CaixaMovimento, CaixaMovimentoItem, CaixaMovimentosResumo, CaixaResumoPessoa, CaixaTipoMov } from './caixaServiceHelpers';
 
 export type CaixaPeriod = 'today' | '7d' | 'month' | 'all' | 'custom';
-export type CaixaTipoMov = 'entrada' | 'saida';
-
-export type CaixaMovimento = {
-  id: string;
-  tipo: CaixaTipoMov;
-  origem: 'venda' | 'despesa';
-  caixaPessoaId: string;
-  caixaPessoaNome: string;
-  valor: number;
-  descricao: string;
-  data: Date;
-  metodoPagamento?: string;
-  observacoes?: string;
-  clienteNome?: string;
-};
-
-export type CaixaResumoPessoa = {
-  caixaPessoaId: string;
-  caixaPessoaNome: string;
-  entradas: number;
-  saidas: number;
-  saldo: number;
-};
 
 export type CaixaResumoData = {
   entradas: number;
   saidas: number;
   saldo: number;
+  quantidadeEntradas: number;
+  quantidadeSaidas: number;
+  entradasPrevistas: number;
+  quantidadeEntradasPrevistas: number;
   naoClassificado: number;
+  chequesPendentes: CaixaMovimento[];
   porPessoa: CaixaResumoPessoa[];
   movimentos: CaixaMovimento[];
 };
@@ -41,24 +33,6 @@ export type CaixaDateRange = {
   period: CaixaPeriod;
   from?: Date | null;
   to?: Date | null;
-};
-
-const NON_CLASSIFIED_ID = 'nao_classificado';
-const NON_CLASSIFIED_NAME = 'Nao classificado';
-
-const toDate = (value: any): Date | null => {
-  if (!value) return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  if (typeof value?.toDate === 'function') {
-    const d = value.toDate();
-    return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
-  }
-  if (typeof value?.seconds === 'number') {
-    const d = new Date(value.seconds * 1000);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
 const resolveRange = (range: CaixaDateRange) => {
@@ -94,107 +68,63 @@ const resolveRange = (range: CaixaDateRange) => {
   return { from, to };
 };
 
-const inRange = (date: Date, from: Date, to: Date) => date.getTime() >= from.getTime() && date.getTime() <= to.getTime();
-
-export const getCaixaResumo = async (tenantId: string, range: CaixaDateRange): Promise<CaixaResumoData> => {
-  const [{ from, to }, vendas, despesas, pessoas, clientes] = await Promise.all([
+export const getCaixaResumo = async (
+  tenantId: string,
+  range: CaixaDateRange,
+  productionMode?: FinanceProductionMode
+): Promise<CaixaResumoData> => {
+  const [{ from, to }, vendas, despesas, pessoas, clientes, plantios] = await Promise.all([
     Promise.resolve(resolveRange(range)),
     listAllVendas(tenantId),
     listDespesas(tenantId),
     listCaixaPessoas(tenantId),
     listClientes(tenantId),
+    productionMode ? listAllPlantios(tenantId) : Promise.resolve([]),
   ]);
 
-  const pessoaMap = new Map<string, string>(pessoas.map((p) => [p.id, p.nome]));
-  const clienteMap = new Map<string, string>(clientes.map((c) => [c.id, c.nome]));
-  const movimentos: CaixaMovimento[] = [];
+  const plantiosMap = Object.fromEntries(
+    plantios.map((plantio) => [plantio.id, plantio])
+  );
+  const scopedVendas = productionMode
+    ? vendas.filter((venda) =>
+        matchesVendaProductionMode(venda, productionMode, plantiosMap)
+      )
+    : vendas;
+  const scopedDespesas = productionMode
+    ? despesas.filter((despesa) =>
+        matchesDespesaProductionMode(despesa, productionMode, plantiosMap)
+      )
+    : despesas;
 
-  vendas.forEach((venda: any) => {
-    const status = String(venda?.statusPagamento || '').toLowerCase();
-    if (status !== 'pago') return;
-    const data = toDate(venda?.dataVenda);
-    if (!data || !inRange(data, from, to)) return;
-    const fallbackTotal =
-      Number(venda?.quantidade || venda?.itens?.[0]?.quantidade || 0) *
-      Number(venda?.precoUnitario || venda?.itens?.[0]?.valorUnitario || 0);
-    const produto =
-      String(venda?.cultura || '').trim() ||
-      String(venda?.itens?.[0]?.descricao || '').trim() ||
-      'Venda';
-    const pessoaId = venda?.pagamentoPara || NON_CLASSIFIED_ID;
-    const clienteId = venda?.clienteId;
-    movimentos.push({
-      id: `venda:${venda.id}`,
-      tipo: 'entrada',
-      origem: 'venda',
-      caixaPessoaId: pessoaId,
-      caixaPessoaNome: pessoaMap.get(pessoaId) || NON_CLASSIFIED_NAME,
-      valor: Number(venda?.valorTotal || fallbackTotal || 0),
-      descricao: produto,
-      data,
-      metodoPagamento: String(venda?.metodoPagamento || venda?.formaPagamento || '').trim() || undefined,
-      observacoes: venda?.observacoes || undefined,
-      clienteNome: clienteId ? clienteMap.get(clienteId) || 'Cliente não identificado' : 'Cliente avulso',
-    });
+  const movimentos = buildCaixaMovimentos({
+    vendas: scopedVendas,
+    despesas: scopedDespesas,
+    pessoas,
+    clientes,
+    from,
+    to,
   });
-
-  despesas.forEach((despesa: any) => {
-    const status = String(despesa?.statusPagamento || despesa?.status || '').toLowerCase();
-    if (status !== 'pago') return;
-
-    // Ignorar despesas de mudas (investimento inicial) no caixa conforme solicitado
-    const tipoGasto = String(despesa?.tipo_gasto || despesa?.tipoGasto || '').toLowerCase().trim();
-    if (tipoGasto === 'investimento_inicial') return;
-
-    const data = toDate(despesa?.dataDespesa);
-    if (!data || !inRange(data, from, to)) return;
-    const pessoaId = despesa?.pagamentoPara || NON_CLASSIFIED_ID;
-    movimentos.push({
-      id: `despesa:${despesa.id}`,
-      tipo: 'saida',
-      origem: 'despesa',
-      caixaPessoaId: pessoaId,
-      caixaPessoaNome: pessoaMap.get(pessoaId) || NON_CLASSIFIED_NAME,
-      valor: Number(despesa?.valor || 0),
-      descricao: String(despesa?.descricao || 'Despesa'),
-      data,
-      observacoes: despesa?.observacoes || undefined,
-    });
-  });
-
-  movimentos.sort((a, b) => b.data.getTime() - a.data.getTime());
-
-  const resumoMap = new Map<string, CaixaResumoPessoa>();
-  let entradas = 0;
-  let saidas = 0;
-  let naoClassificado = 0;
-
-  movimentos.forEach((mov) => {
-    const current = resumoMap.get(mov.caixaPessoaId) || {
-      caixaPessoaId: mov.caixaPessoaId,
-      caixaPessoaNome: mov.caixaPessoaNome,
-      entradas: 0,
-      saidas: 0,
-      saldo: 0,
-    };
-    if (mov.tipo === 'entrada') {
-      entradas += mov.valor;
-      current.entradas += mov.valor;
-    } else {
-      saidas += mov.valor;
-      current.saidas += mov.valor;
-    }
-    current.saldo = current.entradas - current.saidas;
-    if (mov.caixaPessoaId === NON_CLASSIFIED_ID) naoClassificado += mov.valor;
-    resumoMap.set(mov.caixaPessoaId, current);
-  });
+  const resumo = summarizeCaixaMovimentos(movimentos);
+  const chequesPendentes = buildCaixaMovimentos({
+    vendas: scopedVendas,
+    despesas: [],
+    pessoas,
+    clientes,
+    from,
+    to,
+    includePendingOutsideRange: true,
+  })
+    .filter((movimento) => movimento.status === 'previsto')
+    .sort((a, b) => a.data.getTime() - b.data.getTime());
+  const naoClassificado = movimentos
+    .filter((movimento) => movimento.status === 'confirmado' && movimento.caixaPessoaId === NON_CLASSIFIED_ID)
+    .reduce((total, movimento) => total + movimento.valor, 0);
 
   return {
-    entradas,
-    saidas,
-    saldo: entradas - saidas,
+    ...resumo,
     naoClassificado,
-    porPessoa: Array.from(resumoMap.values()).sort((a, b) => b.saldo - a.saldo),
+    chequesPendentes,
+    porPessoa: summarizeCaixaPorPessoa(movimentos),
     movimentos,
   };
 };
@@ -205,44 +135,39 @@ export const getCaixaExtrato = async (
     range: CaixaDateRange;
     caixaPessoaId?: string;
     tipo?: 'todos' | CaixaTipoMov;
-    busca?: string; // Novo parametro para busca por descricao
+    busca?: string;
     page?: number;
     pageSize?: number;
-  }
+  },
+  productionMode?: FinanceProductionMode
 ) => {
-  const base = await getCaixaResumo(tenantId, params.range);
   const page = Math.max(1, params.page || 1);
   const pageSize = Math.max(10, params.pageSize || 50);
-  const filtered = base.movimentos.filter((mov) => {
-    const byPessoa = !params.caixaPessoaId || mov.caixaPessoaId === params.caixaPessoaId;
-    const byTipo = !params.tipo || params.tipo === 'todos' || mov.tipo === params.tipo;
-    
-    // Busca por descricao ou pessoa
-    const term = (params.busca || '').toLowerCase().trim();
-    const byBusca =
-      !term ||
-      mov.descricao.toLowerCase().includes(term) ||
-      mov.caixaPessoaNome.toLowerCase().includes(term) ||
-      String(mov.clienteNome || '')
-        .toLowerCase()
-        .includes(term) ||
-      String(mov.observacoes || '')
-        .toLowerCase()
-        .includes(term) ||
-      String(mov.metodoPagamento || '')
-        .toLowerCase()
-        .includes(term) ||
-      String(mov.origem || '')
-        .toLowerCase()
-        .includes(term);
-
-    return byPessoa && byTipo && byBusca;
-  });
+  const report = await getCaixaRelatorio(tenantId, params, productionMode);
   const start = (page - 1) * pageSize;
-  const items = filtered.slice(start, start + pageSize);
   return {
-    items,
+    items: report.items.slice(start, start + pageSize),
+    total: report.total,
+    hasMore: start + pageSize < report.total,
+    resumo: report.resumo,
+  };
+};
+
+export const getCaixaRelatorio = async (
+  tenantId: string,
+  params: {
+    range: CaixaDateRange;
+    caixaPessoaId?: string;
+    tipo?: 'todos' | CaixaTipoMov;
+    busca?: string;
+  },
+  productionMode?: FinanceProductionMode
+) => {
+  const base = await getCaixaResumo(tenantId, params.range, productionMode);
+  const filtered = filterCaixaMovimentos(base.movimentos, params);
+  return {
+    items: filtered,
     total: filtered.length,
-    hasMore: start + pageSize < filtered.length,
+    resumo: summarizeCaixaMovimentos(filtered),
   };
 };

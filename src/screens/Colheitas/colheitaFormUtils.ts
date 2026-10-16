@@ -1,4 +1,7 @@
-import { CaixaPessoa, listCaixaPessoas } from '../../services/caixaPessoaService';
+import {
+  CaixaPessoa,
+  listCaixaPessoas,
+} from '../../services/caixaPessoaService';
 import { listClientes } from '../../services/clienteService';
 import { getColheitaById } from '../../services/colheitaService';
 import { listEstufas } from '../../services/estufaService';
@@ -6,8 +9,35 @@ import { listAllPlantios } from '../../services/plantioService';
 import { getVendaById } from '../../services/vendaService';
 import { Cliente, Plantio } from '../../types/domain';
 
-export type UnidadeColheita = 'kg' | 'caixas' | 'un' | 'maços';
-export type MetodoPagamento = 'pix' | 'dinheiro' | 'boleto' | 'prazo' | 'cartao' | 'cheque' | 'outro';
+export type UnidadeColheita =
+  | 'kg'
+  | 'caixas'
+  | 'un'
+  | 'maços'
+  | 'sacas'
+  | 'duzias'
+  | 'ton';
+
+export const VENDA_UNIDADE_OPTIONS: Array<{
+  label: string;
+  value: UnidadeColheita;
+}> = [
+  { label: 'CAIXA (CX)', value: 'caixas' },
+  { label: 'QUILOGRAMA (KG)', value: 'kg' },
+  { label: 'UNIDADE (UN)', value: 'un' },
+  { label: 'MAÇO', value: 'maços' },
+  { label: 'SACA', value: 'sacas' },
+  { label: 'DÚZIA', value: 'duzias' },
+  { label: 'TONELADA (TON)', value: 'ton' },
+];
+export type MetodoPagamento =
+  | 'pix'
+  | 'dinheiro'
+  | 'boleto'
+  | 'prazo'
+  | 'cartao'
+  | 'cheque'
+  | 'outro';
 
 export const buildColheitaEditSnapshot = (values: {
   selectedPlantioId: string;
@@ -17,9 +47,10 @@ export const buildColheitaEditSnapshot = (values: {
   pesoBruto: string;
   pesoLiquido: string;
   selectedClienteId: string | null;
-  metodoPagamento: MetodoPagamento;
+  metodoPagamento: MetodoPagamento | '';
   pagamentoPara: string | null;
   dataVenda: Date;
+  dataCompensacaoCheque?: Date | null;
   observacoes: string;
 }) =>
   JSON.stringify({
@@ -33,6 +64,9 @@ export const buildColheitaEditSnapshot = (values: {
     metodoPagamento: values.metodoPagamento,
     pagamentoPara: values.pagamentoPara || null,
     dataVenda: new Date(values.dataVenda).toISOString().slice(0, 10),
+    dataCompensacaoCheque: values.dataCompensacaoCheque
+      ? new Date(values.dataCompensacaoCheque).toISOString().slice(0, 10)
+      : null,
     observacoes: values.observacoes || '',
   });
 
@@ -49,18 +83,23 @@ export type LoadedColheitaFormData = {
     unidade: UnidadeColheita;
     preco: string;
     selectedClienteId: string | null;
-    metodoPagamento: MetodoPagamento;
+    metodoPagamento: MetodoPagamento | '';
     pagamentoPara: string | null;
     pesoBruto: string;
     pesoLiquido: string;
     observacoes: string;
     dataVenda: Date;
+    dataCompensacaoCheque: Date | null;
   };
   initialEditSnapshot?: string;
 };
 
 const resolveDate = (value: any) =>
-  value?.toDate ? value.toDate() : typeof value?.seconds === 'number' ? new Date(value.seconds * 1000) : new Date();
+  value?.toDate
+    ? value.toDate()
+    : typeof value?.seconds === 'number'
+      ? new Date(value.seconds * 1000)
+      : new Date();
 
 export const loadColheitaFormBootstrap = async ({
   targetId,
@@ -84,16 +123,24 @@ export const loadColheitaFormBootstrap = async ({
     listEstufas(targetId),
   ]);
 
-  const defaultPagamentoPara = pagamentoPara || pessoasCaixa[0]?.id || null;
-  const estufasMap = estufas.reduce<Record<string, string>>((acc, estufa: any) => {
-    acc[estufa.id] = estufa.nome;
-    return acc;
-  }, {});
+  const defaultPagamentoPara = pagamentoPara || null;
+  const estufasMap = estufas.reduce<Record<string, string>>(
+    (acc, estufa: any) => {
+      acc[estufa.id] = estufa.nome;
+      return acc;
+    },
+    {}
+  );
   const plantiosDisponiveis = plantios.filter(
-    (plantio: any) => isEditMode || (plantio.status !== 'finalizado' && plantio.status !== 'cancelado')
+    (plantio: any) =>
+      isEditMode ||
+      (plantio.status !== 'finalizado' && plantio.status !== 'cancelado')
   );
   const nextSelectedPlantioId =
-    selectedPlantioId || (plantiosDisponiveis.length > 0 && !isEditMode ? plantiosDisponiveis[0].id : '');
+    selectedPlantioId ||
+    (plantiosDisponiveis.length > 0 && !isEditMode
+      ? plantiosDisponiveis[0].id
+      : '');
 
   if (!isEditMode) {
     return {
@@ -113,10 +160,6 @@ export const loadColheitaFormBootstrap = async ({
     if (!vendaOrigem) {
       throw new Error('Venda não encontrada para edição.');
     }
-    const isHydroSale = (vendaOrigem as any).originType === 'hydro_lote' || !!(vendaOrigem as any).hydroLoteId;
-    if (isHydroSale) {
-      throw new Error('Esta venda é hidropônica e deve ser editada na tela de vendas hidropônicas.');
-    }
     resolvedColheitaId = vendaOrigem.colheitaId || null;
   }
   if (!resolvedColheitaId) {
@@ -128,9 +171,12 @@ export const loadColheitaFormBootstrap = async ({
     throw new Error('Colheita vinculada à venda não encontrada.');
   }
 
-  const metodoVenda = (venda.metodoPagamento as MetodoPagamento) || 'pix';
+  const metodoVenda: MetodoPagamento | '' =
+    (venda.metodoPagamento as MetodoPagamento) || '';
   const resolvedPagamentoPara =
-    metodoVenda === 'prazo' ? null : (venda.pagamentoPara as string) || pessoasCaixa[0]?.id || null;
+    metodoVenda === 'prazo' || metodoVenda === 'cheque'
+      ? null
+      : (venda.pagamentoPara as string) || null;
   const initialValues = {
     quantidade: String(venda.quantidade),
     unidade: venda.unidade as UnidadeColheita,
@@ -141,7 +187,12 @@ export const loadColheitaFormBootstrap = async ({
     pesoBruto: venda.pesoBruto ? String(venda.pesoBruto) : '',
     pesoLiquido: venda.pesoLiquido ? String(venda.pesoLiquido) : '',
     observacoes: venda.observacoes || '',
-    dataVenda: venda.dataColheita ? resolveDate(venda.dataColheita) : new Date(),
+    dataVenda: venda.dataColheita
+      ? resolveDate(venda.dataColheita)
+      : new Date(),
+    dataCompensacaoCheque: venda.dataCompensacaoCheque
+      ? resolveDate(venda.dataCompensacaoCheque)
+      : null,
   };
 
   return {

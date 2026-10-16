@@ -21,9 +21,18 @@ import { useAuth } from '../../hooks/useAuth';
 import { sanitizeDecimalInput } from '../../utils/numericFields';
 import { useWriteGuard } from '../../hooks/useWriteGuard';
 import { useAppSettings } from '../../hooks/useAppSettings';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import {
+  COLORS,
+  RADIUS,
+  SHADOWS,
+  SPACING,
+  TYPOGRAPHY,
+} from '../../constants/theme';
 import { invalidateDespesasQueries } from '../../lib/queryInvalidation';
-import { CaixaPessoa, listCaixaPessoas } from '../../services/caixaPessoaService';
+import {
+  CaixaPessoa,
+  listCaixaPessoas,
+} from '../../services/caixaPessoaService';
 import {
   ComprovanteUpload,
   pickComprovante,
@@ -39,18 +48,25 @@ const DespesaFormScreen = ({ navigation }: any) => {
 
   const [descricao, setDescricao] = useState('');
   const [valor, setValor] = useState('');
-  const [categoria, setCategoria] = useState<'energia' | 'agua' | 'manutencao' | 'mao_de_obra' | 'outro'>('outro');
+  const [categoria, setCategoria] = useState<
+    'energia' | 'agua' | 'manutencao' | 'mao_de_obra' | 'outro'
+  >('outro');
   const [status, setStatus] = useState<'pago' | 'pendente'>('pago');
   const [observacoes, setObservacoes] = useState('');
   const [loading, setLoading] = useState(false);
   const [uploadingComprovante, setUploadingComprovante] = useState(false);
   const [caixaPessoas, setCaixaPessoas] = useState<CaixaPessoa[]>([]);
   const [pagamentoPara, setPagamentoPara] = useState('');
-  const [comprovante, setComprovante] = useState<ComprovanteUpload | null>(null);
+  const [comprovante, setComprovante] = useState<ComprovanteUpload | null>(
+    null
+  );
 
   const [dataDespesa, setDataDespesa] = useState(new Date());
+  const [dataPagamento, setDataPagamento] = useState(new Date());
   const [dataVencimento, setDataVencimento] = useState(new Date());
-  const [showPicker, setShowPicker] = useState<'despesa' | 'vencimento' | null>(null);
+  const [showPicker, setShowPicker] = useState<
+    'despesa' | 'pagamento' | 'vencimento' | null
+  >(null);
 
   React.useEffect(() => {
     const load = async () => {
@@ -67,7 +83,8 @@ const DespesaFormScreen = ({ navigation }: any) => {
 
   const handleSelecionarComprovante = async () => {
     if (!canWrite) return;
-    if (!targetId) return Alert.alert('Atenção', 'Sua sessão expirou. Entre novamente.');
+    if (!targetId)
+      return Alert.alert('Atenção', 'Sua sessão expirou. Entre novamente.');
 
     setUploadingComprovante(true);
     try {
@@ -77,7 +94,10 @@ const DespesaFormScreen = ({ navigation }: any) => {
       setComprovante(uploaded);
       Alert.alert('Comprovante anexado', uploaded.comprovanteNome);
     } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Não foi possível anexar o comprovante.');
+      Alert.alert(
+        'Erro',
+        error?.message || 'Não foi possível anexar o comprovante.'
+      );
     } finally {
       setUploadingComprovante(false);
     }
@@ -85,10 +105,13 @@ const DespesaFormScreen = ({ navigation }: any) => {
 
   const handleSave = async () => {
     if (!canWrite) return;
-    if (!targetId) return Alert.alert('Atenção', 'Sua sessão expirou. Entre novamente.');
-    if (!descricao.trim()) return Alert.alert('Atenção', 'Digite a descrição da despesa.');
+    if (!targetId)
+      return Alert.alert('Atenção', 'Sua sessão expirou. Entre novamente.');
+    if (!descricao.trim())
+      return Alert.alert('Atenção', 'Digite a descrição da despesa.');
     const valorNum = parseFloat(valor.replace(',', '.')) || 0;
-    if (valorNum <= 0) return Alert.alert('Atenção', 'Digite um valor maior que zero.');
+    if (valorNum <= 0)
+      return Alert.alert('Atenção', 'Digite um valor maior que zero.');
     if (status === 'pago' && !pagamentoPara) {
       return Alert.alert('Atenção', 'Selecione quem recebeu o valor do caixa.');
     }
@@ -99,9 +122,10 @@ const DespesaFormScreen = ({ navigation }: any) => {
         {
           descricao: descricao.trim(),
           valor: valorNum,
-            categoria,
+          categoria,
           statusPagamento: status,
           dataDespesa,
+          dataPagamento: status === 'pago' ? dataPagamento : null,
           dataVencimento: status === 'pendente' ? dataVencimento : null,
           observacoes: observacoes || null,
           pagamentoPara: status === 'pago' ? pagamentoPara : null,
@@ -124,7 +148,10 @@ const DespesaFormScreen = ({ navigation }: any) => {
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Não consegui salvar a despesa. Tente novamente.');
+      Alert.alert(
+        'Erro',
+        error?.message || 'Não consegui salvar a despesa. Tente novamente.'
+      );
     } finally {
       setLoading(false);
     }
@@ -133,11 +160,17 @@ const DespesaFormScreen = ({ navigation }: any) => {
   if (!canWrite) return null;
 
   return (
-    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: (settings.uiV2Enabled ? 138 : SPACING.xl) + insets.bottom },
+          {
+            paddingBottom:
+              (settings.uiV2Enabled ? 138 : SPACING.xl) + insets.bottom,
+          },
         ]}
       >
         <View style={styles.card}>
@@ -168,7 +201,11 @@ const DespesaFormScreen = ({ navigation }: any) => {
 
           <Text style={styles.label}>Categoria</Text>
           <View style={styles.inputWrapper}>
-            <Picker selectedValue={categoria} onValueChange={setCategoria} style={styles.picker}>
+            <Picker
+              selectedValue={categoria}
+              onValueChange={setCategoria}
+              style={styles.picker}
+            >
               <Picker.Item label="Energia Eletrica" value="energia" />
               <Picker.Item label="Mao de Obra / Diaria" value="mao_de_obra" />
               <Picker.Item label="Manutencao" value="manutencao" />
@@ -181,32 +218,75 @@ const DespesaFormScreen = ({ navigation }: any) => {
 
           <Text style={styles.label}>Situacao</Text>
           <View style={styles.inputWrapper}>
-            <Picker selectedValue={status} onValueChange={(v: any) => setStatus(v)} style={styles.picker}>
+            <Picker
+              selectedValue={status}
+              onValueChange={(v: any) => setStatus(v)}
+              style={styles.picker}
+            >
               <Picker.Item label="Ja Paguei" value="pago" />
               <Picker.Item label="Pendente (Conta a Pagar)" value="pendente" />
             </Picker>
           </View>
 
           <Text style={styles.label}>Data da Despesa</Text>
-          <TouchableOpacity style={styles.dateBtn} onPress={() => setShowPicker('despesa')}>
-            <MaterialCommunityIcons name="calendar" size={24} color={COLORS.modDespesas} />
-            <Text style={styles.dateText}>{dataDespesa.toLocaleDateString('pt-BR')}</Text>
+          <TouchableOpacity
+            style={styles.dateBtn}
+            onPress={() => setShowPicker('despesa')}
+          >
+            <MaterialCommunityIcons
+              name="calendar"
+              size={24}
+              color={COLORS.modDespesas}
+            />
+            <Text style={styles.dateText}>
+              {dataDespesa.toLocaleDateString('pt-BR')}
+            </Text>
           </TouchableOpacity>
 
           {status === 'pendente' ? (
             <>
               <Text style={styles.label}>Data de Vencimento</Text>
-              <TouchableOpacity style={styles.dateBtn} onPress={() => setShowPicker('vencimento')}>
-                <MaterialCommunityIcons name="calendar-clock" size={24} color={COLORS.textLight} />
-                <Text style={styles.dateText}>{dataVencimento.toLocaleDateString('pt-BR')}</Text>
+              <TouchableOpacity
+                style={styles.dateBtn}
+                onPress={() => setShowPicker('vencimento')}
+              >
+                <MaterialCommunityIcons
+                  name="calendar-clock"
+                  size={24}
+                  color={COLORS.textLight}
+                />
+                <Text style={styles.dateText}>
+                  {dataVencimento.toLocaleDateString('pt-BR')}
+                </Text>
               </TouchableOpacity>
             </>
-          ) : null}
+          ) : (
+            <>
+              <Text style={styles.label}>Data efetiva do pagamento</Text>
+              <TouchableOpacity
+                style={styles.dateBtn}
+                onPress={() => setShowPicker('pagamento')}
+              >
+                <MaterialCommunityIcons
+                  name="calendar-check-outline"
+                  size={24}
+                  color={COLORS.modDespesas}
+                />
+                <Text style={styles.dateText}>
+                  {dataPagamento.toLocaleDateString('pt-BR')}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
 
-          <Text style={styles.label}>Saida de Caixa (quem recebeu)</Text>
+          <Text style={styles.label}>Caixa responsável pela saída</Text>
           <View style={styles.inputWrapper}>
-            <Picker selectedValue={pagamentoPara} onValueChange={(v: any) => setPagamentoPara(v)} style={styles.picker}>
-              <Picker.Item label="Selecione a pessoa do caixa" value="" />
+            <Picker
+              selectedValue={pagamentoPara}
+              onValueChange={(v: any) => setPagamentoPara(v)}
+              style={styles.picker}
+            >
+              <Picker.Item label="Selecione de qual caixa saiu" value="" />
               {caixaPessoas.map((p) => (
                 <Picker.Item key={p.id} label={p.nome} value={p.id} />
               ))}
@@ -234,8 +314,14 @@ const DespesaFormScreen = ({ navigation }: any) => {
               <ActivityIndicator color={COLORS.textLight} />
             ) : (
               <>
-                <MaterialCommunityIcons name="paperclip" size={18} color={COLORS.textLight} />
-                <Text style={styles.fileBtnText}>{comprovante ? 'Trocar comprovante' : 'Anexar comprovante'}</Text>
+                <MaterialCommunityIcons
+                  name="paperclip"
+                  size={18}
+                  color={COLORS.textLight}
+                />
+                <Text style={styles.fileBtnText}>
+                  {comprovante ? 'Trocar comprovante' : 'Anexar comprovante'}
+                </Text>
               </>
             )}
           </TouchableOpacity>
@@ -245,36 +331,72 @@ const DespesaFormScreen = ({ navigation }: any) => {
                 {comprovante.comprovanteNome}
               </Text>
               <TouchableOpacity onPress={() => setComprovante(null)}>
-                <MaterialCommunityIcons name="close-circle" size={18} color={COLORS.danger} />
+                <MaterialCommunityIcons
+                  name="close-circle"
+                  size={18}
+                  color={COLORS.danger}
+                />
               </TouchableOpacity>
             </View>
           ) : null}
-          {comprovante?.comprovanteUrl && comprovante.comprovanteMime?.startsWith('image/') ? (
+          {comprovante?.comprovanteUrl &&
+          comprovante.comprovanteMime?.startsWith('image/') ? (
             <View style={styles.previewWrap}>
-              <Image source={{ uri: comprovante.comprovanteUrl }} style={styles.previewImage} resizeMode="cover" />
-              <Text style={styles.previewLabel}>Pre-visualizacao do comprovante</Text>
+              <Image
+                source={{ uri: comprovante.comprovanteUrl }}
+                style={styles.previewImage}
+                resizeMode="cover"
+              />
+              <Text style={styles.previewLabel}>
+                Pre-visualizacao do comprovante
+              </Text>
             </View>
           ) : null}
-          {comprovante?.comprovanteUrl && comprovante.comprovanteMime === 'application/pdf' ? (
+          {comprovante?.comprovanteUrl &&
+          comprovante.comprovanteMime === 'application/pdf' ? (
             <View style={styles.previewPdfWrap}>
-              <MaterialCommunityIcons name="file-pdf-box" size={18} color={COLORS.danger} />
-              <Text style={styles.previewPdfText}>PDF anexado (sem miniatura)</Text>
+              <MaterialCommunityIcons
+                name="file-pdf-box"
+                size={18}
+                color={COLORS.danger}
+              />
+              <Text style={styles.previewPdfText}>
+                PDF anexado (sem miniatura)
+              </Text>
             </View>
           ) : null}
         </View>
 
-        <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={loading || uploadingComprovante}>
-          {loading ? <ActivityIndicator color={COLORS.textLight} /> : <Text style={styles.saveText}>Registrar Despesa</Text>}
+        <TouchableOpacity
+          style={styles.saveBtn}
+          onPress={handleSave}
+          disabled={loading || uploadingComprovante}
+        >
+          {loading ? (
+            <ActivityIndicator color={COLORS.textLight} />
+          ) : (
+            <Text style={styles.saveText}>Registrar Despesa</Text>
+          )}
         </TouchableOpacity>
 
         {showPicker ? (
           <DateTimePicker
-            value={showPicker === 'despesa' ? dataDespesa : dataVencimento}
+            value={
+              showPicker === 'despesa'
+                ? dataDespesa
+                : showPicker === 'pagamento'
+                  ? dataPagamento
+                  : dataVencimento
+            }
             mode="date"
             display="default"
+            maximumDate={showPicker === 'pagamento' ? new Date() : undefined}
             onChange={(_e, d) => {
               setShowPicker(null);
-              if (d) showPicker === 'despesa' ? setDataDespesa(d) : setDataVencimento(d);
+              if (!d) return;
+              if (showPicker === 'despesa') setDataDespesa(d);
+              else if (showPicker === 'pagamento') setDataPagamento(d);
+              else setDataVencimento(d);
             }}
           />
         ) : null}
@@ -303,7 +425,12 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
-  label: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 },
+  label: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    marginBottom: 6,
+  },
   picker: { color: COLORS.textPrimary, fontWeight: '700' },
   inputWrapper: {
     backgroundColor: COLORS.surfaceMuted,
@@ -332,7 +459,12 @@ const styles = StyleSheet.create({
     height: 56,
     marginBottom: SPACING.md,
   },
-  dateText: { marginLeft: 10, fontSize: TYPOGRAPHY.body, fontWeight: '700', color: COLORS.textDark },
+  dateText: {
+    marginLeft: 10,
+    fontSize: TYPOGRAPHY.body,
+    fontWeight: '700',
+    color: COLORS.textDark,
+  },
   fileBtn: {
     height: 44,
     borderRadius: RADIUS.sm,
@@ -350,7 +482,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: SPACING.md,
   },
-  fileInfoText: { flex: 1, marginRight: 8, color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
+  fileInfoText: {
+    flex: 1,
+    marginRight: 8,
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
   previewWrap: {
     marginTop: 4,
     marginBottom: SPACING.md,

@@ -10,9 +10,15 @@ const mapSupabaseTalhaoToDomain = (row: any): Talhao => ({
   nome: row.nome,
   codigo: row.codigo || undefined,
   culturaPrincipal: row.cultura_principal || undefined,
-  areaHectares: row.area_hectares != null ? Number(row.area_hectares) : undefined,
-  areaCalculadaHectares: row.area_calculada_hectares != null ? Number(row.area_calculada_hectares) : undefined,
-  boundaryPoints: Array.isArray(row.boundary_points) ? row.boundary_points : undefined,
+  areaHectares:
+    row.area_hectares != null ? Number(row.area_hectares) : undefined,
+  areaCalculadaHectares:
+    row.area_calculada_hectares != null
+      ? Number(row.area_calculada_hectares)
+      : undefined,
+  boundaryPoints: Array.isArray(row.boundary_points)
+    ? row.boundary_points
+    : undefined,
   tipoSolo: row.tipo_solo || undefined,
   cidade: row.cidade || undefined,
   observacoes: row.observacoes || undefined,
@@ -23,7 +29,11 @@ const mapSupabaseTalhaoToDomain = (row: any): Talhao => ({
 
 const listTalhoesSupabase = async (tenantId: string): Promise<Talhao[]> => {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase.from('talhoes').select('*').eq('tenant_id', tenantId).order('nome');
+  const { data, error } = await supabase
+    .from('talhoes')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('nome');
   if (error) throw new Error(`Erro ao listar talhoes. ${error.message}`);
   return (data || []).map(mapSupabaseTalhaoToDomain);
 };
@@ -33,7 +43,10 @@ export const listTalhoes = async (userId: string): Promise<Talhao[]> => {
   return listTalhoesSupabase(tenantId);
 };
 
-const createTalhaoSupabase = async (tenantId: string, data: Partial<Talhao>) => {
+const createTalhaoSupabase = async (
+  tenantId: string,
+  data: Partial<Talhao>
+) => {
   const supabase = getSupabaseClient();
   const payload = {
     tenant_id: tenantId,
@@ -48,18 +61,28 @@ const createTalhaoSupabase = async (tenantId: string, data: Partial<Talhao>) => 
     observacoes: data.observacoes ?? null,
     status: data.status ?? 'ativo',
   };
-  const { data: inserted, error } = await supabase.from('talhoes').insert(payload).select('id').single();
-  if (error || !inserted?.id) throw new Error(`Erro ao criar talhao. ${error?.message || ''}`.trim());
+  const { data: inserted, error } = await supabase
+    .from('talhoes')
+    .insert(payload)
+    .select('id')
+    .single();
+  if (error || !inserted?.id)
+    throw new Error(`Erro ao criar talhao. ${error?.message || ''}`.trim());
   return inserted.id as string;
 };
 
 export const createTalhao = async (data: Partial<Talhao>, userId: string) => {
   const tenantId = assertTenantId(userId);
-  if (!String(data.nome || '').trim()) throw new Error('Nome do talhao e obrigatorio.');
+  if (!String(data.nome || '').trim())
+    throw new Error('Nome do talhao e obrigatorio.');
   return createTalhaoSupabase(tenantId, data);
 };
 
-export const updateTalhao = async (talhaoId: string, data: Partial<Talhao>, userId: string) => {
+export const updateTalhao = async (
+  talhaoId: string,
+  data: Partial<Talhao>,
+  userId: string
+) => {
   const tenantId = assertTenantId(userId);
   if (!talhaoId) throw new Error('Talhao invalido.');
 
@@ -77,15 +100,61 @@ export const updateTalhao = async (talhaoId: string, data: Partial<Talhao>, user
     status: data.status ?? 'ativo',
     updated_at: new Date().toISOString(),
   };
-  const { error } = await supabase.from('talhoes').update(payload).eq('id', talhaoId).eq('tenant_id', tenantId);
+  const { error } = await supabase
+    .from('talhoes')
+    .update(payload)
+    .eq('id', talhaoId)
+    .eq('tenant_id', tenantId);
   if (error) throw new Error(`Erro ao atualizar talhao. ${error.message}`);
 };
 
-export const deleteTalhao = async (talhaoId: string, userId: string) => {
+export const restoreTalhao = async (talhaoId: string, userId: string) => {
   const tenantId = assertTenantId(userId);
+  if (!talhaoId) throw new Error('Talhão inválido.');
+
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('talhoes')
+    .update({ status: 'ativo', updated_at: new Date().toISOString() })
+    .eq('id', talhaoId)
+    .eq('tenant_id', tenantId);
+  if (error) throw new Error(`Erro ao restaurar talhão. ${error.message}`);
+};
+
+export type DeleteTalhaoResult = {
+  deleted: true;
+  archived: false;
+  hadHistory: boolean;
+  deletedPlantios: number;
+  deletedVendas: number;
+  deletedColheitas: number;
+  deletedAplicacoes: number;
+  deletedManejos: number;
+  deletedTarefas: number;
+  deletedDespesas: number;
+  deletedTraceEvents: number;
+  restoredInsumos: number;
+};
+
+export const deleteTalhao = async (
+  talhaoId: string,
+  userId: string
+): Promise<DeleteTalhaoResult> => {
+  assertTenantId(userId);
   if (!talhaoId) throw new Error('Talhao invalido.');
 
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from('talhoes').delete().eq('id', talhaoId).eq('tenant_id', tenantId);
-  if (error) throw new Error(`Erro ao excluir talhao. ${error.message}`);
+  const { data, error } = await supabase.rpc('delete_empty_talhao', {
+    p_talhao_id: talhaoId,
+  });
+  if (error)
+    throw new Error(error.message || 'Não foi possível excluir o talhão.');
+  if (
+    !data ||
+    typeof data !== 'object' ||
+    (data as { deleted?: unknown }).deleted !== true
+  ) {
+    throw new Error('O banco não confirmou a exclusão permanente do talhão.');
+  }
+  return data as DeleteTalhaoResult;
 };

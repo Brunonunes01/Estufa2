@@ -1,5 +1,13 @@
 import React from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { COLORS, RADIUS } from '../../../constants/theme';
@@ -23,7 +31,9 @@ interface VendasReportModalProps {
   setReportStatusFilter: (status: 'todos' | 'pago' | 'pendente') => void;
   onExportPdf: () => void;
   onExportAccountingPdf: () => void;
+  accountingPdfLoading: boolean;
   onExportAccountingExcel: () => void;
+  accountingExcelLoading: boolean;
   onShareReport: () => void;
 }
 
@@ -45,43 +55,100 @@ const VendasReportModal = ({
   setReportStatusFilter,
   onExportPdf,
   onExportAccountingPdf,
+  accountingPdfLoading,
   onExportAccountingExcel,
+  accountingExcelLoading,
   onShareReport,
 }: VendasReportModalProps) => {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
       <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
-        <View style={[styles.reportCard, { backgroundColor: theme.surfaceBackground, borderColor: theme.border }]}>
+        <View
+          style={[
+            styles.reportCard,
+            {
+              backgroundColor: theme.surfaceBackground,
+              borderColor: theme.border,
+            },
+          ]}
+        >
           <View style={styles.reportHeader}>
             <View style={styles.reportHeaderTextWrap}>
-              <Text style={[styles.reportTitle, { color: theme.textPrimary }]}>Resumo gerencial</Text>
-              <Text style={[styles.reportPeriod, { color: theme.textSecondary }]}>{reportPeriodLabel}</Text>
+              <Text style={[styles.reportTitle, { color: theme.textPrimary }]}>
+                Resumo gerencial
+              </Text>
+              <Text
+                style={[styles.reportPeriod, { color: theme.textSecondary }]}
+              >
+                {reportPeriodLabel}
+              </Text>
             </View>
             <TouchableOpacity onPress={onClose}>
-              <MaterialCommunityIcons name="close" size={24} color={theme.textSecondary} />
+              <MaterialCommunityIcons
+                name="close"
+                size={24}
+                color={theme.textSecondary}
+              />
             </TouchableOpacity>
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
             <View style={styles.dateRow}>
               <TouchableOpacity
-                style={[styles.dateBtn, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}
+                style={[
+                  styles.dateBtn,
+                  {
+                    borderColor: theme.border,
+                    backgroundColor: theme.surfaceMuted,
+                  },
+                ]}
                 onPress={() => setShowReportStartPicker(true)}
               >
-                <Text style={[styles.dateBtnText, { color: theme.textPrimary }]}>
-                  {reportStartDate ? reportStartDate.toLocaleDateString('pt-BR') : 'Início'}
+                <Text
+                  style={[styles.dateBtnText, { color: theme.textPrimary }]}
+                >
+                  {reportStartDate
+                    ? reportStartDate.toLocaleDateString('pt-BR')
+                    : 'Início'}
                 </Text>
-                <MaterialCommunityIcons name="calendar" size={16} color={theme.info} />
+                <MaterialCommunityIcons
+                  name="calendar"
+                  size={16}
+                  color={theme.info}
+                />
               </TouchableOpacity>
-              <Text style={[styles.dateSeparator, { color: theme.textSecondary }]}>até</Text>
+              <Text
+                style={[styles.dateSeparator, { color: theme.textSecondary }]}
+              >
+                até
+              </Text>
               <TouchableOpacity
-                style={[styles.dateBtn, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}
+                style={[
+                  styles.dateBtn,
+                  {
+                    borderColor: theme.border,
+                    backgroundColor: theme.surfaceMuted,
+                  },
+                ]}
                 onPress={() => setShowReportEndPicker(true)}
               >
-                <Text style={[styles.dateBtnText, { color: theme.textPrimary }]}>
-                  {reportEndDate ? reportEndDate.toLocaleDateString('pt-BR') : 'Fim'}
+                <Text
+                  style={[styles.dateBtnText, { color: theme.textPrimary }]}
+                >
+                  {reportEndDate
+                    ? reportEndDate.toLocaleDateString('pt-BR')
+                    : 'Fim'}
                 </Text>
-                <MaterialCommunityIcons name="calendar" size={16} color={theme.info} />
+                <MaterialCommunityIcons
+                  name="calendar"
+                  size={16}
+                  color={theme.info}
+                />
               </TouchableOpacity>
             </View>
 
@@ -109,12 +176,28 @@ const VendasReportModal = ({
               />
             ) : null}
 
-            <View style={[styles.sectionBox, { borderColor: theme.border, backgroundColor: theme.surfaceMuted, marginTop: 16 }]}>
-              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Filtro do resumo</Text>
+            <View
+              style={[
+                styles.sectionBox,
+                {
+                  borderColor: theme.border,
+                  backgroundColor: theme.surfaceMuted,
+                  marginTop: 16,
+                },
+              ]}
+            >
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+                Filtro do resumo
+              </Text>
               <View style={styles.reportFilterRow}>
                 {(['todos', 'pago', 'pendente'] as const).map((status) => {
                   const active = reportStatusFilter === status;
-                  const statusColor = status === 'pago' ? COLORS.success : status === 'pendente' ? COLORS.danger : theme.info;
+                  const statusColor =
+                    status === 'pago'
+                      ? COLORS.success
+                      : status === 'pendente'
+                        ? COLORS.danger
+                        : theme.info;
                   return (
                     <TouchableOpacity
                       key={status}
@@ -122,13 +205,28 @@ const VendasReportModal = ({
                         styles.reportFilterChip,
                         {
                           borderColor: active ? statusColor : theme.border,
-                          backgroundColor: active ? (status === 'pago' ? COLORS.successSoft : status === 'pendente' ? theme.dangerBackground : theme.infoSoft) : theme.surfaceBackground,
+                          backgroundColor: active
+                            ? status === 'pago'
+                              ? COLORS.successSoft
+                              : status === 'pendente'
+                                ? theme.dangerBackground
+                                : theme.infoSoft
+                            : theme.surfaceBackground,
                         },
                       ]}
                       onPress={() => setReportStatusFilter(status)}
                     >
-                      <Text style={[styles.reportFilterChipText, { color: active ? statusColor : theme.textPrimary }]}>
-                        {status === 'todos' ? 'Tudo' : status === 'pago' ? 'Só pagos' : 'Só pendentes'}
+                      <Text
+                        style={[
+                          styles.reportFilterChipText,
+                          { color: active ? statusColor : theme.textPrimary },
+                        ]}
+                      >
+                        {status === 'todos'
+                          ? 'Tudo'
+                          : status === 'pago'
+                            ? 'Só pagos'
+                            : 'Só pendentes'}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -136,31 +234,92 @@ const VendasReportModal = ({
               </View>
             </View>
 
-            <View style={[styles.bigStat, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
-              <Text style={[styles.bigStatLabel, { color: theme.textSecondary }]}>Total vendido</Text>
-              <Text style={[styles.bigStatValue, { color: theme.textPrimary }]}>{formatCurrencyBRL(reportStats.totalValor)}</Text>
+            <View
+              style={[
+                styles.bigStat,
+                {
+                  backgroundColor: theme.surfaceMuted,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <Text
+                style={[styles.bigStatLabel, { color: theme.textSecondary }]}
+              >
+                Total vendido
+              </Text>
+              <Text style={[styles.bigStatValue, { color: theme.textPrimary }]}>
+                {formatCurrencyBRL(reportStats.totalValor)}
+              </Text>
             </View>
 
-            <View style={[styles.sectionBox, { borderColor: theme.border, backgroundColor: theme.surfaceMuted, marginBottom: 12 }]}>
+            <View
+              style={[
+                styles.sectionBox,
+                {
+                  borderColor: theme.border,
+                  backgroundColor: theme.surfaceMuted,
+                  marginBottom: 12,
+                },
+              ]}
+            >
               <View style={styles.statRow}>
-                <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Volume Total</Text>
-                <Text style={[styles.statValue, { color: theme.textPrimary }]}>{reportStats.totalCaixas.toFixed(1)} caixas</Text>
+                <Text
+                  style={[styles.statLabel, { color: theme.textSecondary }]}
+                >
+                  Volume Total
+                </Text>
+                <Text style={[styles.statValue, { color: theme.textPrimary }]}>
+                  {reportStats.totalCaixas.toFixed(1)} caixas
+                </Text>
               </View>
               <View style={styles.statRow}>
-                <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Qtd. Vendas</Text>
-                <Text style={[styles.statValue, { color: theme.textPrimary }]}>{reportStats.totalItens} registros</Text>
+                <Text
+                  style={[styles.statLabel, { color: theme.textSecondary }]}
+                >
+                  Qtd. Vendas
+                </Text>
+                <Text style={[styles.statValue, { color: theme.textPrimary }]}>
+                  {reportStats.totalItens} registros
+                </Text>
               </View>
             </View>
 
-            <View style={[styles.sectionBox, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
-              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Métodos de pagamento</Text>
+            <View
+              style={[
+                styles.sectionBox,
+                {
+                  borderColor: theme.border,
+                  backgroundColor: theme.surfaceMuted,
+                },
+              ]}
+            >
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+                Métodos de pagamento
+              </Text>
               {Object.keys(reportStats.porMetodo).length === 0 ? (
-                <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Sem dados no período.</Text>
+                <Text
+                  style={[styles.statLabel, { color: theme.textSecondary }]}
+                >
+                  Sem dados no período.
+                </Text>
               ) : (
                 Object.keys(reportStats.porMetodo).map((metodo) => (
-                  <View key={metodo} style={[styles.statRow, { borderBottomColor: theme.divider }]}>
-                    <Text style={[styles.statLabel, { color: theme.textSecondary }]}>{metodo}</Text>
-                    <Text style={[styles.statValue, { color: theme.textPrimary }]}>
+                  <View
+                    key={metodo}
+                    style={[
+                      styles.statRow,
+                      { borderBottomColor: theme.divider },
+                    ]}
+                  >
+                    <Text
+                      style={[styles.statLabel, { color: theme.textSecondary }]}
+                    >
+                      {metodo}
+                    </Text>
+                    <Text
+                      style={[styles.statValue, { color: theme.textPrimary }]}
+                    >
                       {formatCurrencyBRL(reportStats.porMetodo[metodo])}
                     </Text>
                   </View>
@@ -170,31 +329,79 @@ const VendasReportModal = ({
 
             <View style={styles.reportActions}>
               <TouchableOpacity
-                style={[styles.reportActionBtn, { backgroundColor: theme.info }]}
+                style={[
+                  styles.reportActionBtn,
+                  { backgroundColor: theme.info },
+                ]}
                 onPress={onExportPdf}
               >
-                <MaterialCommunityIcons name="file-pdf-box" size={18} color={COLORS.textLight} />
+                <MaterialCommunityIcons
+                  name="file-pdf-box"
+                  size={18}
+                  color={COLORS.textLight}
+                />
                 <Text style={styles.reportActionText}>Exportar PDF</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.reportActionBtn, { backgroundColor: COLORS.secondary }]}
+                style={[
+                  styles.reportActionBtn,
+                  {
+                    backgroundColor: COLORS.secondary,
+                    opacity: accountingPdfLoading ? 0.7 : 1,
+                  },
+                ]}
                 onPress={onExportAccountingPdf}
+                disabled={accountingPdfLoading}
               >
-                <MaterialCommunityIcons name="file-document-outline" size={18} color={COLORS.textLight} />
-                <Text style={styles.reportActionText}>PDF Contábil</Text>
+                {accountingPdfLoading ? (
+                  <ActivityIndicator size="small" color={COLORS.textLight} />
+                ) : (
+                  <MaterialCommunityIcons
+                    name="file-document-outline"
+                    size={18}
+                    color={COLORS.textLight}
+                  />
+                )}
+                <Text style={styles.reportActionText}>
+                  {accountingPdfLoading ? 'Gerando...' : 'PDF Contábil'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.reportActionBtn, { backgroundColor: COLORS.primary }]}
+                style={[
+                  styles.reportActionBtn,
+                  {
+                    backgroundColor: COLORS.primary,
+                    opacity: accountingExcelLoading ? 0.7 : 1,
+                  },
+                ]}
                 onPress={onExportAccountingExcel}
+                disabled={accountingExcelLoading}
               >
-                <MaterialCommunityIcons name="microsoft-excel" size={18} color={COLORS.textLight} />
-                <Text style={styles.reportActionText}>Excel (.xlsx)</Text>
+                {accountingExcelLoading ? (
+                  <ActivityIndicator size="small" color={COLORS.textLight} />
+                ) : (
+                  <MaterialCommunityIcons
+                    name="microsoft-excel"
+                    size={18}
+                    color={COLORS.textLight}
+                  />
+                )}
+                <Text style={styles.reportActionText}>
+                  {accountingExcelLoading ? 'Gerando...' : 'Excel organizado'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.reportActionBtn, { backgroundColor: COLORS.whatsapp }]}
+                style={[
+                  styles.reportActionBtn,
+                  { backgroundColor: COLORS.whatsapp },
+                ]}
                 onPress={onShareReport}
               >
-                <MaterialCommunityIcons name="whatsapp" size={18} color={COLORS.textLight} />
+                <MaterialCommunityIcons
+                  name="whatsapp"
+                  size={18}
+                  color={COLORS.textLight}
+                />
                 <Text style={styles.reportActionText}>Compartilhar</Text>
               </TouchableOpacity>
             </View>

@@ -1,7 +1,10 @@
 import { Timestamp } from '../lib/timestamp';
 import { Despesa } from '../types/domain';
 import { OfflineWriteOptions } from './offline/offlineStorage';
-import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWrite';
+import {
+  buildOfflinePlaceholderId,
+  runOfflineWrite,
+} from './offline/offlineWrite';
 import { getSupabaseClient } from './supabaseClient';
 import { assertTenantId } from './tenantGuard';
 
@@ -10,6 +13,7 @@ export type DespesaFormData = {
   categoria: Despesa['categoria'];
   valor: number;
   dataDespesa: Date;
+  dataPagamento?: Date | null;
   dataVencimento?: Date | null;
   statusPagamento: 'pago' | 'pendente';
   observacoes?: string | null;
@@ -31,8 +35,15 @@ const mapSupabaseDespesaToDomain = (row: any): Despesa => ({
   descricao: row.descricao,
   categoria: row.categoria,
   valor: Number(row.valor || 0),
-  dataVencimento: row.data_vencimento ? Timestamp.fromDate(new Date(row.data_vencimento)) : undefined,
-  dataDespesa: row.data_despesa ? Timestamp.fromDate(new Date(row.data_despesa)) : undefined,
+  dataVencimento: row.data_vencimento
+    ? Timestamp.fromDate(new Date(row.data_vencimento))
+    : undefined,
+  dataDespesa: row.data_despesa
+    ? Timestamp.fromDate(new Date(row.data_despesa))
+    : undefined,
+  dataPagamento: row.data_pagamento
+    ? Timestamp.fromDate(new Date(row.data_pagamento))
+    : null,
   statusPagamento: row.status_pagamento,
   status: row.status_pagamento,
   plantioId: row.plantio_id || undefined,
@@ -43,18 +54,28 @@ const mapSupabaseDespesaToDomain = (row: any): Despesa => ({
   comprovantePublicId: row.comprovante_public_id || null,
   comprovanteNome: row.comprovante_nome || null,
   comprovanteMime: row.comprovante_mime || null,
-  comprovanteBytes: row.comprovante_bytes != null ? Number(row.comprovante_bytes) : null,
+  comprovanteBytes:
+    row.comprovante_bytes != null ? Number(row.comprovante_bytes) : null,
   createdAt: new Date(row.created_at).getTime(),
   updatedAt: new Date(row.updated_at).getTime(),
 });
 
-const buildSupabaseDespesaPayload = (data: DespesaFormData, tenantId: string) => ({
+const buildSupabaseDespesaPayload = (
+  data: DespesaFormData,
+  tenantId: string
+) => ({
   tenant_id: tenantId,
   descricao: data.descricao,
   categoria: data.categoria,
   valor: Number(data.valor || 0),
   data_despesa: data.dataDespesa.toISOString(),
-  data_vencimento: data.dataVencimento ? data.dataVencimento.toISOString() : null,
+  data_pagamento:
+    data.statusPagamento === 'pago'
+      ? (data.dataPagamento || data.dataDespesa).toISOString()
+      : null,
+  data_vencimento: data.dataVencimento
+    ? data.dataVencimento.toISOString()
+    : null,
   status_pagamento: data.statusPagamento,
   plantio_id: data.plantioId || null,
   estufa_id: data.estufaId || null,
@@ -67,7 +88,10 @@ const buildSupabaseDespesaPayload = (data: DespesaFormData, tenantId: string) =>
   comprovante_bytes: data.comprovanteBytes || null,
 });
 
-const createDespesaSupabase = async (data: DespesaFormData, tenantId: string) => {
+const createDespesaSupabase = async (
+  data: DespesaFormData,
+  tenantId: string
+) => {
   const supabase = getSupabaseClient();
   const { data: inserted, error } = await supabase
     .from('despesas')
@@ -75,7 +99,9 @@ const createDespesaSupabase = async (data: DespesaFormData, tenantId: string) =>
     .select('id')
     .single();
   if (error || !inserted?.id) {
-    throw new Error(`Não foi possível salvar despesa. ${error?.message || ''}`.trim());
+    throw new Error(
+      `Não foi possível salvar despesa. ${error?.message || ''}`.trim()
+    );
   }
   return inserted.id as string;
 };
@@ -94,7 +120,10 @@ const listDespesasSupabase = async (tenantId: string): Promise<Despesa[]> => {
   return (data || []).map(mapSupabaseDespesaToDomain);
 };
 
-const getDespesaByIdSupabase = async (id: string, tenantId: string): Promise<Despesa | null> => {
+const getDespesaByIdSupabase = async (
+  id: string,
+  tenantId: string
+): Promise<Despesa | null> => {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('despesas')
@@ -112,17 +141,20 @@ const updateDespesaStatusSupabase = async (
   id: string,
   novoStatus: 'pago' | 'pendente',
   tenantId: string,
-  pagamentoPara?: string | null
+  pagamentoPara?: string | null,
+  dataPagamento?: Date
 ) => {
   const supabase = getSupabaseClient();
+  const updatedAt = new Date().toISOString();
   const updatePayload: any = {
     status_pagamento: novoStatus,
-    updated_at: new Date().toISOString(),
+    updated_at: updatedAt,
   };
 
-  if (novoStatus === 'pago' && pagamentoPara) {
-    updatePayload.pagamento_para = pagamentoPara;
-  }
+  updatePayload.pagamento_para =
+    novoStatus === 'pago' ? pagamentoPara || null : null;
+  updatePayload.data_pagamento =
+    novoStatus === 'pago' ? (dataPagamento || new Date()).toISOString() : null;
 
   const { error } = await supabase
     .from('despesas')
@@ -146,7 +178,11 @@ const deleteDespesaSupabase = async (despesaId: string, tenantId: string) => {
   }
 };
 
-export const createDespesa = async (data: DespesaFormData, userId: string, options?: OfflineWriteOptions) => {
+export const createDespesa = async (
+  data: DespesaFormData,
+  userId: string,
+  options?: OfflineWriteOptions
+) => {
   const tenantId = assertTenantId(userId);
   return runOfflineWrite({
     action: 'createDespesa',
@@ -162,7 +198,11 @@ export const listDespesas = async (userId: string): Promise<Despesa[]> => {
   return listDespesasSupabase(tenantId);
 };
 
-export const listDespesasByMonth = async (userId: string, year: number, month: number): Promise<Despesa[]> => {
+export const listDespesasByMonth = async (
+  userId: string,
+  year: number,
+  month: number
+): Promise<Despesa[]> => {
   const tenantId = assertTenantId(userId);
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0, 23, 59, 59);
@@ -177,12 +217,44 @@ export const listDespesasByMonth = async (userId: string, year: number, month: n
     .order('data_despesa', { ascending: false });
 
   if (error) {
-    throw new Error(`Não foi possível buscar despesas do mês. ${error.message}`);
+    throw new Error(
+      `Não foi possível buscar despesas do mês. ${error.message}`
+    );
   }
   return (data || []).map(mapSupabaseDespesaToDomain);
 };
 
-export const getDespesaById = async (id: string, userId: string): Promise<Despesa | null> => {
+export const listDespesasPaidByMonth = async (
+  userId: string,
+  year: number,
+  month: number
+): Promise<Despesa[]> => {
+  const tenantId = assertTenantId(userId);
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('despesas')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('status_pagamento', 'pago')
+    .gte('data_pagamento', startDate.toISOString())
+    .lte('data_pagamento', endDate.toISOString())
+    .order('data_pagamento', { ascending: false });
+
+  if (error) {
+    throw new Error(
+      `NÃ£o foi possÃ­vel buscar pagamentos do mÃªs. ${error.message}`
+    );
+  }
+  return (data || []).map(mapSupabaseDespesaToDomain);
+};
+
+export const getDespesaById = async (
+  id: string,
+  userId: string
+): Promise<Despesa | null> => {
   const tenantId = assertTenantId(userId);
   return getDespesaByIdSupabase(id, tenantId);
 };
@@ -191,21 +263,42 @@ export const updateDespesaStatus = async (
   id: string,
   novoStatus: 'pago' | 'pendente',
   userId: string,
-  options?: OfflineWriteOptions
+  pagamentoPara?: string | null,
+  options?: OfflineWriteOptions,
+  dataPagamento?: Date
 ) => {
   const tenantId = assertTenantId(userId);
+  if (dataPagamento && Number.isNaN(dataPagamento.getTime())) {
+    throw new Error('Informe uma data de pagamento vÃ¡lida.');
+  }
   return runOfflineWrite({
     action: 'updateDespesaStatus',
-    payload: { id, status: novoStatus, userId: tenantId },
+    payload: {
+      id,
+      status: novoStatus,
+      userId: tenantId,
+      pagamentoPara: pagamentoPara || null,
+      dataPagamento: dataPagamento || null,
+    },
     options,
     onQueuedValue: () => undefined,
     write: async () => {
-      await updateDespesaStatusSupabase(id, novoStatus, tenantId);
+      await updateDespesaStatusSupabase(
+        id,
+        novoStatus,
+        tenantId,
+        pagamentoPara,
+        dataPagamento
+      );
     },
   });
 };
 
-export const deleteDespesa = async (despesaId: string, userId: string, options?: OfflineWriteOptions) => {
+export const deleteDespesa = async (
+  despesaId: string,
+  userId: string,
+  options?: OfflineWriteOptions
+) => {
   const tenantId = assertTenantId(userId);
   return runOfflineWrite({
     action: 'deleteDespesa',
@@ -218,7 +311,9 @@ export const deleteDespesa = async (despesaId: string, userId: string, options?:
   });
 };
 
-export const getTotalDespesasPendentes = async (userId: string): Promise<number> => {
+export const getTotalDespesasPendentes = async (
+  userId: string
+): Promise<number> => {
   const tenantId = assertTenantId(userId);
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
@@ -227,11 +322,12 @@ export const getTotalDespesasPendentes = async (userId: string): Promise<number>
     .eq('tenant_id', tenantId)
     .eq('status_pagamento', 'pendente');
   if (error) {
-    throw new Error(`Não foi possível calcular despesas pendentes. ${error.message}`);
+    throw new Error(
+      `Não foi possível calcular despesas pendentes. ${error.message}`
+    );
   }
 
   return (data || [])
     .filter((item: any) => item.tipo_gasto !== 'investimento_inicial')
     .reduce((acc, item: any) => acc + Number(item.valor || 0), 0);
 };
-

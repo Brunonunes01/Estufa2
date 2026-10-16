@@ -1,10 +1,19 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as XLSX from 'xlsx';
+import { Platform } from 'react-native';
+import XLSX from 'xlsx-js-style';
+import type { WorkBook, WorkSheet } from 'xlsx-js-style';
 
 import { COLORS } from '../constants/theme';
 import { Venda } from '../types/domain';
+import {
+  buildSalesAccountingClientSummaries,
+  buildSalesAccountingInsights,
+  normalizeAccountingStatus,
+} from './salesAccountingReportHelpers';
+import { buildSalesAccountingWorkbook } from './salesExcelWorkbook';
+import { shareCustomerStatementOnWeb } from './customerStatementPdf';
 
 export interface SalesReportTotals {
   totalReceber: number;
@@ -33,6 +42,7 @@ export interface SalesReportItem {
   metodoPagamento: string;
   status: 'PAGO' | 'PENDENTE' | 'CANCELADO';
   valor: number;
+  valorRecebido?: number;
   recebidoPor?: string;
   observacoes?: string | null;
 }
@@ -70,9 +80,15 @@ export interface SalesAccountingItem {
   quantidadeUnidade?: string;
   precoUnitario: number;
   valorTotal: number;
+  valorRecebido?: number;
+  valorChequeEmMaos?: number;
   metodoPagamento: string;
+  formaPagamento?: string | null;
   status: string;
   vencimento?: string;
+  dataRecebimento?: string;
+  dataCompensacaoCheque?: string;
+  statusContabil?: string;
   recebidoPor?: string;
   observacoes?: string;
 }
@@ -92,11 +108,14 @@ export interface CycleProductionItem {
   totalColheitas: number;
   totalCaixas: number;
   pesoPorCaixaKg?: number;
+  pesoBrutoCaixas?: number;
+  pesoLiquidoCaixas?: number;
   pesoCaixas: number;
   kiloLivre: number;
   pesoTotal: number;
   totalPlantado: number;
   caixasPorPlantado: number;
+  registrosPesoEstimado?: number;
   criterioPeso?: string;
 }
 
@@ -115,6 +134,7 @@ export interface FinancialOverviewCategoryItem {
 export interface FinancialOverviewTopSaleItem {
   codigo?: string;
   data: string;
+  dataRecebimento?: string;
   cliente: string;
   documentoCliente?: string;
   ciclo?: string;
@@ -127,6 +147,7 @@ export interface FinancialOverviewTopSaleItem {
   quantidadeUnidade?: string;
   precoUnitario?: number;
   valor: number;
+  valorRecebido?: number;
   status: string;
   metodoPagamento: string;
   recebidoPor?: string;
@@ -137,13 +158,21 @@ export interface FinancialOverviewReportData {
   empresa: string;
   periodo: string;
   receitaTotal: number;
+  valorVendido?: number;
+  valorRecebido?: number;
+  valorReceber?: number;
+  ajusteRecebimentos?: number;
   despesaTotal: number;
+  despesaComprometida?: number;
   lucroLiquido: number;
+  resultadoProjetado?: number;
   margem: number;
   totalVendas: number;
+  totalRecebimentos?: number;
   totalDespesas: number;
   categorias: FinancialOverviewCategoryItem[];
   topVendas: FinancialOverviewTopSaleItem[];
+  recebimentos?: FinancialOverviewTopSaleItem[];
 }
 
 export interface OperationalCycleReportData {
@@ -153,17 +182,21 @@ export interface OperationalCycleReportData {
   cicloDescricao?: string;
   lote: string;
   estufa: string;
+  localTipo?: 'Estufa' | 'Talhão';
   status: string;
   inicio: string;
   fim: string;
   totalVolumeVendido: number;
   unidadeVolume?: string;
   receitaTotal: number;
+  valorVendido?: number;
+  valorReceber?: number;
   custoAcumulado: number;
   custoPorUnidade: number;
   produtividadeUnM2: number;
   cicloDias: number;
   lucro: number;
+  lucroProjetado?: number;
   vendas?: SalesAccountingItem[];
 }
 
@@ -178,9 +211,19 @@ export interface CustomerSalesStatementData {
 }
 
 const SHARE_LOCK_KEY = '__sge_pdf_share_lock__';
-const isShareLocked = () => Boolean((globalThis as any)[SHARE_LOCK_KEY]);
+const SHARE_LOCK_TIMEOUT_MS = 15000;
+const isShareLocked = () => {
+  const lockedAt = (globalThis as any)[SHARE_LOCK_KEY];
+  if (!lockedAt) return false;
+  if (typeof lockedAt !== 'number') return true;
+  const isLocked = Date.now() - lockedAt < SHARE_LOCK_TIMEOUT_MS;
+  if (!isLocked) {
+    (globalThis as any)[SHARE_LOCK_KEY] = false;
+  }
+  return isLocked;
+};
 const setShareLocked = (value: boolean) => {
-  (globalThis as any)[SHARE_LOCK_KEY] = value;
+  (globalThis as any)[SHARE_LOCK_KEY] = value ? Date.now() : false;
 };
 
 const reportNowLabel = () => new Date().toLocaleString('pt-BR');
@@ -196,7 +239,10 @@ const sanitizeFilenameSegment = (value: string) =>
     .slice(0, 40) || 'arquivo';
 
 const fmtMoeda = (valor: number) =>
-  Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  Number(valor || 0).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  });
 
 const fmtNumero = (valor: number, casas = 2) =>
   Number(valor || 0).toLocaleString('pt-BR', {
@@ -229,7 +275,9 @@ const downloadPdfOnWeb = async (uri: string, fileName: string) => {
   let href = uri;
   if (!href.startsWith('data:')) {
     try {
-      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
       href = `data:application/pdf;base64,${base64}`;
     } catch {
       return false;
@@ -252,7 +300,10 @@ const injectHtmlTitle = (html: string, title: string) => {
   }
 
   if (/<head[^>]*>/i.test(html)) {
-    return html.replace(/<head([^>]*)>/i, `<head$1><title>${safeTitle}</title>`);
+    return html.replace(
+      /<head([^>]*)>/i,
+      `<head$1><title>${safeTitle}</title>`
+    );
   }
 
   return `<!DOCTYPE html><html lang="pt-BR"><head><title>${safeTitle}</title></head><body>${html}</body></html>`;
@@ -265,7 +316,9 @@ const printHtmlOnWeb = async (html: string, title: string) => {
 
   const printWindow = window.open('', '_blank', 'width=1200,height=900');
   if (!printWindow) {
-    throw new Error('Nao foi possivel abrir a janela de impressao no navegador.');
+    throw new Error(
+      'Nao foi possivel abrir a janela de impressao no navegador.'
+    );
   }
 
   const fullHtml = injectHtmlTitle(html, title);
@@ -274,13 +327,26 @@ const printHtmlOnWeb = async (html: string, title: string) => {
   printWindow.document.close();
 
   await new Promise<void>((resolve) => {
-    const finish = () => printWindow.setTimeout(resolve, 500);
-    if (printWindow.document.readyState === 'complete' && printWindow.document.body?.children.length) {
-      finish();
+    let finished = false;
+    const finishOnce = () => {
+      if (finished) return;
+      finished = true;
+      printWindow.setTimeout(resolve, 500);
+    };
+    const fallback = window.setTimeout(finishOnce, 1500);
+    if (
+      printWindow.document.readyState === 'complete' &&
+      printWindow.document.body?.children.length
+    ) {
+      window.clearTimeout(fallback);
+      finishOnce();
       return;
     }
 
-    printWindow.onload = finish;
+    printWindow.onload = () => {
+      window.clearTimeout(fallback);
+      finishOnce();
+    };
   });
 
   printWindow.focus();
@@ -291,54 +357,20 @@ const printHtmlOnWeb = async (html: string, title: string) => {
   return true;
 };
 
-const applyColumnWidths = (worksheet: XLSX.WorkSheet, widths: number[]) => {
+const applyColumnWidths = (worksheet: WorkSheet, widths: number[]) => {
   worksheet['!cols'] = widths.map((wch) => ({ wch }));
 };
 
 const buildSummarySheet = (entries: Array<[string, string | number]>) => {
-  const rows = entries.map(([indicador, valor]) => ({ Indicador: indicador, Valor: valor }));
-  const sheet = XLSX.utils.json_to_sheet(rows, { header: ['Indicador', 'Valor'] });
+  const rows = entries.map(([indicador, valor]) => ({
+    Indicador: indicador,
+    Valor: valor,
+  }));
+  const sheet = XLSX.utils.json_to_sheet(rows, {
+    header: ['Indicador', 'Valor'],
+  });
   applyColumnWidths(sheet, [34, 22]);
   return sheet;
-};
-
-const normalizeAccountingStatus = (status: string) => {
-  const normalized = String(status || '').trim().toUpperCase();
-  if (normalized === 'PAGO') return 'PAGO';
-  if (normalized === 'CANCELADO') return 'CANCELADO';
-  return 'PENDENTE';
-};
-
-const buildSalesAccountingInsights = (data: SalesAccountingPdfData) => {
-  const totalGeral = data.itens.reduce((acc, item) => acc + Number(item.valorTotal || 0), 0);
-  const totalPago = data.itens
-    .filter((item) => normalizeAccountingStatus(item.status) === 'PAGO')
-    .reduce((acc, item) => acc + Number(item.valorTotal || 0), 0);
-  const totalPendente = data.itens
-    .filter((item) => normalizeAccountingStatus(item.status) === 'PENDENTE')
-    .reduce((acc, item) => acc + Number(item.valorTotal || 0), 0);
-  const totalCancelado = data.itens
-    .filter((item) => normalizeAccountingStatus(item.status) === 'CANCELADO')
-    .reduce((acc, item) => acc + Number(item.valorTotal || 0), 0);
-  const somentePagos = data.itens.length > 0 && totalPendente === 0 && totalCancelado === 0;
-  const quantidadePendentes = data.itens.filter((item) => normalizeAccountingStatus(item.status) === 'PENDENTE').length;
-  const ticketMedio = data.itens.length > 0 ? totalGeral / data.itens.length : 0;
-  const recebimentoPercentual = totalGeral > 0 ? totalPago / totalGeral : 0;
-  const maiorLancamento = data.itens.reduce((acc, item) => Math.max(acc, Number(item.valorTotal || 0)), 0);
-  const recorteLabel = somentePagos ? 'Somente vendas pagas' : 'Pagos, pendentes e cancelados';
-
-  return {
-    totalGeral,
-    totalPago,
-    totalPendente,
-    totalCancelado,
-    somentePagos,
-    quantidadePendentes,
-    ticketMedio,
-    recebimentoPercentual,
-    maiorLancamento,
-    recorteLabel,
-  };
 };
 
 const getStatusClass = (status: string) => {
@@ -353,7 +385,11 @@ const wrapHtmlDocument = (input: {
   subtitle: string;
   company: string;
   period: string;
-  summaryCards: Array<{ label: string; value: string; tone?: 'neutral' | 'success' | 'danger' | 'info' }>;
+  summaryCards: Array<{
+    label: string;
+    value: string;
+    tone?: 'neutral' | 'success' | 'danger' | 'info' | 'warning';
+  }>;
   sections: string[];
   footer?: string;
 }) => {
@@ -465,6 +501,7 @@ const wrapHtmlDocument = (input: {
           .summary-value.success { color: #2e7d32; }
           .summary-value.danger { color: #d32f2f; }
           .summary-value.info { color: #0288d1; }
+          .summary-value.warning { color: #b26a00; }
 
           .section { margin-bottom: 35px; }
           .section-header {
@@ -571,75 +608,156 @@ const buildSection = (title: string, content: string) => `
   </section>
 `;
 
-const sharePdfHtml = async (html: string, fileName: string) => {
-  if (isShareLocked()) return;
+const preparePdfForNativeSharing = async (
+  sourceUri: string,
+  fileName: string
+) => {
+  if (!FileSystem.cacheDirectory) return sourceUri;
+
+  const destination = `${FileSystem.cacheDirectory}${fileName}`;
+  try {
+    const existing = await FileSystem.getInfoAsync(destination);
+    if (existing.exists) {
+      await FileSystem.deleteAsync(destination, { idempotent: true });
+    }
+    await FileSystem.copyAsync({ from: sourceUri, to: destination });
+    return destination;
+  } catch {
+    return sourceUri;
+  }
+};
+
+const sharePdfHtml = async (
+  html: string,
+  fileName: string,
+  options: { allowPrintFallback?: boolean } = {}
+) => {
+  const allowPrintFallback = options.allowPrintFallback ?? true;
+  if (isShareLocked()) {
+    throw new Error(
+      'Já existe uma exportação em andamento. Aguarde alguns segundos.'
+    );
+  }
   setShareLocked(true);
 
   try {
-    if (typeof document !== 'undefined') {
+    if (!allowPrintFallback && Platform.OS === 'web') {
+      await shareCustomerStatementOnWeb(html, fileName);
+      return;
+    }
+    if (
+      allowPrintFallback
+        ? typeof document !== 'undefined'
+        : Platform.OS === 'web'
+    ) {
       await printHtmlOnWeb(html, fileName);
       return;
     }
 
     const { uri } = await Print.printToFileAsync({ html });
-    const normalizedFileName = fileName.toLowerCase().endsWith('.pdf') ? fileName : `${fileName}.pdf`;
-    const destination = `${FileSystem.cacheDirectory}${normalizedFileName}`;
-    const existing = await FileSystem.getInfoAsync(destination);
-    if (existing.exists) {
-      await FileSystem.deleteAsync(destination, { idempotent: true });
-    }
-    await FileSystem.copyAsync({ from: uri, to: destination });
+    const normalizedFileName = fileName.toLowerCase().endsWith('.pdf')
+      ? fileName
+      : `${fileName}.pdf`;
+    const destination = await preparePdfForNativeSharing(
+      uri,
+      normalizedFileName
+    );
 
     const canShare = await Sharing.isAvailableAsync();
     if (canShare) {
-      await Sharing.shareAsync(destination, {
-        UTI: '.pdf',
-        mimeType: 'application/pdf',
-        dialogTitle: normalizedFileName,
-      });
+      try {
+        await Sharing.shareAsync(destination, {
+          mimeType: 'application/pdf',
+          dialogTitle: normalizedFileName,
+          ...(Platform.OS === 'ios' ? { UTI: 'com.adobe.pdf' } : {}),
+        });
+      } catch (error) {
+        if (!allowPrintFallback || Platform.OS !== 'android') throw error;
+        await Print.printAsync({ uri: destination });
+      }
+      return;
+    }
+
+    if (!allowPrintFallback) {
+      throw new Error(
+        'O compartilhamento de PDF não está disponível neste dispositivo.'
+      );
+    }
+
+    if (Platform.OS === 'android') {
+      await Print.printAsync({ uri: destination });
       return;
     }
 
     const downloaded = await downloadPdfOnWeb(destination, normalizedFileName);
     if (!downloaded) {
-      throw new Error('Nao foi possivel compartilhar ou baixar o PDF neste dispositivo.');
+      throw new Error(
+        'Nao foi possivel compartilhar ou baixar o PDF neste dispositivo.'
+      );
     }
   } finally {
     setShareLocked(false);
   }
 };
 
-const shareWorkbook = async (workbook: XLSX.WorkBook, fileName: string) => {
-  if (typeof document !== 'undefined') {
-    XLSX.writeFile(workbook, fileName);
-    return;
+const shareWorkbook = async (workbook: WorkBook, fileName: string) => {
+  if (isShareLocked()) {
+    throw new Error(
+      'Já existe uma exportação em andamento. Aguarde alguns segundos.'
+    );
   }
+  setShareLocked(true);
 
-  const base64 = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
-  const destination = `${FileSystem.cacheDirectory}${fileName}`;
-  await FileSystem.writeAsStringAsync(destination, base64, { encoding: FileSystem.EncodingType.Base64 });
+  try {
+    if (typeof document !== 'undefined') {
+      XLSX.writeFile(workbook, fileName, { cellStyles: true });
+      return;
+    }
 
-  const canShare = await Sharing.isAvailableAsync();
-  if (canShare) {
-    await Sharing.shareAsync(destination, {
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      dialogTitle: fileName,
-      UTI: 'org.openxmlformats.spreadsheetml.sheet',
+    const base64 = XLSX.write(workbook, {
+      bookType: 'xlsx',
+      type: 'base64',
+      cellStyles: true,
     });
-    return;
-  }
+    const destination = `${FileSystem.cacheDirectory}${fileName}`;
+    await FileSystem.writeAsStringAsync(destination, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
 
-  throw new Error('Nao foi possivel compartilhar o arquivo Excel neste dispositivo.');
+    const canShare = await Sharing.isAvailableAsync();
+    if (canShare) {
+      await Sharing.shareAsync(destination, {
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        dialogTitle: fileName,
+        UTI: 'org.openxmlformats.spreadsheetml.sheet',
+      });
+      return;
+    }
+
+    throw new Error(
+      'Não foi possível compartilhar o arquivo Excel neste dispositivo.'
+    );
+  } finally {
+    setShareLocked(false);
+  }
 };
 
 const createWorkbook = () => XLSX.utils.book_new();
 
-const appendSheet = (workbook: XLSX.WorkBook, name: string, sheet: XLSX.WorkSheet) => {
+const appendSheet = (
+  workbook: WorkBook,
+  name: string,
+  sheet: WorkSheet
+) => {
   XLSX.utils.book_append_sheet(workbook, sheet, name);
 };
 
 const parseQuantidadeFromReportItem = (item: SalesReportItem) => {
-  if (typeof item.quantidadeValor === 'number' && Number.isFinite(item.quantidadeValor)) {
+  if (
+    typeof item.quantidadeValor === 'number' &&
+    Number.isFinite(item.quantidadeValor)
+  ) {
     return Number(item.quantidadeValor);
   }
 
@@ -652,14 +770,31 @@ const parseQuantidadeFromReportItem = (item: SalesReportItem) => {
 const buildBrandedSalesReportHtml = (data: SalesReportPdfData) => {
   const paidItems = data.itens.filter((item) => item.status === 'PAGO');
   const pendingItems = data.itens.filter((item) => item.status === 'PENDENTE');
-  const cancelledItems = data.itens.filter((item) => item.status === 'CANCELADO');
+  const cancelledItems = data.itens.filter(
+    (item) => item.status === 'CANCELADO'
+  );
   const paidCount = paidItems.length;
   const pendingCount = pendingItems.length;
   const cancelledCount = cancelledItems.length;
-  const paidValue = paidItems.reduce((acc, item) => acc + Number(item.valor || 0), 0);
-  const pendingValue = pendingItems.reduce((acc, item) => acc + Number(item.valor || 0), 0);
-  const soldBoxes = data.itens.reduce((acc, item) => acc + parseQuantidadeFromReportItem(item), 0);
-  const paymentRatio = data.totais.totalVendido > 0 ? paidValue / data.totais.totalVendido : 0;
+  const paidAgreedValue = paidItems.reduce(
+    (acc, item) => acc + Number(item.valor || 0),
+    0
+  );
+  const paidValue = paidItems.reduce(
+    (acc, item) => acc + Number(item.valorRecebido ?? item.valor ?? 0),
+    0
+  );
+  const pendingValue = pendingItems.reduce(
+    (acc, item) => acc + Number(item.valor || 0),
+    0
+  );
+  const soldBoxes = data.itens
+    .filter((item) => item.status !== 'CANCELADO')
+    .reduce((acc, item) => acc + parseQuantidadeFromReportItem(item), 0);
+  const paymentRatio =
+    data.totais.totalVendido > 0
+      ? Math.min(1, paidAgreedValue / data.totais.totalVendido)
+      : 0;
   const pendingRatio = Math.max(0, 1 - paymentRatio);
   const paymentDegrees = Math.round(paymentRatio * 360);
   const logoSvg = `
@@ -679,22 +814,30 @@ const buildBrandedSalesReportHtml = (data: SalesReportPdfData) => {
   `;
   const detailRows = data.itens
     .map((item) => {
-      const pendingAmount = item.status === 'PENDENTE' ? Number(item.valor || 0) : 0;
-      const paidAmount = item.status === 'PAGO' ? Number(item.valor || 0) : 0;
-      const dueDate = item.status === 'PENDENTE' ? item.observacoes || '-' : item.data;
+      const pendingAmount =
+        item.status === 'PENDENTE' ? Number(item.valor || 0) : 0;
+      const paidAmount =
+        item.status === 'PAGO'
+          ? Number(item.valorRecebido ?? item.valor ?? 0)
+          : 0;
+      const paymentLabel = item.status === 'PENDENTE' ? 'Pendente' : item.data;
       const quantityLabel = item.quantidade || '-';
+      const observacao = String(item.observacoes || '').trim();
 
       return `
         <tr>
           <td>${escapeHtml(item.codigo || '-')}</td>
           <td>${escapeHtml(item.data)}</td>
-          <td>${escapeHtml(item.cliente)}</td>
+          <td class="sale-details-cell">
+            <span class="sale-client-name">${escapeHtml(item.cliente)}</span>
+            ${observacao ? `<br /><span class="sale-inline-obs"><strong>Obs.:</strong> ${escapeHtml(observacao)}</span>` : ''}
+          </td>
           <td class="align-center">${escapeHtml(quantityLabel)}</td>
           <td class="align-right">${fmtMoeda(item.valor)}</td>
           <td class="align-right">${fmtMoeda(paidAmount)}</td>
           <td class="align-right pending-text">${pendingAmount > 0 ? fmtMoeda(pendingAmount) : 'R$ 0,00'}</td>
           <td class="align-center ${item.status === 'PAGO' ? 'paid-text' : item.status === 'PENDENTE' ? 'pending-text' : ''}">${escapeHtml(item.status)}</td>
-          <td class="align-center">${escapeHtml(dueDate)}</td>
+          <td class="align-center">${escapeHtml(paymentLabel)}</td>
           <td>${escapeHtml(item.metodoPagamento)}</td>
           <td>${escapeHtml(item.recebidoPor || '-')}</td>
         </tr>
@@ -891,6 +1034,27 @@ const buildBrandedSalesReportHtml = (data: SalesReportPdfData) => {
             overflow: hidden;
             text-overflow: ellipsis;
           }
+          td.sale-details-cell {
+            white-space: normal;
+            overflow: visible;
+            text-overflow: initial;
+            line-height: 1.3;
+          }
+          .sale-client-name {
+            display: inline-block;
+            font-weight: 700;
+            color: #1f2d22;
+          }
+          .sale-inline-obs {
+            display: inline-block;
+            margin-top: 4px;
+            font-size: 9px;
+            line-height: 1.35;
+            color: #496250;
+          }
+          .sale-inline-obs strong {
+            color: #123923;
+          }
           tbody tr:last-child td {
             border-bottom: 0;
           }
@@ -1041,15 +1205,27 @@ const buildBrandedSalesReportHtml = (data: SalesReportPdfData) => {
                 <tr>
                   <td class="row-label paid-text">PAGAS</td>
                   <td>${paidCount}</td>
-                  <td>${fmtNumero(paidItems.reduce((acc, item) => acc + parseQuantidadeFromReportItem(item), 0), 0)} CX</td>
-                  <td>${fmtMoeda(paidValue)}</td>
+                  <td>${fmtNumero(
+                    paidItems.reduce(
+                      (acc, item) => acc + parseQuantidadeFromReportItem(item),
+                      0
+                    ),
+                    0
+                  )} CX</td>
+                  <td>${fmtMoeda(paidAgreedValue)}</td>
                   <td>${fmtMoeda(paidValue)}</td>
                   <td>R$ 0,00</td>
                 </tr>
                 <tr>
                   <td class="row-label pending-text">PENDENTES</td>
                   <td>${pendingCount}</td>
-                  <td>${fmtNumero(pendingItems.reduce((acc, item) => acc + parseQuantidadeFromReportItem(item), 0), 0)} CX</td>
+                  <td>${fmtNumero(
+                    pendingItems.reduce(
+                      (acc, item) => acc + parseQuantidadeFromReportItem(item),
+                      0
+                    ),
+                    0
+                  )} CX</td>
                   <td>${fmtMoeda(pendingValue)}</td>
                   <td>R$ 0,00</td>
                   <td class="pending-text">${fmtMoeda(pendingValue)}</td>
@@ -1079,7 +1255,7 @@ const buildBrandedSalesReportHtml = (data: SalesReportPdfData) => {
                   <th style="width:94px;">VALOR PAGO</th>
                   <th style="width:104px;">VALOR PENDENTE</th>
                   <th style="width:78px;">STATUS</th>
-                  <th style="width:84px;">VENCIMENTO</th>
+                  <th style="width:84px;">PAGAMENTO</th>
                   <th style="width:112px;">FORMA DE PAGAMENTO</th>
                   <th style="width:110px;">RECEBIDO POR</th>
                 </tr>
@@ -1138,15 +1314,20 @@ export const shareVendaReceipt = async (data: ReceiptData) => {
     throw new Error('Venda invalida para geracao do PDF individual.');
   }
 
-  const quantidade = Number(venda.quantidade || venda.itens?.[0]?.quantidade || 0);
-  const precoUnitario = Number(venda.precoUnitario || venda.itens?.[0]?.valorUnitario || 0);
+  const quantidade = Number(
+    venda.quantidade || venda.itens?.[0]?.quantidade || 0
+  );
+  const precoUnitario = Number(
+    venda.precoUnitario || venda.itens?.[0]?.valorUnitario || 0
+  );
   const valor = Number(venda.valorTotal || quantidade * precoUnitario);
+  const valorRecebido = Number(venda.valorRecebido ?? valor);
   const status =
     venda.statusPagamento === 'pendente'
       ? 'PENDENTE'
       : venda.statusPagamento === 'cancelado'
-      ? 'CANCELADO'
-      : 'PAGO';
+        ? 'CANCELADO'
+        : 'PAGO';
   const dataVenda = toDateSafe(venda.dataVenda || venda.dataColheita);
   const dataVendaLabel = dataVenda.toLocaleDateString('pt-BR');
 
@@ -1161,7 +1342,7 @@ export const shareVendaReceipt = async (data: ReceiptData) => {
       totalPagar: 0,
       saldo: status === 'CANCELADO' ? 0 : valor,
       totalVendido: status === 'CANCELADO' ? 0 : valor,
-      totalRecebido: status === 'PAGO' ? valor : 0,
+      totalRecebido: status === 'PAGO' ? valorRecebido : 0,
       ticketMedio: status === 'CANCELADO' ? 0 : valor,
       totalRegistros: 1,
     },
@@ -1171,19 +1352,34 @@ export const shareVendaReceipt = async (data: ReceiptData) => {
         data: dataVendaLabel,
         cliente: nomeCliente,
         local: nomeEstufa,
-        metodoPagamento: String(venda.metodoPagamento || venda.formaPagamento || 'N/A').toUpperCase(),
+        metodoPagamento: String(
+          venda.metodoPagamento || venda.formaPagamento || 'N/A'
+        ).toUpperCase(),
         status,
         valor,
+        valorRecebido: status === 'PAGO' ? valorRecebido : undefined,
         observacoes: venda.observacoes,
       },
     ],
   });
 };
 
-export const shareSalesAccountingPdf = async (data: SalesAccountingPdfData) => {
-  const { totalGeral, totalPago, totalPendente, totalCancelado, ticketMedio, recorteLabel } =
-    buildSalesAccountingInsights(data);
-  const paymentRatio = totalGeral > 0 ? totalPago / totalGeral : 0;
+export const shareSalesAccountingLegacyPdf = async (
+  data: SalesAccountingPdfData
+) => {
+  const {
+    totalGeral,
+    totalPago,
+    totalPendente,
+    totalCancelado,
+    ticketMedio,
+    recorteLabel,
+  } = buildSalesAccountingInsights(data);
+  const paidCoverageValue = data.itens
+    .filter((item) => normalizeAccountingStatus(item.status) === 'PAGO')
+    .reduce((total, item) => total + Number(item.valorTotal || 0), 0);
+  const paymentRatio =
+    totalGeral > 0 ? Math.min(1, paidCoverageValue / totalGeral) : 0;
   const paymentDegrees = Math.round(paymentRatio * 360);
   const logoSvg = `
     <svg viewBox="0 0 86 86" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -1200,7 +1396,9 @@ export const shareSalesAccountingPdf = async (data: SalesAccountingPdfData) => {
       <path d="M28.6 27.8c0-4.2 2.8-7.7 6.8-9.1-1.1 4.6 1 8.6 4.6 11.5-4.9 1.9-11.4 1.1-11.4-2.4Z" fill="#0f5a2e"/>
     </svg>
   `;
-  const groupedByCliente = data.itens.reduce<Record<string, SalesAccountingItem[]>>((acc, item) => {
+  const groupedByCliente = data.itens.reduce<
+    Record<string, SalesAccountingItem[]>
+  >((acc, item) => {
     const key = item.cliente || 'Cliente avulso';
     if (!acc[key]) acc[key] = [];
     acc[key].push(item);
@@ -1210,11 +1408,21 @@ export const shareSalesAccountingPdf = async (data: SalesAccountingPdfData) => {
   const clientSections = Object.entries(groupedByCliente)
     .sort(([clienteA], [clienteB]) => clienteA.localeCompare(clienteB, 'pt-BR'))
     .map(([cliente, items]) => {
-      const totalCliente = items.reduce((acc, item) => acc + Number(item.valorTotal || 0), 0);
-      const totalPagoCliente = items
+      const itensFinanceiros = items.filter(
+        (item) => normalizeAccountingStatus(item.status) !== 'CANCELADO'
+      );
+      const totalCliente = itensFinanceiros.reduce(
+        (acc, item) => acc + Number(item.valorTotal || 0),
+        0
+      );
+      const totalPagoCliente = itensFinanceiros
         .filter((item) => normalizeAccountingStatus(item.status) === 'PAGO')
-        .reduce((acc, item) => acc + Number(item.valorTotal || 0), 0);
-      const totalPendenteCliente = items
+        .reduce(
+          (acc, item) =>
+            acc + Number(item.valorRecebido ?? item.valorTotal ?? 0),
+          0
+        );
+      const totalPendenteCliente = itensFinanceiros
         .filter((item) => normalizeAccountingStatus(item.status) === 'PENDENTE')
         .reduce((acc, item) => acc + Number(item.valorTotal || 0), 0);
 
@@ -1236,7 +1444,8 @@ export const shareSalesAccountingPdf = async (data: SalesAccountingPdfData) => {
                 <th>Lote</th>
                 <th>Produto</th>
                 <th class="align-right">Qtd</th>
-                <th class="align-right">Total</th>
+                <th class="align-right">Combinado</th>
+                <th class="align-right">Recebido</th>
                 <th>Metodo</th>
                 <th>Status</th>
                 <th>Recebido por</th>
@@ -1254,6 +1463,7 @@ export const shareSalesAccountingPdf = async (data: SalesAccountingPdfData) => {
                       <td>${escapeHtml(v.produto)}</td>
                       <td class="align-right">${escapeHtml(v.quantidade)}</td>
                       <td class="align-right">${fmtMoeda(v.valorTotal)}</td>
+                      <td class="align-right">${v.valorRecebido != null ? fmtMoeda(v.valorRecebido) : '-'}</td>
                       <td>${escapeHtml(v.metodoPagamento)}</td>
                       <td class="${normalizeAccountingStatus(v.status) === 'PAGO' ? 'paid-text' : normalizeAccountingStatus(v.status) === 'PENDENTE' ? 'pending-text' : ''}">${escapeHtml(v.status)}</td>
                       <td>${escapeHtml(v.recebidoPor || '-')}</td>
@@ -1367,7 +1577,7 @@ export const shareSalesAccountingPdf = async (data: SalesAccountingPdfData) => {
               <h3 class="box-title">Leitura contabil</h3>
               <div class="note-item">Relatorio separado por cliente para facilitar conferencia de recebimentos, pendencias e concentracao de faturamento.</div>
               <div class="note-item">Use o valor pendente para identificar cobrancas abertas e o total recebido para validar caixa realizado.</div>
-              <div class="note-item">Cancelados permanecem destacados apenas no resumo executivo.</div>
+              <div class="note-item">Cancelados continuam no detalhamento para auditoria, mas não entram no faturamento.</div>
             </div>
             <div class="finance-box">
               <h3 class="box-title">Resumo financeiro</h3>
@@ -1397,11 +1607,195 @@ export const shareSalesAccountingPdf = async (data: SalesAccountingPdfData) => {
   await sharePdfHtml(html, fileName);
 };
 
-export const shareCustomerSalesStatement = async (data: CustomerSalesStatementData) => {
-  const paidOrders = data.vendas.filter((v) => normalizeAccountingStatus(v.status) === 'PAGO');
-  const pendingOrders = data.vendas.filter((v) => normalizeAccountingStatus(v.status) === 'PENDENTE');
-  const totalCaixas = data.vendas.reduce((acc, item) => acc + Number(item.quantidadeValor || 0), 0);
-  const paymentRatio = data.totalVendido > 0 ? data.totalPago / data.totalVendido : 0;
+export const shareSalesAccountingPdf = async (data: SalesAccountingPdfData) => {
+  if (!data.itens.length) {
+    throw new Error(
+      'Não há vendas no período selecionado para gerar o PDF contábil.'
+    );
+  }
+
+  const insights = buildSalesAccountingInsights(data);
+  const clientSummaries = buildSalesAccountingClientSummaries(data.itens);
+  const clientRows = clientSummaries
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHtml(item.cliente)}</td>
+          <td class="align-right">${item.registros}</td>
+          <td class="align-right">${fmtMoeda(item.totalVendido)}</td>
+          <td class="align-right">${fmtMoeda(item.totalRecebido)}</td>
+          <td class="align-right">${fmtMoeda(item.totalPendente)}</td>
+          <td class="align-right">${fmtMoeda(item.ajusteRecebimentos)}</td>
+          <td class="align-right">${item.cancelados}</td>
+        </tr>
+      `
+    )
+    .join('');
+
+  const detailRows = data.itens
+    .map((item) => {
+      const status = normalizeAccountingStatus(item.status);
+      const agreed = status === 'CANCELADO' ? 0 : Number(item.valorTotal || 0);
+      const received =
+        status === 'PAGO'
+          ? Number(item.valorRecebido ?? item.valorTotal ?? 0)
+          : 0;
+      const chequeEmMaos =
+        status === 'PENDENTE' ? Number(item.valorChequeEmMaos || 0) : 0;
+      const pending = status === 'PENDENTE' ? agreed : 0;
+      const difference = status === 'PAGO' ? received - agreed : 0;
+      const dueDate = item.dataCompensacaoCheque
+        ? `Compensação prevista ${item.dataCompensacaoCheque}`
+        : item.vencimento
+          ? `Venc. ${item.vencimento}`
+          : '';
+      const receiptDate = item.dataRecebimento
+        ? `Baixa ${item.dataRecebimento}`
+        : '';
+      const accountingStatus = item.statusContabil || status;
+      const statusClass =
+        accountingStatus === 'COMPENSADO'
+          ? 'status-paid'
+          : getStatusClass(status);
+
+      return `
+        <tr>
+          <td>
+            <strong>${escapeHtml(item.data)}</strong>
+            ${dueDate ? `<div>${escapeHtml(dueDate)}</div>` : ''}
+            ${receiptDate ? `<div>${escapeHtml(receiptDate)}</div>` : ''}
+          </td>
+          <td>
+            <strong>${escapeHtml(item.cliente)}</strong>
+            ${item.documentoCliente ? `<div>${escapeHtml(item.documentoCliente)}</div>` : ''}
+          </td>
+          <td>${escapeHtml(item.origem || '-')}<div>${escapeHtml(item.estufa || '-')}</div></td>
+          <td>${escapeHtml(item.produto)}<div>Lote: ${escapeHtml(item.lote || '-')}</div></td>
+          <td class="align-right">${escapeHtml(item.quantidade)}</td>
+          <td class="align-right">${fmtMoeda(agreed)}</td>
+          <td class="align-right">${fmtMoeda(received)}</td>
+          <td class="align-right">${chequeEmMaos > 0 ? fmtMoeda(chequeEmMaos) : '-'}</td>
+          <td class="align-right">${fmtMoeda(pending)}</td>
+          <td class="align-right">${fmtMoeda(difference)}</td>
+          <td><span class="status ${statusClass}">${escapeHtml(accountingStatus)}</span></td>
+          <td>${escapeHtml(item.metodoPagamento)}<div>${escapeHtml(item.recebidoPor || '-')}</div></td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  const html = wrapHtmlDocument({
+    title: 'Relatório contábil de vendas',
+    subtitle: 'Conciliação de valores combinados, recebidos e pendentes',
+    company: data.empresa,
+    period: data.periodo,
+    summaryCards: [
+      {
+        label: 'Vendido / combinado',
+        value: fmtMoeda(insights.totalGeral),
+        tone: 'info',
+      },
+      {
+        label: 'Recebido de verdade',
+        value: fmtMoeda(insights.totalPago),
+        tone: 'success',
+      },
+      {
+        label: 'Cheque em mãos',
+        value: fmtMoeda(insights.totalChequeEmMaos),
+        tone: insights.totalChequeEmMaos > 0 ? 'warning' : 'neutral',
+      },
+      {
+        label: 'A receber',
+        value: fmtMoeda(insights.totalPendente),
+        tone: insights.totalPendente > 0 ? 'danger' : 'success',
+      },
+      {
+        label: 'Diferença nas baixas',
+        value: fmtMoeda(insights.ajusteRecebimentos),
+        tone: insights.ajusteRecebimentos < 0 ? 'danger' : 'neutral',
+      },
+      { label: 'Clientes', value: String(insights.totalClientes) },
+      { label: 'Registros', value: String(data.itens.length) },
+      { label: 'Ticket médio', value: fmtMoeda(insights.ticketMedio) },
+      {
+        label: 'Cancelado / auditoria',
+        value: fmtMoeda(insights.totalCancelado),
+      },
+    ],
+    sections: [
+      buildSection(
+        'Conciliação por cliente',
+        `
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th class="align-right">Registros</th>
+                <th class="align-right">Combinado</th>
+                <th class="align-right">Recebido</th>
+                <th class="align-right">Cheque em mãos</th>
+                <th class="align-right">Pendente</th>
+                <th class="align-right">Diferença</th>
+                <th class="align-right">Cancelados</th>
+              </tr>
+            </thead>
+            <tbody>${clientRows}</tbody>
+          </table>
+        `
+      ),
+      buildSection(
+        'Lançamentos contábeis',
+        `
+          <table>
+            <thead>
+              <tr>
+                <th>Datas</th>
+                <th>Cliente</th>
+                <th>Origem / local</th>
+                <th>Produto / lote</th>
+                <th class="align-right">Qtd.</th>
+                <th class="align-right">Combinado</th>
+                <th class="align-right">Recebido</th>
+                <th class="align-right">Pendente</th>
+                <th class="align-right">Diferença</th>
+                <th>Status</th>
+                <th>Método / caixa</th>
+              </tr>
+            </thead>
+            <tbody>${detailRows}</tbody>
+          </table>
+        `
+      ),
+    ],
+    footer:
+      'Relatório contábil atualizado. Vendas canceladas permanecem apenas para auditoria e não compõem o faturamento.',
+  });
+
+  const fileName = `Relatorio_Contabil_Vendas_${sanitizeFilenameSegment(data.empresa)}_${reportDateToken()}.pdf`;
+  await sharePdfHtml(html, fileName);
+};
+
+export const shareCustomerSalesStatement = async (
+  data: CustomerSalesStatementData
+) => {
+  const paidOrders = data.vendas.filter(
+    (v) => normalizeAccountingStatus(v.status) === 'PAGO'
+  );
+  const pendingOrders = data.vendas.filter(
+    (v) => normalizeAccountingStatus(v.status) === 'PENDENTE'
+  );
+  const paidAgreedTotal = paidOrders.reduce(
+    (total, sale) => total + Number(sale.valorTotal || 0),
+    0
+  );
+  const totalCaixas = data.vendas
+    .filter((item) => normalizeAccountingStatus(item.status) !== 'CANCELADO')
+    .reduce((acc, item) => acc + Number(item.quantidadeValor || 0), 0);
+  const paymentRatio =
+    data.totalVendido > 0
+      ? Math.min(1, paidAgreedTotal / data.totalVendido)
+      : 0;
   const pendingRatio = Math.max(0, 1 - paymentRatio);
   const paymentDegrees = Math.round(paymentRatio * 360);
   const logoSvg = `
@@ -1425,13 +1819,13 @@ export const shareCustomerSalesStatement = async (data: CustomerSalesStatementDa
         <tr>
           <td>${escapeHtml(v.data)}</td>
           <td>${escapeHtml(v.codigo || '-')}</td>
-          <td>${escapeHtml(v.estufa || '-')}</td>
           <td>${escapeHtml(v.produto || '-')}</td>
           <td class="align-center">${escapeHtml(v.quantidade || '-')}</td>
+          <td class="align-right">${fmtMoeda(v.precoUnitario || 0)}</td>
           <td class="align-right">${fmtMoeda(v.valorTotal)}</td>
+          <td class="align-right">${v.valorRecebido != null ? fmtMoeda(v.valorRecebido) : '-'}</td>
           <td class="align-center ${normalizeAccountingStatus(v.status) === 'PAGO' ? 'paid-text' : 'pending-text'}">${escapeHtml(v.status)}</td>
           <td>${escapeHtml(v.metodoPagamento || '-')}</td>
-          <td>${escapeHtml(v.recebidoPor || '-')}</td>
         </tr>
       `
     )
@@ -1446,6 +1840,7 @@ export const shareCustomerSalesStatement = async (data: CustomerSalesStatementDa
         <style>
           * { box-sizing: border-box; }
           @page { size: A4 landscape; margin: 10mm; }
+          *, *::before, *::after { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           body { margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; color: #1b1b1b; background: #ffffff; }
           .page {
             width: 100%;
@@ -1546,15 +1941,27 @@ export const shareCustomerSalesStatement = async (data: CustomerSalesStatementDa
                 <tr>
                   <td class="row-label paid-text">PAGAS</td>
                   <td>${paidOrders.length}</td>
-                  <td>${fmtNumero(paidOrders.reduce((acc, item) => acc + Number(item.quantidadeValor || 0), 0), 0)} CX</td>
-                  <td>${fmtMoeda(data.totalPago)}</td>
+                  <td>${fmtNumero(
+                    paidOrders.reduce(
+                      (acc, item) => acc + Number(item.quantidadeValor || 0),
+                      0
+                    ),
+                    0
+                  )} CX</td>
+                  <td>${fmtMoeda(paidAgreedTotal)}</td>
                   <td>${fmtMoeda(data.totalPago)}</td>
                   <td>R$ 0,00</td>
                 </tr>
                 <tr>
                   <td class="row-label pending-text">PENDENTES</td>
                   <td>${pendingOrders.length}</td>
-                  <td>${fmtNumero(pendingOrders.reduce((acc, item) => acc + Number(item.quantidadeValor || 0), 0), 0)} CX</td>
+                  <td>${fmtNumero(
+                    pendingOrders.reduce(
+                      (acc, item) => acc + Number(item.quantidadeValor || 0),
+                      0
+                    ),
+                    0
+                  )} CX</td>
                   <td>${fmtMoeda(data.totalPendente)}</td>
                   <td>R$ 0,00</td>
                   <td class="pending-text">${fmtMoeda(data.totalPendente)}</td>
@@ -1578,13 +1985,13 @@ export const shareCustomerSalesStatement = async (data: CustomerSalesStatementDa
                 <tr>
                   <th style="width:84px;">DATA</th>
                   <th style="width:84px;">CÓDIGO</th>
-                  <th style="width:110px;">LOCAL</th>
                   <th>PRODUTO</th>
                   <th style="width:92px;">QUANTIDADE</th>
-                  <th style="width:94px;">VALOR</th>
+                  <th style="width:94px;">VALOR/CX</th>
+                  <th style="width:94px;">COMBINADO</th>
+                  <th style="width:94px;">PAGO</th>
                   <th style="width:80px;">STATUS</th>
                   <th style="width:110px;">PAGAMENTO</th>
-                  <th style="width:110px;">RECEBIDO POR</th>
                 </tr>
               </thead>
               <tbody>
@@ -1626,16 +2033,42 @@ export const shareCustomerSalesStatement = async (data: CustomerSalesStatementDa
   `;
 
   const fileName = `Extrato_Vendas_${sanitizeFilenameSegment(data.clienteNome)}_${reportDateToken()}.pdf`;
-  await sharePdfHtml(html, fileName);
+  await sharePdfHtml(html, fileName, { allowPrintFallback: false });
 };
 
-export const shareCycleProductionPdf = async (data: CycleProductionReportData) => {
-  const totalCaixas = data.itens.reduce((acc, item) => acc + Number(item.totalCaixas || 0), 0);
-  const totalPesoCaixas = data.itens.reduce((acc, item) => acc + Number(item.pesoCaixas || 0), 0);
-  const totalKiloLivre = data.itens.reduce((acc, item) => acc + Number(item.kiloLivre || 0), 0);
-  const totalPeso = data.itens.reduce((acc, item) => acc + Number(item.pesoTotal || 0), 0);
-  const totalPlantado = data.itens.reduce((acc, item) => acc + Number(item.totalPlantado || 0), 0);
-  const mediaCaixasPorPlantado = totalPlantado > 0 ? totalCaixas / totalPlantado : 0;
+export const shareCycleProductionPdf = async (
+  data: CycleProductionReportData
+) => {
+  const totalCaixas = data.itens.reduce(
+    (acc, item) => acc + Number(item.totalCaixas || 0),
+    0
+  );
+  const totalPesoCaixas = data.itens.reduce(
+    (acc, item) => acc + Number(item.pesoLiquidoCaixas ?? item.pesoCaixas ?? 0),
+    0
+  );
+  const totalPesoBrutoCaixas = data.itens.reduce(
+    (acc, item) => acc + Number(item.pesoBrutoCaixas || 0),
+    0
+  );
+  const totalKiloLivre = data.itens.reduce(
+    (acc, item) => acc + Number(item.kiloLivre || 0),
+    0
+  );
+  const totalPeso = data.itens.reduce(
+    (acc, item) => acc + Number(item.pesoTotal || 0),
+    0
+  );
+  const totalPlantado = data.itens.reduce(
+    (acc, item) => acc + Number(item.totalPlantado || 0),
+    0
+  );
+  const mediaCaixasPorPlantado =
+    totalPlantado > 0 ? totalCaixas / totalPlantado : 0;
+  const totalRegistrosPesoEstimado = data.itens.reduce(
+    (acc, item) => acc + Number(item.registrosPesoEstimado || 0),
+    0
+  );
 
   const rows = data.itens
     .map(
@@ -1648,7 +2081,8 @@ export const shareCycleProductionPdf = async (data: CycleProductionReportData) =
           <td>${escapeHtml(item.ultimaColheita)}</td>
           <td class="align-right">${item.totalColheitas}</td>
           <td class="align-right">${fmtNumero(item.totalCaixas)}</td>
-          <td class="align-right">${fmtNumero(item.pesoCaixas)} kg</td>
+          <td class="align-right">${fmtNumero(item.pesoBrutoCaixas || 0)} kg</td>
+          <td class="align-right">${fmtNumero(item.pesoLiquidoCaixas ?? item.pesoCaixas)} kg</td>
           <td class="align-right">${fmtNumero(item.kiloLivre)} kg</td>
           <td class="align-right">${fmtNumero(item.pesoTotal)} kg</td>
           <td class="align-right">${fmtNumero(item.totalPlantado, 0)}</td>
@@ -1666,11 +2100,27 @@ export const shareCycleProductionPdf = async (data: CycleProductionReportData) =
     summaryCards: [
       { label: 'Ciclos', value: String(data.itens.length) },
       { label: 'Caixas', value: fmtNumero(totalCaixas) },
-      { label: 'Peso caixas', value: `${fmtNumero(totalPesoCaixas)} kg` },
-      { label: 'Peso livre', value: `${fmtNumero(totalKiloLivre)} kg`, tone: 'info' },
+      {
+        label: 'Peso bruto caixas',
+        value: `${fmtNumero(totalPesoBrutoCaixas)} kg`,
+      },
+      {
+        label: 'Peso liquido caixas',
+        value: `${fmtNumero(totalPesoCaixas)} kg`,
+      },
+      {
+        label: 'Peso livre',
+        value: `${fmtNumero(totalKiloLivre)} kg`,
+        tone: 'info',
+      },
       { label: 'Peso total', value: `${fmtNumero(totalPeso)} kg` },
       { label: 'Total plantado', value: fmtNumero(totalPlantado, 0) },
       { label: 'Caixas por pe', value: fmtNumero(mediaCaixasPorPlantado) },
+      {
+        label: 'Pesos estimados',
+        value: String(totalRegistrosPesoEstimado),
+        tone: totalRegistrosPesoEstimado > 0 ? 'danger' : 'success',
+      },
       { label: 'Periodo', value: data.periodo },
     ],
     sections: [
@@ -1687,7 +2137,8 @@ export const shareCycleProductionPdf = async (data: CycleProductionReportData) =
                 <th>Ultima colheita</th>
                 <th class="align-right">Colheitas</th>
                 <th class="align-right">Caixas</th>
-                <th>Peso caixas</th>
+                <th>Bruto caixas</th>
+                <th>Liquido caixas</th>
                 <th>Peso livre</th>
                 <th>Peso total</th>
                 <th>Plantado</th>
@@ -1695,20 +2146,26 @@ export const shareCycleProductionPdf = async (data: CycleProductionReportData) =
               </tr>
             </thead>
             <tbody>
-              ${rows || '<tr><td colspan="12">Sem registros no periodo.</td></tr>'}
+              ${rows || '<tr><td colspan="13">Sem registros no periodo.</td></tr>'}
             </tbody>
           </table>
+          <p class="muted">
+            Pesos liquidos usam os valores registrados nas colheitas. Registros antigos sem peso liquido usam a estimativa de 22 kg por caixa e aparecem no indicador de pesos estimados.
+          </p>
         `
       ),
     ],
-    footer: 'Relatorio agrupado por ciclos de plantio com foco em caixas, peso total e eficiencia.',
+    footer:
+      'Relatorio agrupado por ciclos com pesos bruto e liquido registrados, peso livre e eficiencia.',
   });
 
   const fileName = `Relatorio_Caixas_Peso_${sanitizeFilenameSegment(data.empresa)}_${reportDateToken()}.pdf`;
   await sharePdfHtml(html, fileName);
 };
 
-export const shareFinancialOverviewPdf = async (data: FinancialOverviewReportData) => {
+export const shareFinancialOverviewPdf = async (
+  data: FinancialOverviewReportData
+) => {
   const categoriesRows = data.categorias
     .map(
       (item) => `
@@ -1737,6 +2194,26 @@ export const shareFinancialOverviewPdf = async (data: FinancialOverviewReportDat
           <td>${escapeHtml(item.metodoPagamento)}</td>
           <td><span class="status ${getStatusClass(item.status)}">${escapeHtml(item.status)}</span></td>
           <td class="align-right">${fmtMoeda(item.valor)}</td>
+          <td class="align-right">${item.valorRecebido != null ? fmtMoeda(item.valorRecebido) : '-'}</td>
+        </tr>
+      `
+    )
+    .join('');
+
+  const receiptsRows = (data.recebimentos || [])
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHtml(item.dataRecebimento || '-')}</td>
+          <td>${escapeHtml(item.data)}</td>
+          <td>${escapeHtml(item.codigo || '-')}</td>
+          <td>${escapeHtml(item.cliente)}</td>
+          <td>${escapeHtml(item.produto || '-')}</td>
+          <td>${escapeHtml(item.metodoPagamento)}</td>
+          <td>${escapeHtml(item.recebidoPor || '-')}</td>
+          <td class="align-right">${fmtMoeda(item.valor)}</td>
+          <td class="align-right">${fmtMoeda(item.valorRecebido ?? item.valor)}</td>
+          <td class="align-right">${fmtMoeda((item.valorRecebido ?? item.valor) - item.valor)}</td>
         </tr>
       `
     )
@@ -1748,16 +2225,75 @@ export const shareFinancialOverviewPdf = async (data: FinancialOverviewReportDat
     company: data.empresa,
     period: data.periodo,
     summaryCards: [
-      { label: 'Receita total', value: fmtMoeda(data.receitaTotal), tone: 'success' },
-      { label: 'Despesa total', value: fmtMoeda(data.despesaTotal), tone: 'danger' },
-      { label: 'Lucro liquido', value: fmtMoeda(data.lucroLiquido), tone: data.lucroLiquido >= 0 ? 'success' : 'danger' },
-      { label: 'Margem', value: `${fmtNumero(data.margem)}%`, tone: 'info' },
-      { label: 'Vendas no periodo', value: String(data.totalVendas) },
-      { label: 'Despesas no periodo', value: String(data.totalDespesas) },
-      { label: 'Top categorias', value: String(data.categorias.length) },
-      { label: 'Periodo', value: data.periodo },
+      {
+        label: 'Total vendido',
+        value: fmtMoeda(data.valorVendido ?? data.receitaTotal),
+        tone: 'info',
+      },
+      {
+        label: 'Total recebido',
+        value: fmtMoeda(data.valorRecebido ?? data.receitaTotal),
+        tone: 'success',
+      },
+      {
+        label: 'A receber',
+        value: fmtMoeda(data.valorReceber ?? 0),
+        tone: 'info',
+      },
+      {
+        label: 'Despesas pagas',
+        value: fmtMoeda(data.despesaTotal),
+        tone: 'danger',
+      },
+      {
+        label: 'Resultado de caixa',
+        value: fmtMoeda(data.lucroLiquido),
+        tone: data.lucroLiquido >= 0 ? 'success' : 'danger',
+      },
+      {
+        label: 'Resultado projetado',
+        value: fmtMoeda(data.resultadoProjetado ?? data.lucroLiquido),
+        tone:
+          (data.resultadoProjetado ?? data.lucroLiquido) >= 0
+            ? 'success'
+            : 'danger',
+      },
+      {
+        label: 'Diferença recebida',
+        value: fmtMoeda(data.ajusteRecebimentos ?? 0),
+        tone: (data.ajusteRecebimentos ?? 0) < 0 ? 'danger' : 'neutral',
+      },
+      {
+        label: 'Margem realizada',
+        value: `${fmtNumero(data.margem)}%`,
+        tone: 'info',
+      },
     ],
     sections: [
+      buildSection(
+        'Recebimentos baixados no periodo',
+        `
+          <table>
+            <thead>
+              <tr>
+                <th>Data da baixa</th>
+                <th>Data da venda</th>
+                <th>Codigo</th>
+                <th>Cliente</th>
+                <th>Produto</th>
+                <th>Metodo</th>
+                <th>Recebido por</th>
+                <th class="align-right">Combinado</th>
+                <th class="align-right">Recebido</th>
+                <th class="align-right">Diferenca</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${receiptsRows || '<tr><td colspan="10">Sem recebimentos baixados no periodo.</td></tr>'}
+            </tbody>
+          </table>
+        `
+      ),
       buildSection(
         'Distribuicao de custos',
         `
@@ -1792,33 +2328,73 @@ export const shareFinancialOverviewPdf = async (data: FinancialOverviewReportDat
                 <th class="align-right">Vlr unit.</th>
                 <th>Metodo</th>
                 <th>Status</th>
-                <th class="align-right">Valor</th>
+                <th class="align-right">Combinado</th>
+                <th class="align-right">Recebido</th>
               </tr>
             </thead>
             <tbody>
-              ${salesRows || '<tr><td colspan="12">Sem vendas relevantes no periodo.</td></tr>'}
+              ${salesRows || '<tr><td colspan="13">Sem vendas relevantes no periodo.</td></tr>'}
             </tbody>
           </table>
         `
       ),
     ],
-    footer: 'Relatorio executivo para acompanhamento mensal de desempenho financeiro.',
+    footer:
+      'Relatorio executivo para acompanhamento mensal de desempenho financeiro.',
   });
 
   const fileName = `Relatorio_Financeiro_${sanitizeFilenameSegment(data.empresa)}_${reportDateToken()}.pdf`;
   await sharePdfHtml(html, fileName);
 };
 
-export const shareOperationalCyclePdf = async (data: OperationalCycleReportData) => {
+export const shareOperationalCyclePdf = async (
+  data: OperationalCycleReportData
+) => {
   const metricCards = [
-    { label: 'Receita total', value: fmtMoeda(data.receitaTotal), tone: 'success' as const },
-    { label: 'Custo acumulado', value: fmtMoeda(data.custoAcumulado), tone: 'danger' as const },
-    { label: 'Lucro do ciclo', value: fmtMoeda(data.lucro), tone: data.lucro >= 0 ? ('success' as const) : ('danger' as const) },
-    { label: 'Duracao', value: `${data.cicloDias} dias`, tone: 'info' as const },
+    {
+      label: 'Vendido / combinado',
+      value: fmtMoeda(data.valorVendido ?? data.receitaTotal),
+      tone: 'info' as const,
+    },
+    {
+      label: 'Recebido de verdade',
+      value: fmtMoeda(data.receitaTotal),
+      tone: 'success' as const,
+    },
+    {
+      label: 'A receber',
+      value: fmtMoeda(data.valorReceber ?? 0),
+      tone: 'info' as const,
+    },
+    {
+      label: 'Custo acumulado',
+      value: fmtMoeda(data.custoAcumulado),
+      tone: 'danger' as const,
+    },
+    {
+      label: 'Resultado sobre o recebido',
+      value: fmtMoeda(data.lucro),
+      tone: data.lucro >= 0 ? ('success' as const) : ('danger' as const),
+    },
+    {
+      label: 'Resultado projetado',
+      value: fmtMoeda(data.lucroProjetado ?? data.lucro),
+      tone:
+        (data.lucroProjetado ?? data.lucro) >= 0
+          ? ('success' as const)
+          : ('danger' as const),
+    },
     { label: 'Volume vendido', value: fmtNumero(data.totalVolumeVendido) },
     { label: 'Custo por unidade', value: fmtMoeda(data.custoPorUnidade) },
-    { label: 'Produtividade', value: `${fmtNumero(data.produtividadeUnM2)} unid/m2` },
-    { label: 'Status', value: data.status },
+    {
+      label: 'Produtividade',
+      value: `${fmtNumero(data.produtividadeUnM2)} unid/m2`,
+    },
+    {
+      label: 'Duracao',
+      value: `${data.cicloDias} dias`,
+      tone: 'info' as const,
+    },
   ];
   const vendaRows = (data.vendas || [])
     .map(
@@ -1831,6 +2407,7 @@ export const shareOperationalCyclePdf = async (data: OperationalCycleReportData)
           <td>${escapeHtml(item.quantidade)}</td>
           <td class="align-right">${fmtMoeda(item.precoUnitario)}</td>
           <td class="align-right">${fmtMoeda(item.valorTotal)}</td>
+          <td class="align-right">${item.valorRecebido != null ? fmtMoeda(item.valorRecebido) : '-'}</td>
           <td>${escapeHtml(item.metodoPagamento)}</td>
           <td><span class="status ${getStatusClass(item.status)}">${escapeHtml(item.status)}</span></td>
         </tr>
@@ -1851,7 +2428,7 @@ export const shareOperationalCyclePdf = async (data: OperationalCycleReportData)
           <div class="chip-grid">
             <div class="chip"><div class="chip-label">Ciclo</div><div class="chip-value">${escapeHtml(data.ciclo)}</div></div>
             <div class="chip"><div class="chip-label">Lote</div><div class="chip-value">${escapeHtml(data.lote)}</div></div>
-            <div class="chip"><div class="chip-label">Estufa</div><div class="chip-value">${escapeHtml(data.estufa)}</div></div>
+            <div class="chip"><div class="chip-label">${escapeHtml(data.localTipo || 'Estufa')}</div><div class="chip-value">${escapeHtml(data.estufa)}</div></div>
             <div class="chip"><div class="chip-label">Status</div><div class="chip-value">${escapeHtml(data.status)}</div></div>
             <div class="chip"><div class="chip-label">Inicio</div><div class="chip-value">${escapeHtml(data.inicio)}</div></div>
             <div class="chip"><div class="chip-label">Fim considerado</div><div class="chip-value">${escapeHtml(data.fim)}</div></div>
@@ -1862,8 +2439,9 @@ export const shareOperationalCyclePdf = async (data: OperationalCycleReportData)
         'Leitura executiva',
         `
           <div class="panel">
-            O ciclo ${escapeHtml(data.ciclo)} no lote ${escapeHtml(data.lote)} gerou receita de
-            <strong> ${escapeHtml(fmtMoeda(data.receitaTotal))}</strong>, com custo acumulado de
+            O ciclo ${escapeHtml(data.ciclo)} no lote ${escapeHtml(data.lote)} tem
+            <strong> ${escapeHtml(fmtMoeda(data.valorVendido ?? data.receitaTotal))}</strong> em vendas combinadas e
+            <strong> ${escapeHtml(fmtMoeda(data.receitaTotal))}</strong> efetivamente recebidos, com custo acumulado de
             <strong> ${escapeHtml(fmtMoeda(data.custoAcumulado))}</strong> e resultado de
             <strong> ${escapeHtml(fmtMoeda(data.lucro))}</strong>.
             A produtividade observada foi de <strong>${escapeHtml(fmtNumero(data.produtividadeUnM2))} unid/m2</strong>
@@ -1883,13 +2461,14 @@ export const shareOperationalCyclePdf = async (data: OperationalCycleReportData)
                 <th>Produto</th>
                 <th>Quantidade</th>
                 <th class="align-right">Vlr unit.</th>
-                <th class="align-right">Valor</th>
+                <th class="align-right">Combinado</th>
+                <th class="align-right">Recebido</th>
                 <th>Metodo</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
-              ${vendaRows || '<tr><td colspan="9">Sem vendas registradas para este ciclo.</td></tr>'}
+              ${vendaRows || '<tr><td colspan="10">Sem vendas registradas para este ciclo.</td></tr>'}
             </tbody>
           </table>
         `
@@ -1902,79 +2481,61 @@ export const shareOperationalCyclePdf = async (data: OperationalCycleReportData)
   await sharePdfHtml(html, fileName);
 };
 
-export const exportSalesAccountingExcelCompat = async (data: SalesAccountingPdfData) => {
-  const fileName = `Relatorio_Contabil_Vendas_${sanitizeFilenameSegment(data.empresa)}_${reportDateToken()}.xlsx`;
-  const workbook = createWorkbook();
+export const exportSalesAccountingExcelCompat = async (
+  data: SalesAccountingPdfData
+) => {
+  if (!data.itens.length) {
+    throw new Error('Não há vendas no período selecionado para gerar o Excel.');
+  }
 
-  const {
-    totalGeral,
-    totalPago,
-    totalPendente,
-    totalCancelado,
-    quantidadePendentes,
-    ticketMedio,
-    recebimentoPercentual,
-    maiorLancamento,
-    recorteLabel,
-  } = buildSalesAccountingInsights(data);
-
-  const resumoRows = [
-    ['RELATORIO CONTABIL DE VENDAS'],
-    [data.empresa],
-    [],
-    ['Periodo', data.periodo, 'Recorte', recorteLabel],
-    ['Gerado em', reportNowLabel(), 'Total de registros', data.itens.length],
-    [],
-    ['INDICADOR', 'VALOR', '', 'INDICADOR', 'VALOR'],
-    ['Total geral', totalGeral, '', 'Total pago', totalPago],
-    ['Total pendente', totalPendente, '', 'Total cancelado', totalCancelado],
-    ['Ticket medio', ticketMedio, '', 'Cobertura de recebimento', recebimentoPercentual],
-    ['Titulos pendentes', quantidadePendentes, '', 'Maior lancamento', maiorLancamento],
-  ];
-  const resumoSheet = XLSX.utils.aoa_to_sheet(resumoRows);
-  appendSheet(workbook, 'Resumo Executivo', resumoSheet);
-
-  const detailRows = [
-    ['Codigo', 'Data', 'Cliente', 'Documento', 'Estufa', 'Lote', 'Produto', 'Quantidade', 'Preco Unitario', 'Valor Total', 'Metodo', 'Status', 'Recebido Por'],
-    ...data.itens.map((item) => [
-      item.codigo,
-      item.data,
-      item.cliente,
-      item.documentoCliente || '',
-      item.estufa,
-      item.lote || '',
-      item.produto,
-      item.quantidade,
-      Number(item.precoUnitario || 0),
-      Number(item.valorTotal || 0),
-      item.metodoPagamento,
-      item.status,
-      item.recebidoPor || '',
-    ]),
-  ];
-  const detailSheet = XLSX.utils.json_to_sheet(detailRows);
-  appendSheet(workbook, 'Lancamentos', detailSheet);
+  const fileName = `Vendas_Organizadas_${sanitizeFilenameSegment(data.empresa)}_${reportDateToken()}.xlsx`;
+  const workbook = buildSalesAccountingWorkbook(data);
 
   await shareWorkbook(workbook, fileName);
 };
 
-export const exportSalesAccountingExcel = async (data: SalesAccountingPdfData) => {
+export const exportSalesAccountingExcel = async (
+  data: SalesAccountingPdfData
+) => {
   await exportSalesAccountingExcelCompat(data);
 };
 
-export const exportSalesAccountingExcelStyled = async (data: SalesAccountingPdfData) => {
+export const exportSalesAccountingExcelStyled = async (
+  data: SalesAccountingPdfData
+) => {
   await exportSalesAccountingExcelCompat(data);
 };
 
-export const exportCycleProductionExcel = async (data: CycleProductionReportData) => {
+export const exportCycleProductionExcel = async (
+  data: CycleProductionReportData
+) => {
   const fileName = `Relatorio_Caixas_Peso_${sanitizeFilenameSegment(data.empresa)}_${reportDateToken()}.xlsx`;
   const workbook = createWorkbook();
 
-  const totalCaixas = data.itens.reduce((acc, item) => acc + Number(item.totalCaixas || 0), 0);
-  const totalPesoCaixas = data.itens.reduce((acc, item) => acc + Number(item.pesoCaixas || 0), 0);
-  const totalKiloLivre = data.itens.reduce((acc, item) => acc + Number(item.kiloLivre || 0), 0);
-  const totalPeso = data.itens.reduce((acc, item) => acc + Number(item.pesoTotal || 0), 0);
-  const totalPlantado = data.itens.reduce((acc, item) => acc + Number(item.totalPlantado || 0), 0);
+  const totalCaixas = data.itens.reduce(
+    (acc, item) => acc + Number(item.totalCaixas || 0),
+    0
+  );
+  const totalPesoCaixas = data.itens.reduce(
+    (acc, item) => acc + Number(item.pesoLiquidoCaixas ?? item.pesoCaixas ?? 0),
+    0
+  );
+  const totalPesoBrutoCaixas = data.itens.reduce(
+    (acc, item) => acc + Number(item.pesoBrutoCaixas || 0),
+    0
+  );
+  const totalKiloLivre = data.itens.reduce(
+    (acc, item) => acc + Number(item.kiloLivre || 0),
+    0
+  );
+  const totalPeso = data.itens.reduce(
+    (acc, item) => acc + Number(item.pesoTotal || 0),
+    0
+  );
+  const totalPlantado = data.itens.reduce(
+    (acc, item) => acc + Number(item.totalPlantado || 0),
+    0
+  );
 
   appendSheet(
     workbook,
@@ -1984,10 +2545,18 @@ export const exportCycleProductionExcel = async (data: CycleProductionReportData
       ['Periodo', data.periodo],
       ['Ciclos com movimento', data.itens.length],
       ['Total de caixas', totalCaixas],
-      ['Peso das caixas (kg)', totalPesoCaixas],
+      ['Peso bruto das caixas (kg)', totalPesoBrutoCaixas],
+      ['Peso liquido das caixas (kg)', totalPesoCaixas],
       ['Peso livre (kg)', totalKiloLivre],
       ['Peso total (kg)', totalPeso],
       ['Total plantado', totalPlantado],
+      [
+        'Registros com peso estimado',
+        data.itens.reduce(
+          (acc, item) => acc + Number(item.registrosPesoEstimado || 0),
+          0
+        ),
+      ],
       ['Gerado em', reportNowLabel()],
     ])
   );
@@ -2000,11 +2569,16 @@ export const exportCycleProductionExcel = async (data: CycleProductionReportData
     'Ultima Colheita': item.ultimaColheita,
     Colheitas: Number(item.totalColheitas || 0),
     Caixas: Number(item.totalCaixas || 0),
-    'Peso Caixas (kg)': Number(item.pesoCaixas || 0),
+    'Peso Bruto Caixas (kg)': Number(item.pesoBrutoCaixas || 0),
+    'Peso Liquido Caixas (kg)': Number(
+      item.pesoLiquidoCaixas ?? item.pesoCaixas ?? 0
+    ),
     'Peso Livre (kg)': Number(item.kiloLivre || 0),
     'Peso Total (kg)': Number(item.pesoTotal || 0),
     'Total Plantado': Number(item.totalPlantado || 0),
     'Caixas por Pe': Number(item.caixasPorPlantado || 0),
+    'Registros com Peso Estimado': Number(item.registrosPesoEstimado || 0),
+    'Criterio de Peso': item.criterioPeso || '',
   }));
   const detailSheet = XLSX.utils.json_to_sheet(detailRows);
   appendSheet(workbook, 'Ciclos', detailSheet);
@@ -2012,7 +2586,9 @@ export const exportCycleProductionExcel = async (data: CycleProductionReportData
   await shareWorkbook(workbook, fileName);
 };
 
-export const exportFinancialOverviewExcel = async (data: FinancialOverviewReportData) => {
+export const exportFinancialOverviewExcel = async (
+  data: FinancialOverviewReportData
+) => {
   const fileName = `Relatorio_Financeiro_${sanitizeFilenameSegment(data.empresa)}_${reportDateToken()}.xlsx`;
   const workbook = createWorkbook();
 
@@ -2022,11 +2598,17 @@ export const exportFinancialOverviewExcel = async (data: FinancialOverviewReport
     buildSummarySheet([
       ['Empresa', data.empresa],
       ['Periodo', data.periodo],
-      ['Receita Total', data.receitaTotal],
-      ['Despesa Total', data.despesaTotal],
-      ['Lucro Liquido', data.lucroLiquido],
-      ['Margem (%)', data.margem],
+      ['Total Vendido / Combinado', data.valorVendido ?? data.receitaTotal],
+      ['Total Recebido', data.valorRecebido ?? data.receitaTotal],
+      ['Total a Receber', data.valorReceber ?? 0],
+      ['Despesas Pagas', data.despesaTotal],
+      ['Despesas Comprometidas', data.despesaComprometida ?? data.despesaTotal],
+      ['Resultado de Caixa', data.lucroLiquido],
+      ['Resultado Projetado', data.resultadoProjetado ?? data.lucroLiquido],
+      ['Diferenca nos Recebimentos', data.ajusteRecebimentos ?? 0],
+      ['Margem Realizada (%)', data.margem],
       ['Total de Vendas', data.totalVendas],
+      ['Total de Recebimentos', data.totalRecebimentos ?? 0],
       ['Total de Despesas', data.totalDespesas],
       ['Gerado em', reportNowLabel()],
     ])
@@ -2051,15 +2633,36 @@ export const exportFinancialOverviewExcel = async (data: FinancialOverviewReport
       'Preco Unitario': Number(item.precoUnitario || 0),
       Metodo: item.metodoPagamento,
       Status: item.status,
-      Valor: Number(item.valor || 0),
+      'Valor Combinado': Number(item.valor || 0),
+      'Valor Recebido':
+        item.valorRecebido != null ? Number(item.valorRecebido) : '',
     }))
   );
   appendSheet(workbook, 'Top Vendas', topVendasSheet);
 
+  const recebimentosSheet = XLSX.utils.json_to_sheet(
+    (data.recebimentos || []).map((item) => ({
+      'Data da Baixa': item.dataRecebimento || '',
+      'Data da Venda': item.data,
+      Codigo: item.codigo || '',
+      Cliente: item.cliente,
+      Produto: item.produto || '',
+      Metodo: item.metodoPagamento,
+      'Recebido Por': item.recebidoPor || '',
+      'Valor Combinado': Number(item.valor || 0),
+      'Valor Recebido': Number(item.valorRecebido ?? item.valor ?? 0),
+      Diferenca:
+        Number(item.valorRecebido ?? item.valor ?? 0) - Number(item.valor || 0),
+    }))
+  );
+  appendSheet(workbook, 'Recebimentos', recebimentosSheet);
+
   await shareWorkbook(workbook, fileName);
 };
 
-export const exportOperationalCycleExcel = async (data: OperationalCycleReportData) => {
+export const exportOperationalCycleExcel = async (
+  data: OperationalCycleReportData
+) => {
   const fileName = `Relatorio_Operacional_${sanitizeFilenameSegment(data.ciclo)}_${reportDateToken()}.xlsx`;
   const workbook = createWorkbook();
 
@@ -2071,11 +2674,14 @@ export const exportOperationalCycleExcel = async (data: OperationalCycleReportDa
       ['Periodo', data.periodo],
       ['Ciclo', data.ciclo],
       ['Lote', data.lote],
-      ['Estufa', data.estufa],
+      [data.localTipo || 'Estufa', data.estufa],
       ['Status', data.status],
-      ['Receita Total', data.receitaTotal],
+      ['Vendido / Combinado', data.valorVendido ?? data.receitaTotal],
+      ['Recebido de Verdade', data.receitaTotal],
+      ['A Receber', data.valorReceber ?? 0],
       ['Custo Acumulado', data.custoAcumulado],
-      ['Lucro', data.lucro],
+      ['Resultado sobre o Recebido', data.lucro],
+      ['Resultado Projetado', data.lucroProjetado ?? data.lucro],
       ['Volume Vendido', data.totalVolumeVendido],
       ['Custo por Unidade', data.custoPorUnidade],
       ['Produtividade unid/m2', data.produtividadeUnM2],
@@ -2092,7 +2698,9 @@ export const exportOperationalCycleExcel = async (data: OperationalCycleReportDa
       Produto: item.produto,
       Quantidade: Number(item.quantidadeValor || 0),
       'Preco Unitario': Number(item.precoUnitario || 0),
-      Valor: Number(item.valorTotal || 0),
+      'Valor Combinado': Number(item.valorTotal || 0),
+      'Valor Recebido':
+        item.valorRecebido != null ? Number(item.valorRecebido) : '',
       Metodo: item.metodoPagamento,
       Status: item.status,
     }))

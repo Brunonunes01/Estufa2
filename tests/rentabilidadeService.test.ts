@@ -7,18 +7,15 @@ test('computeRentabilidade - lucro positivo com todos os campos', () => {
     plantio: {
       custo_estimado_inicial: 50,
       custo_total: 150, // 50 muda + 100 insumos
-      ocupacao_estimada: 100
+      ocupacao_estimada: 100,
     },
-    vendas: [
-      { valor_total: 500, status_pagamento: 'pago' }
-    ],
-    despesas: [
-      { valor: 50, tipo_gasto: 'energia' }
-    ],
-    estufaAreaM2: 100
+    vendas: [{ valor_total: 500, status_pagamento: 'pago' }],
+    despesas: [{ valor: 50, tipo_gasto: 'energia' }],
+    estufaAreaM2: 100,
   });
 
   assert.equal(result.receitaTotal, 500);
+  assert.equal(result.receitaRecebida, 500);
   assert.equal(result.custoMuda, 50);
   assert.equal(result.custoInsumos, 100);
   assert.equal(result.custoDespesas, 50);
@@ -33,13 +30,33 @@ test('computeRentabilidade - ignora vendas canceladas', () => {
     plantio: { custo_total: 0, ocupacao_estimada: 100 },
     vendas: [
       { valor_total: 500, status_pagamento: 'cancelado' },
-      { valor_total: 200, status_pagamento: 'pago' }
+      { valor_total: 200, status_pagamento: 'pago' },
     ],
     despesas: [],
-    estufaAreaM2: 100
+    estufaAreaM2: 100,
   });
 
   assert.equal(result.receitaTotal, 200);
+  assert.equal(result.receitaRecebida, 200);
+});
+
+test('computeRentabilidade - separa valor combinado do valor realmente recebido', () => {
+  const result = computeRentabilidade({
+    plantio: { custo_total: 0, ocupacao_estimada: 100 },
+    vendas: [
+      {
+        valor_total: 500,
+        valor_recebido: 460,
+        status_pagamento: 'pago',
+      },
+      { valor_total: 200, status_pagamento: 'pendente' },
+    ],
+    despesas: [],
+    estufaAreaM2: 100,
+  });
+
+  assert.equal(result.receitaTotal, 700);
+  assert.equal(result.receitaRecebida, 460);
 });
 
 test('computeRentabilidade - lucro negativo (prejuízo)', () => {
@@ -47,7 +64,7 @@ test('computeRentabilidade - lucro negativo (prejuízo)', () => {
     plantio: { custo_total: 1000, ocupacao_estimada: 100 },
     vendas: [{ valor_total: 500, status_pagamento: 'pago' }],
     despesas: [],
-    estufaAreaM2: 100
+    estufaAreaM2: 100,
   });
 
   assert.equal(result.lucroBruto, -500);
@@ -58,7 +75,7 @@ test('computeRentabilidade - rendimento por m2 proporcional', () => {
     plantio: { custo_total: 0, ocupacao_estimada: 50 }, // Usa apenas metade da estufa
     vendas: [{ valor_total: 1000, status_pagamento: 'pago' }],
     despesas: [],
-    estufaAreaM2: 100
+    estufaAreaM2: 100,
   });
 
   assert.equal(result.areaM2, 50);

@@ -1,68 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { deserializeOfflinePayload, serializeOfflinePayload } from './offlinePayloadCodec.ts';
-import type { JsonValue } from './offlinePayloadCodec.ts';
-import { isOfflineLikeError } from './offlineUtils.ts';
+import { getSupabaseClient, isSupabaseConfigured } from '../supabaseClient.ts';
+import { loadPersistedTenantSelection } from '../tenantSelectionStorage.ts';
+import {
+  createOfflineQueueStorage,
+  type OfflineQueueScope,
+} from './offlineQueueStorage.ts';
 
 const OFFLINE_QUEUE_KEY = '@sge/offline_queue_v1';
 
-export type OfflineActionName =
-  | 'createEstufa'
-  | 'updateEstufa'
-  | 'deleteEstufa'
-  | 'createPlantio'
-  | 'updatePlantio'
-  | 'updatePlantioStatus'
-  | 'createInsumo'
-  | 'updateInsumo'
-  | 'deleteInsumo'
-  | 'addEstoqueToInsumo'
-  | 'createDespesa'
-  | 'updateDespesaStatus'
-  | 'deleteDespesa'
-  | 'createCliente'
-  | 'updateCliente'
-  | 'deleteCliente'
-  | 'createFornecedor'
-  | 'updateFornecedor'
-  | 'deleteFornecedor'
-  | 'createManejo'
-  | 'createAplicacao'
-  | 'createColheita'
-  | 'updateColheita'
-  | 'deleteColheita'
-  | 'registrarColheitaHidroponica'
-  | 'registrarVendaHidroponicaPorLote'
-  | 'createVenda'
-  | 'updateVenda'
-  | 'deleteVenda'
-  | 'receberVenda';
-
 export type OfflineSyncMode = 'allow_queue' | 'online_only';
 export type OfflineWriteOptions = { syncMode?: OfflineSyncMode };
-
-type OfflineQueueItem = {
-  id: string;
-  action: OfflineActionName;
-  payload: JsonValue;
-  queuedAt: number;
-  attempts: number;
-};
-
-const readQueue = async (): Promise<OfflineQueueItem[]> => {
-  try {
-    const raw = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as OfflineQueueItem[]) : [];
-  } catch {
-    return [];
-  }
-};
-
-const writeQueue = async (queue: OfflineQueueItem[]) => {
-  await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
-};
+export type { OfflineActionName, OfflineQueueItem, OfflineQueueScope } from './offlineQueueStorage.ts';
 
 export const isOnlineNow = async () => {
   try {
@@ -73,68 +22,39 @@ export const isOnlineNow = async () => {
   }
 };
 
-export const enqueueOfflineAction = async (
-  action: OfflineActionName,
-  payload: unknown
-) => {
-  const queue = await readQueue();
-  const nextItem: OfflineQueueItem = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-    action,
-    payload: serializeOfflinePayload(payload),
-    queuedAt: Date.now(),
-    attempts: 0,
-  };
-  queue.push(nextItem);
-  await writeQueue(queue);
-  return nextItem.id;
-};
+export const resolveActiveOfflineQueueScope = async (): Promise<OfflineQueueScope | null> => {
+  if (!isSupabaseConfigured()) return null;
 
-export const getOfflineQueueSize = async () => {
-  const queue = await readQueue();
-  return queue.length;
-};
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase.auth.getSession();
+    if (error) return null;
 
-type FlushResult = {
-  flushed: number;
-  pending: number;
-  failed: number;
-};
+    const authUserId = String(data.session?.user?.id || '').trim();
+    if (!authUserId) return null;
 
-export const flushOfflineQueue = async (): Promise<FlushResult> => {
-  const online = await isOnlineNow();
-  if (!online) {
-    const queue = await readQueue();
-    return { flushed: 0, pending: queue.length, failed: 0 };
+    const persistedTenantId = (await loadPersistedTenantSelection(authUserId)).trim();
+    return {
+      authUserId,
+      tenantId: persistedTenantId || authUserId,
+    };
+  } catch {
+    return null;
   }
-
-  const queue = await readQueue();
-  if (queue.length === 0) return { flushed: 0, pending: 0, failed: 0 };
-
-  // Import dinamico para evitar ciclos no load inicial.
-  const { executeOfflineAction } = await import('./offlineStorageHandlers.ts');
-
-  const remaining: OfflineQueueItem[] = [];
-  let flushed = 0;
-  let failed = 0;
-
-  for (const item of queue) {
-    try {
-      await executeOfflineAction(item.action, deserializeOfflinePayload(item.payload));
-      flushed += 1;
-    } catch (error) {
-      failed += 1;
-      if (isOfflineLikeError(error)) {
-        // Se caiu rede no meio, mantem este e os proximos.
-        remaining.push({ ...item, attempts: item.attempts + 1 });
-        const startIndex = queue.findIndex((q) => q.id === item.id) + 1;
-        remaining.push(...queue.slice(startIndex));
-        break;
-      }
-      remaining.push({ ...item, attempts: item.attempts + 1 });
-    }
-  }
-
-  await writeQueue(remaining);
-  return { flushed, pending: remaining.length, failed };
 };
+
+const defaultOfflineQueueStorage = createOfflineQueueStorage({
+  storage: AsyncStorage,
+  queueKey: OFFLINE_QUEUE_KEY,
+  isOnlineNow,
+  resolveActiveScope: resolveActiveOfflineQueueScope,
+  executeOfflineAction: async (action, payload) => {
+    // Import dinamico para evitar ciclos no load inicial.
+    const { executeOfflineAction } = await import('./offlineStorageHandlers.ts');
+    await executeOfflineAction(action, payload);
+  },
+});
+
+export const enqueueOfflineAction = defaultOfflineQueueStorage.enqueueOfflineAction;
+export const getOfflineQueueSize = defaultOfflineQueueStorage.getOfflineQueueSize;
+export const flushOfflineQueue = defaultOfflineQueueStorage.flushOfflineQueue;

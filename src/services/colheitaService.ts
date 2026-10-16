@@ -13,8 +13,17 @@ import {
 import { assertTenantId } from './tenantGuard';
 import { createTraceabilityEventSafely } from './traceabilityService';
 import { OfflineWriteOptions } from './offline/offlineStorage';
-import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWrite';
+import {
+  buildOfflinePlaceholderId,
+  runOfflineWrite,
+} from './offline/offlineWrite';
 import { getSupabaseClient } from './supabaseClient';
+import {
+  AuditActor,
+  resolveAuditActorName,
+  resolveAuditActorUid,
+} from './auditActor';
+import { assertProductionOriginNotMixed } from './productionOriginGuard';
 
 export type ColheitaFormData = {
   quantidade: number;
@@ -27,6 +36,7 @@ export type ColheitaFormData = {
   registradoPor: string | null;
   observacoes: string | null;
   dataVenda?: Date;
+  dataCompensacaoCheque?: Date | null;
   pesoBruto?: number;
   pesoLiquido?: number;
   isFinalHarvest?: boolean;
@@ -38,6 +48,12 @@ type ColheitaSaveOptions = {
     byUid: string;
     byName?: string | null;
     reason?: string | null;
+  } | null;
+  authorizationAudit?: {
+    byUid: string;
+    byName?: string | null;
+    reason: string;
+    kind: 'venda_sem_quantidade_plantada';
   } | null;
 };
 
@@ -57,39 +73,49 @@ const toIsoFromTsOrDate = (value?: any) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 };
 
-const mapSupabaseColheitaToDomain = (row: any): Colheita => ({
-  id: row.id,
-  tenantId: row.tenant_id,
-  userId: row.created_by || row.tenant_id,
-  createdBy: row.created_by || row.tenant_id,
-  plantioId: row.plantio_id,
-  estufaId: row.estufa_id || undefined,
-  safraId: row.safra_id || undefined,
-  dataColheita: Timestamp.fromDate(new Date(row.data_colheita)),
-  quantidade: Number(row.quantidade || 0),
-  unidadeMedida: row.unidade_medida || undefined,
-  unidade: row.unidade || undefined,
-  qualidade: row.qualidade || undefined,
-  loteColheita: row.lote_colheita || undefined,
-  destino: row.destino,
-  observacoes: row.observacoes || undefined,
-  pesoBruto: row.peso_bruto != null ? Number(row.peso_bruto) : undefined,
-  pesoLiquido: row.peso_liquido != null ? Number(row.peso_liquido) : undefined,
-  precoUnitario: row.preco_unitario != null ? Number(row.preco_unitario) : undefined,
-  clienteId: row.cliente_id || null,
-  metodoPagamento: row.metodo_pagamento || null,
-  statusPagamento: row.status_pagamento || undefined,
-  dataPagamento: row.data_pagamento ? Timestamp.fromDate(new Date(row.data_pagamento)) : null,
-  cicloDesbloqueadoPorAdmin: !!row.ciclo_desbloqueado_por_admin,
-  desbloqueioAdminByUid: row.desbloqueio_admin_by_uid || null,
-  desbloqueioAdminByName: row.desbloqueio_admin_by_name || null,
-  desbloqueioAdminAt: row.desbloqueio_admin_at ? Timestamp.fromDate(new Date(row.desbloqueio_admin_at)) : null,
-  desbloqueioAdminReason: row.desbloqueio_admin_reason || null,
-  createdAt: new Date(row.created_at).getTime(),
-  updatedAt: new Date(row.updated_at).getTime(),
-} as Colheita);
+const mapSupabaseColheitaToDomain = (row: any): Colheita =>
+  ({
+    id: row.id,
+    tenantId: row.tenant_id,
+    userId: row.created_by || row.tenant_id,
+    createdBy: row.created_by || row.tenant_id,
+    plantioId: row.plantio_id,
+    estufaId: row.estufa_id || undefined,
+    safraId: row.safra_id || undefined,
+    dataColheita: Timestamp.fromDate(new Date(row.data_colheita)),
+    quantidade: Number(row.quantidade || 0),
+    unidadeMedida: row.unidade_medida || undefined,
+    unidade: row.unidade || undefined,
+    qualidade: row.qualidade || undefined,
+    loteColheita: row.lote_colheita || undefined,
+    destino: row.destino,
+    observacoes: row.observacoes || undefined,
+    pesoBruto: row.peso_bruto != null ? Number(row.peso_bruto) : undefined,
+    pesoLiquido:
+      row.peso_liquido != null ? Number(row.peso_liquido) : undefined,
+    precoUnitario:
+      row.preco_unitario != null ? Number(row.preco_unitario) : undefined,
+    clienteId: row.cliente_id || null,
+    metodoPagamento: row.metodo_pagamento || null,
+    statusPagamento: row.status_pagamento || undefined,
+    dataPagamento: row.data_pagamento
+      ? Timestamp.fromDate(new Date(row.data_pagamento))
+      : null,
+    cicloDesbloqueadoPorAdmin: !!row.ciclo_desbloqueado_por_admin,
+    desbloqueioAdminByUid: row.desbloqueio_admin_by_uid || null,
+    desbloqueioAdminByName: row.desbloqueio_admin_by_name || null,
+    desbloqueioAdminAt: row.desbloqueio_admin_at
+      ? Timestamp.fromDate(new Date(row.desbloqueio_admin_at))
+      : null,
+    desbloqueioAdminReason: row.desbloqueio_admin_reason || null,
+    createdAt: new Date(row.created_at).getTime(),
+    updatedAt: new Date(row.updated_at).getTime(),
+  }) as Colheita;
 
-const findVendaByColheitaId = async (tenantId: string, colheitaId: string): Promise<Venda | null> => {
+const findVendaByColheitaId = async (
+  tenantId: string,
+  colheitaId: string
+): Promise<Venda | null> => {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('vendas')
@@ -111,12 +137,19 @@ const findVendaByColheitaId = async (tenantId: string, colheitaId: string): Prom
     plantioId: data.plantio_id || undefined,
     originType: data.origin_type || undefined,
     originId: data.origin_id || null,
-    hydroLoteId: data.hydro_lote_id || null,
     estufaId: data.estufa_id || undefined,
     colheitaId: data.colheita_id || undefined,
     clienteId: data.cliente_id || null,
     dataVenda: Timestamp.fromDate(new Date(data.data_venda)),
-    dataVencimento: data.data_vencimento ? Timestamp.fromDate(new Date(data.data_vencimento)) : null,
+    dataVencimento: data.data_vencimento
+      ? Timestamp.fromDate(new Date(data.data_vencimento))
+      : null,
+    dataRecebimento: data.data_recebimento
+      ? Timestamp.fromDate(new Date(data.data_recebimento))
+      : null,
+    dataCompensacaoCheque: data.data_compensacao_cheque
+      ? Timestamp.fromDate(new Date(data.data_compensacao_cheque))
+      : null,
     itens: Array.isArray(data.venda_itens)
       ? data.venda_itens.map((vi: any) => ({
           colheitaId: vi.colheita_id || undefined,
@@ -132,7 +165,10 @@ const findVendaByColheitaId = async (tenantId: string, colheitaId: string): Prom
     metodoPagamento: data.metodo_pagamento || null,
     pagamentoPara: data.pagamento_para || null,
     observacoes: data.observacoes || undefined,
-    quantidade: data.quantidade != null ? Number(data.quantidade) : Number(item?.quantidade || 0),
+    quantidade:
+      data.quantidade != null
+        ? Number(data.quantidade)
+        : Number(item?.quantidade || 0),
     unidade: item?.unidade || undefined,
     createdAt: new Date(data.created_at).getTime(),
     updatedAt: new Date(data.updated_at).getTime(),
@@ -142,7 +178,8 @@ const findVendaByColheitaId = async (tenantId: string, colheitaId: string): Prom
 const getPlantioDate = (plantio: Plantio): Date | null => {
   const value = plantio.dataPlantio || plantio.dataInicio;
   if (!value) return null;
-  if (typeof (value as any).toDate === 'function') return (value as any).toDate();
+  if (typeof (value as any).toDate === 'function')
+    return (value as any).toDate();
   return null;
 };
 
@@ -164,7 +201,10 @@ const validateSaleDateByCycle = (plantio: Plantio, dataOperacao: Timestamp) => {
   }
 };
 
-const isSaleBeforeMinimumCycleDate = (plantio: Plantio, dataOperacao: Timestamp) => {
+const isSaleBeforeMinimumCycleDate = (
+  plantio: Plantio,
+  dataOperacao: Timestamp
+) => {
   const cicloDias = Number(plantio.cicloDias || 0);
   if (!cicloDias || cicloDias <= 0) return false;
 
@@ -206,28 +246,48 @@ export const createColheita = async (
   plantioId: string,
   estufaId: string,
   options: ColheitaSaveOptions = {},
-  writeOptions?: OfflineWriteOptions
+  writeOptions?: OfflineWriteOptions,
+  actor?: AuditActor | null
 ) => {
   const tenantId = assertTenantId(userId);
   return runOfflineWrite({
     action: 'createColheita',
-    payload: { data, userId: tenantId, plantioId, estufaId, serviceOptions: options },
+    payload: {
+      data,
+      userId: tenantId,
+      plantioId,
+      estufaId,
+      serviceOptions: options,
+      actor,
+    },
     options: writeOptions,
     onQueuedValue: () => buildOfflinePlaceholderId(),
     write: async () => {
       const now = Timestamp.now();
-      const dataOperacao = data.dataVenda ? Timestamp.fromDate(data.dataVenda) : now;
+      const dataOperacao = data.dataVenda
+        ? Timestamp.fromDate(data.dataVenda)
+        : now;
 
       const plantio = await getPlantioById(plantioId, tenantId);
       if (!plantio) throw new Error('Plantio não encontrado.');
-      const isEarlyCycleSale = data.destino === 'venda_direta' && isSaleBeforeMinimumCycleDate(plantio, dataOperacao);
-      const hasCycleUnlock = options.allowBeforeCycleDays || !!plantio.cicloDesbloqueadoPorAdmin;
+      assertProductionOriginNotMixed(
+        { estufaId, talhaoId: plantio.talhaoId },
+        'Venda/colheita'
+      );
+      const isEarlyCycleSale =
+        data.destino === 'venda_direta' &&
+        isSaleBeforeMinimumCycleDate(plantio, dataOperacao);
+      const hasCycleUnlock =
+        options.allowBeforeCycleDays || !!plantio.cicloDesbloqueadoPorAdmin;
       if (isEarlyCycleSale && !hasCycleUnlock) {
         validateSaleDateByCycle(plantio, dataOperacao);
       }
 
       const supabase = getSupabaseClient();
-      const overrideAudit = isEarlyCycleSale ? buildOverrideAudit(options, now) || buildPlantioUnlockAudit(plantio) : null;
+      const overrideAudit = isEarlyCycleSale
+        ? buildOverrideAudit(options, now) || buildPlantioUnlockAudit(plantio)
+        : null;
+      const authorizationAudit = options.authorizationAudit || null;
 
       const { data: inserted, error } = await supabase
         .from('colheitas')
@@ -248,21 +308,32 @@ export const createColheita = async (
           preco_unitario: Number(data.precoUnitario || 0),
           cliente_id: data.clienteId || null,
           metodo_pagamento: data.metodoPagamento || null,
-          status_pagamento: (data.metodoPagamento === 'prazo' || data.metodoPagamento === 'cheque') ? 'pendente' : 'pago',
+          status_pagamento:
+            data.metodoPagamento === 'prazo' ||
+            data.metodoPagamento === 'cheque'
+              ? 'pendente'
+              : 'pago',
           ...(overrideAudit
             ? {
                 ciclo_desbloqueado_por_admin: true,
-                desbloqueio_admin_by_uid: overrideAudit.desbloqueioAdminByUid || null,
-                desbloqueio_admin_by_name: overrideAudit.desbloqueioAdminByName || null,
-                desbloqueio_admin_at: toIsoFromTsOrDate(overrideAudit.desbloqueioAdminAt),
-                desbloqueio_admin_reason: overrideAudit.desbloqueioAdminReason || null,
+                desbloqueio_admin_by_uid:
+                  overrideAudit.desbloqueioAdminByUid || null,
+                desbloqueio_admin_by_name:
+                  overrideAudit.desbloqueioAdminByName || null,
+                desbloqueio_admin_at: toIsoFromTsOrDate(
+                  overrideAudit.desbloqueioAdminAt
+                ),
+                desbloqueio_admin_reason:
+                  overrideAudit.desbloqueioAdminReason || null,
               }
             : {}),
         })
         .select('id')
         .single();
       if (error || !inserted?.id) {
-        throw new Error(`Erro ao criar colheita. ${error?.message || ''}`.trim());
+        throw new Error(
+          `Erro ao criar colheita. ${error?.message || ''}`.trim()
+        );
       }
 
       const nextStatus = data.isFinalHarvest ? 'finalizado' : 'em_colheita';
@@ -272,10 +343,15 @@ export const createColheita = async (
         .eq('id', plantioId)
         .eq('tenant_id', tenantId);
       if (plantioUpdateError) {
-        throw new Error(`Erro ao atualizar status do plantio. ${plantioUpdateError.message}`);
+        throw new Error(
+          `Erro ao atualizar status do plantio. ${plantioUpdateError.message}`
+        );
       }
 
-      const vSP = data.metodoPagamento === 'prazo' ? 'pendente' : 'pago';
+      const vSP =
+        data.metodoPagamento === 'prazo' || data.metodoPagamento === 'cheque'
+          ? 'pendente'
+          : 'pago';
       let vId: string | null = null;
       if (data.destino === 'venda_direta') {
         const vendaData: VendaFormData = {
@@ -291,6 +367,7 @@ export const createColheita = async (
           metodoPagamento: data.metodoPagamento || 'pix',
           pagamentoPara: data.pagamentoPara || null,
           dataVenda: data.dataVenda,
+          dataCompensacaoCheque: data.dataCompensacaoCheque,
           observacoes: data.observacoes || '',
           cycleOverrideAudit: overrideAudit
             ? {
@@ -301,7 +378,7 @@ export const createColheita = async (
               }
             : null,
         };
-        vId = await createVenda(vendaData, tenantId);
+        vId = await createVenda(vendaData, tenantId, undefined, actor);
       }
 
       await createTraceabilityEventSafely(tenantId, {
@@ -314,8 +391,11 @@ export const createColheita = async (
           ? 'Venda/colheita registrada com desbloqueio administrativo de ciclo.'
           : 'Colheita registrada.',
         motivo: overrideAudit?.desbloqueioAdminReason || null,
-        actorUid: overrideAudit?.desbloqueioAdminByUid || tenantId,
-        actorName: overrideAudit?.desbloqueioAdminByName || null,
+        actorUid:
+          overrideAudit?.desbloqueioAdminByUid ||
+          resolveAuditActorUid(tenantId, actor),
+        actorName:
+          overrideAudit?.desbloqueioAdminByName || resolveAuditActorName(actor),
         metadata: {
           quantidade: Number(data.quantidade || 0),
           unidade: data.unidade,
@@ -338,8 +418,12 @@ export const createColheita = async (
           acao: overrideAudit ? 'desbloqueio_ciclo' : 'criado',
           descricao: 'Venda criada a partir da colheita.',
           motivo: overrideAudit?.desbloqueioAdminReason || null,
-          actorUid: overrideAudit?.desbloqueioAdminByUid || tenantId,
-          actorName: overrideAudit?.desbloqueioAdminByName || null,
+          actorUid:
+            overrideAudit?.desbloqueioAdminByUid ||
+            resolveAuditActorUid(tenantId, actor),
+          actorName:
+            overrideAudit?.desbloqueioAdminByName ||
+            resolveAuditActorName(actor),
           metadata: {
             colheitaId: inserted.id,
             quantidade: Number(data.quantidade || 0),
@@ -353,12 +437,55 @@ export const createColheita = async (
         });
       }
 
+      if (authorizationAudit) {
+        const authorizationMetadata = {
+          tipo: authorizationAudit.kind,
+          quantidadePlantadaInformada: false,
+          quantidadeVendida: Number(data.quantidade || 0),
+          unidade: data.unidade,
+        };
+        await createTraceabilityEventSafely(tenantId, {
+          plantioId,
+          estufaId: estufaId || null,
+          entidade: 'colheita',
+          entidadeId: inserted.id,
+          acao: 'autorizacao_admin',
+          descricao:
+            'Venda de Campo autorizada por senha sem quantidade plantada informada.',
+          motivo: authorizationAudit.reason,
+          actorUid: authorizationAudit.byUid,
+          actorName: authorizationAudit.byName || null,
+          metadata: authorizationMetadata,
+        });
+        if (vId) {
+          await createTraceabilityEventSafely(tenantId, {
+            plantioId,
+            estufaId: estufaId || null,
+            entidade: 'venda',
+            entidadeId: vId,
+            acao: 'autorizacao_admin',
+            descricao:
+              'Venda de Campo autorizada por senha sem quantidade plantada informada.',
+            motivo: authorizationAudit.reason,
+            actorUid: authorizationAudit.byUid,
+            actorName: authorizationAudit.byName || null,
+            metadata: {
+              ...authorizationMetadata,
+              colheitaId: inserted.id,
+            },
+          });
+        }
+      }
+
       return inserted.id as string;
     },
   });
 };
 
-export const listColheitasByPlantio = async (userId: string, plantioId: string): Promise<Colheita[]> => {
+export const listColheitasByPlantio = async (
+  userId: string,
+  plantioId: string
+): Promise<Colheita[]> => {
   const tenantId = assertTenantId(userId);
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
@@ -390,10 +517,24 @@ export const listAllColheitas = async (userId: string): Promise<Colheita[]> => {
 export const getColheitaById = async (
   id: string,
   userId: string
-): Promise<(Colheita & { precoUnitario?: number; clienteId?: string | null; statusPagamento?: string; pagamentoPara?: string | null }) | null> => {
+): Promise<
+  | (Colheita & {
+      precoUnitario?: number;
+      clienteId?: string | null;
+      statusPagamento?: string;
+      pagamentoPara?: string | null;
+      dataCompensacaoCheque?: Timestamp | null;
+    })
+  | null
+> => {
   const tenantId = assertTenantId(userId);
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase.from('colheitas').select('*').eq('id', id).eq('tenant_id', tenantId).maybeSingle();
+  const { data, error } = await supabase
+    .from('colheitas')
+    .select('*')
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
   if (error) {
     throw new Error(`Erro ao buscar colheita. ${error.message}`);
   }
@@ -403,18 +544,25 @@ export const getColheitaById = async (
   const linkedVenda = await findVendaByColheitaId(tenantId, id);
   return {
     ...row,
-    precoUnitario: linkedVenda?.itens?.[0]?.valorUnitario || row.precoUnitario || 0,
+    precoUnitario:
+      linkedVenda?.itens?.[0]?.valorUnitario || row.precoUnitario || 0,
     clienteId: linkedVenda?.clienteId || row.clienteId || null,
     statusPagamento: linkedVenda?.statusPagamento || row.statusPagamento,
     pagamentoPara: (linkedVenda as any)?.pagamentoPara || null,
+    dataCompensacaoCheque: linkedVenda?.dataCompensacaoCheque || null,
   };
 };
 
-export const deleteColheita = async (colheitaId: string, userId: string, options?: OfflineWriteOptions) => {
+export const deleteColheita = async (
+  colheitaId: string,
+  userId: string,
+  options?: OfflineWriteOptions,
+  actor?: AuditActor | null
+) => {
   const tenantId = assertTenantId(userId);
   return runOfflineWrite({
     action: 'deleteColheita',
-    payload: { id: colheitaId, userId: tenantId },
+    payload: { id: colheitaId, userId: tenantId, actor },
     options,
     onQueuedValue: () => undefined,
     write: async () => {
@@ -428,17 +576,30 @@ export const deleteColheita = async (colheitaId: string, userId: string, options
         .eq('tenant_id', tenantId)
         .eq('colheita_id', colheitaId);
       if (vendasError) {
-        throw new Error(`Erro ao buscar vendas vinculadas. ${vendasError.message}`);
+        throw new Error(
+          `Erro ao buscar vendas vinculadas. ${vendasError.message}`
+        );
       }
 
       const linkedVendas = linkedVendasData || [];
       for (const venda of linkedVendas) {
-        await deleteVenda(venda.id, tenantId);
+        await deleteVenda(venda.id, tenantId, undefined, actor);
       }
 
-      const { error } = await supabase.from('colheitas').delete().eq('id', colheitaId).eq('tenant_id', tenantId);
+      const { data: deletedColheita, error } = await supabase
+        .from('colheitas')
+        .delete()
+        .eq('id', colheitaId)
+        .eq('tenant_id', tenantId)
+        .select('id')
+        .maybeSingle();
       if (error) {
         throw new Error(`Erro ao excluir colheita. ${error.message}`);
+      }
+      if (!deletedColheita) {
+        throw new Error(
+          'A colheita da venda não foi excluída. Verifique a permissão deste perfil.'
+        );
       }
 
       await createTraceabilityEventSafely(tenantId, {
@@ -448,7 +609,8 @@ export const deleteColheita = async (colheitaId: string, userId: string, options
         entidadeId: colheitaId,
         acao: 'excluido',
         descricao: 'Colheita excluída.',
-        actorUid: tenantId,
+        actorUid: resolveAuditActorUid(tenantId, actor),
+        actorName: resolveAuditActorName(actor),
         metadata: {
           linkedVendasDeleted: linkedVendas.length,
         },
@@ -462,12 +624,13 @@ export const updateColheita = async (
   data: ColheitaFormData,
   userId: string,
   options: ColheitaSaveOptions = {},
-  writeOptions?: OfflineWriteOptions
+  writeOptions?: OfflineWriteOptions,
+  actor?: AuditActor | null
 ) => {
   const tenantId = assertTenantId(userId);
   return runOfflineWrite({
     action: 'updateColheita',
-    payload: { id, data, userId: tenantId, serviceOptions: options },
+    payload: { id, data, userId: tenantId, serviceOptions: options, actor },
     options: writeOptions,
     onQueuedValue: () => undefined,
     write: async () => {
@@ -475,15 +638,27 @@ export const updateColheita = async (
       if (!colheita) throw new Error('Colheita não encontrada.');
 
       const now = Timestamp.now();
-      const dataOperacao = data.dataVenda ? Timestamp.fromDate(data.dataVenda) : now;
+      const dataOperacao = data.dataVenda
+        ? Timestamp.fromDate(data.dataVenda)
+        : now;
       const plantio = await getPlantioById(colheita.plantioId, tenantId);
       if (!plantio) throw new Error('Plantio não encontrado.');
-      const isEarlyCycleSale = data.destino === 'venda_direta' && isSaleBeforeMinimumCycleDate(plantio, dataOperacao);
-      const hasCycleUnlock = options.allowBeforeCycleDays || !!plantio.cicloDesbloqueadoPorAdmin;
+      assertProductionOriginNotMixed(
+        { estufaId: colheita.estufaId, talhaoId: plantio.talhaoId },
+        'Venda/colheita'
+      );
+      const isEarlyCycleSale =
+        data.destino === 'venda_direta' &&
+        isSaleBeforeMinimumCycleDate(plantio, dataOperacao);
+      const hasCycleUnlock =
+        options.allowBeforeCycleDays || !!plantio.cicloDesbloqueadoPorAdmin;
       if (isEarlyCycleSale && !hasCycleUnlock) {
         validateSaleDateByCycle(plantio, dataOperacao);
       }
-      const overrideAudit = isEarlyCycleSale ? buildOverrideAudit(options, now) || buildPlantioUnlockAudit(plantio) : null;
+      const overrideAudit = isEarlyCycleSale
+        ? buildOverrideAudit(options, now) || buildPlantioUnlockAudit(plantio)
+        : null;
+      const authorizationAudit = options.authorizationAudit || null;
 
       const supabase = getSupabaseClient();
       const { error: updateError } = await supabase
@@ -500,14 +675,23 @@ export const updateColheita = async (
           preco_unitario: Number(data.precoUnitario || 0),
           cliente_id: data.clienteId || null,
           metodo_pagamento: data.metodoPagamento || null,
-          status_pagamento: (data.metodoPagamento === 'prazo' || data.metodoPagamento === 'cheque') ? 'pendente' : 'pago',
+          status_pagamento:
+            data.metodoPagamento === 'prazo' ||
+            data.metodoPagamento === 'cheque'
+              ? 'pendente'
+              : 'pago',
           ...(overrideAudit
             ? {
                 ciclo_desbloqueado_por_admin: true,
-                desbloqueio_admin_by_uid: overrideAudit.desbloqueioAdminByUid || null,
-                desbloqueio_admin_by_name: overrideAudit.desbloqueioAdminByName || null,
-                desbloqueio_admin_at: toIsoFromTsOrDate(overrideAudit.desbloqueioAdminAt),
-                desbloqueio_admin_reason: overrideAudit.desbloqueioAdminReason || null,
+                desbloqueio_admin_by_uid:
+                  overrideAudit.desbloqueioAdminByUid || null,
+                desbloqueio_admin_by_name:
+                  overrideAudit.desbloqueioAdminByName || null,
+                desbloqueio_admin_at: toIsoFromTsOrDate(
+                  overrideAudit.desbloqueioAdminAt
+                ),
+                desbloqueio_admin_reason:
+                  overrideAudit.desbloqueioAdminReason || null,
               }
             : {
                 ciclo_desbloqueado_por_admin: false,
@@ -534,8 +718,11 @@ export const updateColheita = async (
           ? 'Colheita atualizada com desbloqueio administrativo de ciclo.'
           : 'Colheita atualizada.',
         motivo: overrideAudit?.desbloqueioAdminReason || null,
-        actorUid: overrideAudit?.desbloqueioAdminByUid || tenantId,
-        actorName: overrideAudit?.desbloqueioAdminByName || null,
+        actorUid:
+          overrideAudit?.desbloqueioAdminByUid ||
+          resolveAuditActorUid(tenantId, actor),
+        actorName:
+          overrideAudit?.desbloqueioAdminByName || resolveAuditActorName(actor),
         metadata: {
           previousQuantidade: Number(colheita.quantidade || 0),
           previousUnidade: colheita.unidade || null,
@@ -549,6 +736,27 @@ export const updateColheita = async (
           cicloDesbloqueadoPorAdmin: !!overrideAudit,
         },
       });
+
+      if (authorizationAudit) {
+        await createTraceabilityEventSafely(tenantId, {
+          plantioId: colheita.plantioId,
+          estufaId: colheita.estufaId || null,
+          entidade: 'colheita',
+          entidadeId: id,
+          acao: 'autorizacao_admin',
+          descricao:
+            'Alteração de venda de Campo autorizada por senha sem quantidade plantada informada.',
+          motivo: authorizationAudit.reason,
+          actorUid: authorizationAudit.byUid,
+          actorName: authorizationAudit.byName || null,
+          metadata: {
+            tipo: authorizationAudit.kind,
+            quantidadePlantadaInformada: false,
+            quantidadeVendida: Number(data.quantidade || 0),
+            unidade: data.unidade,
+          },
+        });
+      }
 
       const linkedVenda = await findVendaByColheitaId(tenantId, id);
 
@@ -564,6 +772,7 @@ export const updateColheita = async (
           metodoPagamento: data.metodoPagamento || 'pix',
           pagamentoPara: data.pagamentoPara || null,
           dataVenda: data.dataVenda,
+          dataCompensacaoCheque: data.dataCompensacaoCheque,
           observacoes: data.observacoes || '',
           cycleOverrideAudit: overrideAudit
             ? {
@@ -575,27 +784,75 @@ export const updateColheita = async (
             : null,
         };
 
+        let savedVendaId: string;
         if (linkedVenda) {
-          await updateVenda(linkedVenda.id, vendaData, tenantId);
+          await updateVenda(
+            linkedVenda.id,
+            vendaData,
+            tenantId,
+            undefined,
+            actor
+          );
+          savedVendaId = linkedVenda.id;
         } else {
-          await createVenda(vendaData, tenantId);
+          savedVendaId = await createVenda(
+            vendaData,
+            tenantId,
+            undefined,
+            actor
+          );
+        }
+        if (authorizationAudit) {
+          await createTraceabilityEventSafely(tenantId, {
+            plantioId: colheita.plantioId,
+            estufaId: colheita.estufaId || null,
+            entidade: 'venda',
+            entidadeId: savedVendaId,
+            acao: 'autorizacao_admin',
+            descricao:
+              'Alteração de venda de Campo autorizada por senha sem quantidade plantada informada.',
+            motivo: authorizationAudit.reason,
+            actorUid: authorizationAudit.byUid,
+            actorName: authorizationAudit.byName || null,
+            metadata: {
+              tipo: authorizationAudit.kind,
+              quantidadePlantadaInformada: false,
+              quantidadeVendida: Number(data.quantidade || 0),
+              unidade: data.unidade,
+              colheitaId: id,
+            },
+          });
         }
         return;
       }
 
       if (linkedVenda) {
-        await deleteVenda(linkedVenda.id, tenantId);
+        await deleteVenda(linkedVenda.id, tenantId, undefined, actor);
       }
     },
   });
 };
 
-export const listContasAReceber = async (userId: string) => listContasAReceberVendas(userId);
+export const listContasAReceber = async (userId: string) =>
+  listContasAReceberVendas(userId);
 export const receberConta = async (
   vendaId: string,
   userId: string,
   metodoRecebimento?: string,
-  pagamentoPara?: string | null
-) => receberVenda(vendaId, userId, metodoRecebimento, pagamentoPara);
-export const getTotalContasAReceber = async (userId: string) => getTotalContasAReceberVendas(userId);
-
+  pagamentoPara?: string | null,
+  actor?: AuditActor | null,
+  valorRecebido?: number,
+  receivedAt?: Date
+) =>
+  receberVenda(
+    vendaId,
+    userId,
+    metodoRecebimento,
+    pagamentoPara,
+    undefined,
+    actor,
+    receivedAt,
+    valorRecebido
+  );
+export const getTotalContasAReceber = async (userId: string) =>
+  getTotalContasAReceberVendas(userId);

@@ -19,7 +19,11 @@ function Remove-PathIfExists {
   }
 
   Write-Host "Removendo $RelativePath"
-  Remove-Item -LiteralPath $fullPath -Recurse -Force
+  try {
+    Remove-Item -LiteralPath $fullPath -Recurse -Force
+  } catch {
+    Write-Warning "Nao foi possivel remover $RelativePath. Continuando build. Detalhe: $($_.Exception.Message)"
+  }
 }
 
 function Remove-CxxIfExists {
@@ -29,7 +33,11 @@ function Remove-CxxIfExists {
   }
 
   Write-Host "Removendo android\app\.cxx"
-  cmd /c rmdir /s /q "$cxxPath" | Out-Null
+  try {
+    Remove-Item -LiteralPath $cxxPath -Recurse -Force
+  } catch {
+    Write-Warning "Nao foi possivel remover android\app\.cxx. Continuando build. Detalhe: $($_.Exception.Message)"
+  }
 }
 
 function Ensure-Command {
@@ -75,7 +83,7 @@ Remove-PathIfExists 'android\app\build'
 Remove-PathIfExists 'android\build'
 
 Write-Step "Instalando dependencias JS"
-npm install
+npm install --legacy-peer-deps
 
 Write-Step "Executando prebuild Android"
 npx expo prebuild --platform android

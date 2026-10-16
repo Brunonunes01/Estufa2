@@ -1,10 +1,23 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { useAuth } from '../../hooks/useAuth';
 import { useEstufaPerformance } from '../../hooks/useEstufaPerformance';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import {
+  COLORS,
+  RADIUS,
+  SHADOWS,
+  SPACING,
+  TYPOGRAPHY,
+} from '../../constants/theme';
 
 const formatCurrency = (value: number) =>
   value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -13,7 +26,8 @@ const EstufaPerformanceScreen = () => {
   const { user, selectedTenantId } = useAuth();
   const targetId = selectedTenantId || user?.uid;
 
-  const { data, isLoading, isFetching, refetch } = useEstufaPerformance(targetId);
+  const { data, isLoading, isFetching, refetch } =
+    useEstufaPerformance(targetId);
 
   if (isLoading) {
     return (
@@ -28,27 +42,52 @@ const EstufaPerformanceScreen = () => {
       style={styles.container}
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={isFetching} onRefresh={refetch} colors={[COLORS.primary]} />
+        <RefreshControl
+          refreshing={isFetching}
+          onRefresh={refetch}
+          colors={[COLORS.primary]}
+        />
       }
     >
       <View style={styles.header}>
         <Text style={styles.title}>Performance por Estufa</Text>
-        <Text style={styles.subtitle}>ROI e lucratividade acumulada de cada ambiente</Text>
+        <Text style={styles.subtitle}>
+          ROI e lucratividade acumulada de cada ambiente
+        </Text>
       </View>
 
       {data?.map((item) => (
         <View key={item.estufaId} style={styles.card}>
           <View style={styles.cardHeader}>
             <View style={styles.iconWrap}>
-              <MaterialCommunityIcons name="greenhouse" size={24} color={COLORS.primary} />
+              <MaterialCommunityIcons
+                name="greenhouse"
+                size={24}
+                color={COLORS.primary}
+              />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.estufaName}>{item.nome}</Text>
-              <Text style={styles.plantiosCount}>{item.plantiosContagem} ciclos registrados</Text>
+              <Text style={styles.plantiosCount}>
+                {item.plantiosContagem} ciclos registrados
+              </Text>
             </View>
-            <View style={[styles.roiBadge, { backgroundColor: item.roi >= 0 ? COLORS.successSoft : COLORS.dangerBg }]}>
-              <Text style={[styles.roiText, { color: item.roi >= 0 ? COLORS.success : COLORS.danger }]}>
-                {item.roi.toFixed(1)}% ROI
+            <View
+              style={[
+                styles.roiBadge,
+                {
+                  backgroundColor:
+                    item.roi >= 0 ? COLORS.successSoft : COLORS.dangerBg,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.roiText,
+                  { color: item.roi >= 0 ? COLORS.success : COLORS.danger },
+                ]}
+              >
+                {item.roi.toFixed(1)}% ROI projetado
               </Text>
             </View>
           </View>
@@ -57,22 +96,67 @@ const EstufaPerformanceScreen = () => {
 
           <View style={styles.metricsGrid}>
             <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Receita Total</Text>
-              <Text style={[styles.metricValue, { color: COLORS.success }]}>
+              <Text style={styles.metricLabel}>Vendas combinadas</Text>
+              <Text style={[styles.metricValue, { color: COLORS.info }]}>
                 {formatCurrency(item.receitaTotal)}
               </Text>
             </View>
             <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Custo Total</Text>
-              <Text style={[styles.metricValue, { color: COLORS.danger }]}>
-                {formatCurrency(item.custoTotal)}
+              <Text style={styles.metricLabel}>Recebido de verdade</Text>
+              <Text style={[styles.metricValue, { color: COLORS.success }]}>
+                {formatCurrency(item.receitaRecebida)}
               </Text>
             </View>
           </View>
 
-          <View style={[styles.profitRow, { backgroundColor: item.lucroAcumulado >= 0 ? COLORS.primary + '0A' : COLORS.danger + '0A' }]}>
-            <Text style={styles.profitLabel}>Lucro Líquido Acumulado</Text>
-            <Text style={[styles.profitValue, { color: item.lucroAcumulado >= 0 ? COLORS.primary : COLORS.danger }]}>
+          <View style={styles.metricsGrid}>
+            <View style={styles.metricItem}>
+              <Text style={styles.metricLabel}>Custo total</Text>
+              <Text style={[styles.metricValue, { color: COLORS.danger }]}>
+                {formatCurrency(item.custoTotal)}
+              </Text>
+            </View>
+            <View style={styles.metricItem}>
+              <Text style={styles.metricLabel}>Sobre o recebido</Text>
+              <Text
+                style={[
+                  styles.metricValue,
+                  {
+                    color:
+                      item.resultadoSobreRecebido >= 0
+                        ? COLORS.success
+                        : COLORS.danger,
+                  },
+                ]}
+              >
+                {formatCurrency(item.resultadoSobreRecebido)}
+              </Text>
+            </View>
+          </View>
+
+          <View
+            style={[
+              styles.profitRow,
+              {
+                backgroundColor:
+                  item.lucroAcumulado >= 0
+                    ? COLORS.primary + '0A'
+                    : COLORS.danger + '0A',
+              },
+            ]}
+          >
+            <Text style={styles.profitLabel}>
+              Resultado projetado acumulado
+            </Text>
+            <Text
+              style={[
+                styles.profitValue,
+                {
+                  color:
+                    item.lucroAcumulado >= 0 ? COLORS.primary : COLORS.danger,
+                },
+              ]}
+            >
               {formatCurrency(item.lucroAcumulado)}
             </Text>
           </View>
@@ -81,8 +165,14 @@ const EstufaPerformanceScreen = () => {
 
       {data?.length === 0 && (
         <View style={styles.emptyContainer}>
-          <MaterialCommunityIcons name="chart-bar" size={48} color={COLORS.textMuted} />
-          <Text style={styles.emptyText}>Nenhuma estufa com dados financeiros encontrada.</Text>
+          <MaterialCommunityIcons
+            name="chart-bar"
+            size={48}
+            color={COLORS.textMuted}
+          />
+          <Text style={styles.emptyText}>
+            Nenhuma estufa com dados financeiros encontrada.
+          </Text>
         </View>
       )}
     </ScrollView>
@@ -94,7 +184,11 @@ const styles = StyleSheet.create({
   content: { padding: SPACING.lg },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { marginBottom: SPACING.xl },
-  title: { fontSize: TYPOGRAPHY.h2, fontWeight: '800', color: COLORS.textPrimary },
+  title: {
+    fontSize: TYPOGRAPHY.h2,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+  },
   subtitle: { fontSize: 14, color: COLORS.textSecondary, marginTop: 4 },
   card: {
     backgroundColor: COLORS.surface,
@@ -116,12 +210,29 @@ const styles = StyleSheet.create({
   },
   estufaName: { fontSize: 18, fontWeight: '800', color: COLORS.textPrimary },
   plantiosCount: { fontSize: 12, color: COLORS.textSecondary },
-  roiBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS.pill },
+  roiBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: RADIUS.pill,
+  },
   roiText: { fontSize: 12, fontWeight: '800' },
-  divider: { height: 1, backgroundColor: COLORS.border, marginVertical: SPACING.lg },
-  metricsGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.lg },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: SPACING.lg,
+  },
+  metricsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.lg,
+  },
   metricItem: { flex: 1 },
-  metricLabel: { fontSize: 11, color: COLORS.textMuted, textTransform: 'uppercase', marginBottom: 4 },
+  metricLabel: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
   metricValue: { fontSize: 16, fontWeight: '700' },
   profitRow: {
     flexDirection: 'row',

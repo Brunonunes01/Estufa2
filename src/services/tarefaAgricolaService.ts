@@ -2,6 +2,7 @@ import { Timestamp } from '../lib/timestamp';
 import { TarefaAgricola } from '../types/domain';
 import { getSupabaseClient } from './supabaseClient';
 import { assertTenantId } from './tenantGuard';
+import { AuditActor, resolveAuditActorUid } from './auditActor';
 
 const mapSupabaseTaskToDomain = (row: any): TarefaAgricola => ({
   id: row.id,
@@ -30,16 +31,18 @@ const mapSupabaseTaskToDomain = (row: any): TarefaAgricola => ({
 
 export const createTarefaAgricola = async (
   data: Omit<TarefaAgricola, 'id' | 'createdAt' | 'updatedAt' | 'tenantId' | 'userId' | 'createdBy'>,
-  userId: string
+  userId: string,
+  actor?: AuditActor | null
 ) => {
   const tenantId = assertTenantId(userId);
+  const actorUid = resolveAuditActorUid(tenantId, actor);
   const supabase = getSupabaseClient();
   const nowIso = new Date().toISOString();
   const statusHistory = [
     {
       status: data.status,
       changedAt: nowIso,
-      changedBy: tenantId,
+      changedBy: actorUid,
       reason: null,
     },
   ];
@@ -126,9 +129,10 @@ export const updateTarefaStatus = async (
   tarefaId: string,
   status: TarefaAgricola['status'],
   userId: string,
-  options?: { reason?: string | null }
+  options?: { reason?: string | null; actor?: AuditActor | null }
 ) => {
   const tenantId = assertTenantId(userId);
+  const actorUid = resolveAuditActorUid(tenantId, options?.actor);
   const supabase = getSupabaseClient();
   const { data: current, error: getError } = await supabase
     .from('tarefas_agricolas')
@@ -150,7 +154,7 @@ export const updateTarefaStatus = async (
     {
       status,
       changedAt: new Date().toISOString(),
-      changedBy: tenantId,
+      changedBy: actorUid,
       reason,
     },
   ];
@@ -169,7 +173,12 @@ export const updateTarefaStatus = async (
   }
 };
 
-export const cancelTarefaAgricola = async (tarefaId: string, motivo: string, userId: string) => {
+export const cancelTarefaAgricola = async (
+  tarefaId: string,
+  motivo: string,
+  userId: string,
+  actor?: AuditActor | null
+) => {
   const tenantId = assertTenantId(userId);
   const reason = motivo.trim();
   if (!reason) {
@@ -194,7 +203,7 @@ export const cancelTarefaAgricola = async (tarefaId: string, motivo: string, use
   const cancelNote = `Cancelada: ${reason}`;
   const mergedObs = previousObs ? `${previousObs}\n${cancelNote}` : cancelNote;
 
-  await updateTarefaStatus(tarefaId, 'cancelada', tenantId, { reason });
+  await updateTarefaStatus(tarefaId, 'cancelada', tenantId, { reason, actor });
   const { error: updateError } = await supabase
     .from('tarefas_agricolas')
     .update({

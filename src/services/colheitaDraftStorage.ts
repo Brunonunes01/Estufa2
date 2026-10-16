@@ -1,5 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MetodoPagamento, UnidadeColheita } from '../screens/Colheitas/colheitaFormUtils';
+import {
+  MetodoPagamento,
+  UnidadeColheita,
+} from '../screens/Colheitas/colheitaFormUtils';
 
 export interface ColheitaDraftData {
   selectedPlantioId: string;
@@ -9,9 +12,10 @@ export interface ColheitaDraftData {
   pesoBruto: string;
   pesoLiquido: string;
   selectedClienteId: string | null;
-  metodoPagamento: MetodoPagamento;
+  metodoPagamento: MetodoPagamento | '';
   pagamentoPara: string | null;
   dataVendaIso: string;
+  dataCompensacaoChequeIso: string | null;
   isFinalHarvest: boolean;
   observacoes: string;
   showObservacoes: boolean;
@@ -19,11 +23,17 @@ export interface ColheitaDraftData {
   savedAt: string;
 }
 
-const buildDraftKey = (targetId: string) => `@estufa2:colheita_draft:${targetId}`;
+const buildDraftKey = (targetId: string, scope?: 'campo') =>
+  scope
+    ? `@estufa2:colheita_draft:${scope}:${targetId}`
+    : `@estufa2:colheita_draft:${targetId}`;
 
-export const loadColheitaDraft = async (targetId: string): Promise<ColheitaDraftData | null> => {
+export const loadColheitaDraft = async (
+  targetId: string,
+  scope?: 'campo'
+): Promise<ColheitaDraftData | null> => {
   try {
-    const raw = await AsyncStorage.getItem(buildDraftKey(targetId));
+    const raw = await AsyncStorage.getItem(buildDraftKey(targetId, scope));
     if (!raw) return null;
 
     const parsed = JSON.parse(raw) as Partial<ColheitaDraftData>;
@@ -37,10 +47,16 @@ export const loadColheitaDraft = async (targetId: string): Promise<ColheitaDraft
       preco: String(parsed.preco || ''),
       pesoBruto: String(parsed.pesoBruto || ''),
       pesoLiquido: String(parsed.pesoLiquido || ''),
-      selectedClienteId: parsed.selectedClienteId ? String(parsed.selectedClienteId) : null,
-      metodoPagamento: (parsed.metodoPagamento as ColheitaDraftData['metodoPagamento']) || 'pix',
+      selectedClienteId: parsed.selectedClienteId
+        ? String(parsed.selectedClienteId)
+        : null,
+      metodoPagamento:
+        (parsed.metodoPagamento as ColheitaDraftData['metodoPagamento']) || '',
       pagamentoPara: parsed.pagamentoPara ? String(parsed.pagamentoPara) : null,
       dataVendaIso: String(parsed.dataVendaIso),
+      dataCompensacaoChequeIso: parsed.dataCompensacaoChequeIso
+        ? String(parsed.dataCompensacaoChequeIso)
+        : null,
       isFinalHarvest: Boolean(parsed.isFinalHarvest),
       observacoes: String(parsed.observacoes || ''),
       showObservacoes: Boolean(parsed.showObservacoes),
@@ -53,14 +69,21 @@ export const loadColheitaDraft = async (targetId: string): Promise<ColheitaDraft
   }
 };
 
-export const saveColheitaDraft = async (targetId: string, draft: Omit<ColheitaDraftData, 'savedAt'>) => {
+export const saveColheitaDraft = async (
+  targetId: string,
+  draft: Omit<ColheitaDraftData, 'savedAt'>,
+  scope?: 'campo'
+) => {
   const payload: ColheitaDraftData = {
     ...draft,
     savedAt: new Date().toISOString(),
   };
-  await AsyncStorage.setItem(buildDraftKey(targetId), JSON.stringify(payload));
+  await AsyncStorage.setItem(
+    buildDraftKey(targetId, scope),
+    JSON.stringify(payload)
+  );
 };
 
-export const clearColheitaDraft = async (targetId: string) => {
-  await AsyncStorage.removeItem(buildDraftKey(targetId));
+export const clearColheitaDraft = async (targetId: string, scope?: 'campo') => {
+  await AsyncStorage.removeItem(buildDraftKey(targetId, scope));
 };

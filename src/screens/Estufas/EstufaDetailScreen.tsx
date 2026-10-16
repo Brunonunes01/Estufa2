@@ -176,47 +176,8 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
     );
   }
 
-  const isHydroMode = settings.activeProductionMode === 'hidroponia';
-
-  const quickActions = isHydroMode
-    ? [
-        {
-          key: 'hub-hydro-layout',
-          title: 'Layout',
-          icon: 'table-row',
-          color: COLORS.success,
-          onPress: () => navigation.navigate('HidroponiaEstufaLayout', { estufaId: estufa.id }),
-        },
-        {
-          key: 'hub-hydroponics',
-          title: 'Hidroponia',
-          icon: 'water',
-          color: COLORS.info,
-          onPress: () => navigation.navigate('HidroponiaLotes', { estufaId: estufa.id }),
-        },
-        {
-          key: 'hub-hydro-sale',
-          title: 'Registrar Venda',
-          icon: 'basket-plus-outline',
-          color: COLORS.primary,
-          onPress: () => navigation.navigate('HidroponiaLotes', { estufaId: estufa.id }),
-        },
-        {
-          key: 'hub-reports',
-          title: 'Relatórios',
-          icon: 'chart-box-outline',
-          color: COLORS.info,
-          onPress: () => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' }),
-        },
-        {
-          key: 'hub-finance',
-          title: 'Financeiro',
-          icon: 'hand-coin-outline',
-          color: COLORS.warning,
-          onPress: () => navigation.navigate('ContasReceber'),
-        },
-      ]
-    : [
+  
+  const quickActions = [
         {
           key: 'hub-cycle',
           title: plantioAtivo ? 'Painel do Ciclo' : 'Novo Ciclo',
@@ -256,20 +217,6 @@ const EstufaDetailScreen = ({ route, navigation }: any) => {
             plantioAtivo
               ? navigation.navigate('ManejosHistory', { plantioId: plantioAtivo.id, estufaId: estufa.id })
               : navigation.navigate('PlantioForm', { estufaId: estufa.id }),
-        },
-        {
-          key: 'hub-reports',
-          title: 'Relatórios',
-          icon: 'chart-box-outline',
-          color: COLORS.info,
-          onPress: () => navigation.navigate('MainTabs', { screen: 'FinanceiroTab' }),
-        },
-        {
-          key: 'hub-finance',
-          title: 'Financeiro',
-          icon: 'hand-coin-outline',
-          color: COLORS.warning,
-          onPress: () => navigation.navigate('ContasReceber'),
         },
       ];
 

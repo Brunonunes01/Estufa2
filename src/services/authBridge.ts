@@ -1,4 +1,5 @@
 import { mapSessionUserToAuthBridgeUser, AuthBridgeUser, isInvalidRefreshTokenError } from './authBridgeHelpers.ts';
+import { createAuthSessionCoordinator } from './authSessionCoordinator.ts';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
 const ensureSupabaseReady = () => {
@@ -62,51 +63,29 @@ export const onAuthStateChangedBridge = (
 ) => {
   ensureSupabaseReady();
   const supabase = getSupabaseClient();
-  let hasResolvedInitialSession = false;
-  let pendingUser: AuthBridgeUser | null | undefined;
-  let isActive = true;
-
-  const flushUser = (user: AuthBridgeUser | null) => {
-    if (!isActive) return;
-    hasResolvedInitialSession = true;
-    callback(pendingUser !== undefined ? pendingUser : user);
-    pendingUser = undefined;
-  };
-
-  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-    const mappedUser = mapSessionUserToAuthBridgeUser(session?.user);
-    if (!hasResolvedInitialSession) {
-      pendingUser = mappedUser;
-      return;
-    }
-    if (!isActive) return;
-    callback(mappedUser);
-  });
-
-  void supabase.auth
-    .getSession()
-    .then(async ({ data: sessionData, error }) => {
+  const coordinator = createAuthSessionCoordinator({
+    subscribe: (listener) => {
+      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+        listener(session?.user ?? null);
+      });
+      return () => data.subscription.unsubscribe();
+    },
+    getSession: async () => {
+      const { data, error } = await supabase.auth.getSession();
       if (error) {
-        if (isInvalidRefreshTokenError(error)) {
-          await clearInvalidLocalSession();
-          flushUser(null);
-          return;
-        }
         throw error;
       }
-      flushUser(mapSessionUserToAuthBridgeUser(sessionData.session?.user));
-    })
-    .catch(async (error) => {
-      if (isInvalidRefreshTokenError(error)) {
-        await clearInvalidLocalSession();
-        flushUser(null);
-      }
-    });
+      return data;
+    },
+    mapSessionUser: mapSessionUserToAuthBridgeUser,
+    clearInvalidLocalSession,
+    isInvalidRefreshTokenError,
+    reportError: (error) => {
+      console.error('Falha ao restaurar sessao autenticada:', error);
+    },
+  });
 
-  return () => {
-    isActive = false;
-    data.subscription.unsubscribe();
-  };
+  return coordinator.onAuthStateChanged(callback);
 };
 
 export const getCurrentAuthUserBridge = async (): Promise<AuthBridgeUser | null> => {

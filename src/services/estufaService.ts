@@ -1,53 +1,12 @@
 import { Timestamp } from '../lib/timestamp';
-import { Estufa, HydroMotor, HydroSetor } from '../types/domain';
+import { Estufa } from '../types/domain';
 import { OfflineWriteOptions } from './offline/offlineStorage';
 import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWrite';
 import { cancelActivePlantiosByEstufa } from './plantioService';
 import { getSupabaseClient } from './supabaseClient';
 import { assertTenantId } from './tenantGuard';
 
-const normalizeMotores = (motores?: HydroMotor[] | null) =>
-  Array.isArray(motores) ? motores : [];
 
-const normalizeSetores = (setores?: HydroSetor[] | null) =>
-  Array.isArray(setores) ? setores : [];
-
-const validateHydroMotorBindings = (setoresInput?: HydroSetor[] | null, motoresInput?: HydroMotor[] | null) => {
-  const setores = normalizeSetores(setoresInput);
-  const motores = normalizeMotores(motoresInput);
-
-  const motorIds = new Set<string>();
-  const motorCodes = new Set<string>();
-  motores.forEach((motor) => {
-    const motorId = String(motor?.id || '').trim();
-    if (!motorId) {
-      throw new Error('Todo motor precisa ter um identificador válido.');
-    }
-    if (motorIds.has(motorId)) {
-      throw new Error('Existem motores duplicados na estufa.');
-    }
-    motorIds.add(motorId);
-
-    const codigo = String(motor?.codigo || '').trim().toUpperCase();
-    if (codigo) {
-      if (motorCodes.has(codigo)) {
-        throw new Error('Código de motor duplicado na estufa.');
-      }
-      motorCodes.add(codigo);
-    }
-  });
-
-  setores.forEach((setor) => {
-    const setorNome = String(setor?.nome || '').trim() || 'Setor sem nome';
-    const motorId = String((setor as any)?.motorId || '').trim();
-    if (!motorId) {
-      throw new Error(`O setor "${setorNome}" precisa estar vinculado a um motor.`);
-    }
-    if (!motorIds.has(motorId)) {
-      throw new Error(`O setor "${setorNome}" está vinculado a um motor inexistente.`);
-    }
-  });
-};
 
 const mapSupabaseEstufaToDomain = (row: any): Estufa => ({
   id: row.id,
@@ -57,7 +16,6 @@ const mapSupabaseEstufaToDomain = (row: any): Estufa => ({
   nome: row.nome,
   tipo: row.tipo || undefined,
   productionModes: row.production_modes || undefined,
-  hydroponicSystemType: row.hydroponic_system_type || undefined,
   capacidadeTotal: row.capacidade_total != null ? Number(row.capacidade_total) : undefined,
   unidadeMedida: row.unidade_medida || undefined,
   percentualOcupacao: row.percentual_ocupacao != null ? Number(row.percentual_ocupacao) : undefined,
@@ -97,7 +55,6 @@ const buildSupabaseEstufaPayload = (data: Partial<Estufa>, tenantId: string) => 
   nome: data.nome,
   tipo: data.tipo ?? null,
   production_modes: data.productionModes ?? [],
-  hydroponic_system_type: data.hydroponicSystemType ?? null,
   capacidade_total: data.capacidadeTotal ?? null,
   unidade_medida: data.unidadeMedida ?? null,
   percentual_ocupacao: data.percentualOcupacao ?? null,
@@ -126,7 +83,6 @@ const buildSupabaseEstufaPatch = (data: Partial<Estufa>) => {
   if (hasOwn(data, 'nome')) patch.nome = data.nome;
   if (hasOwn(data, 'tipo')) patch.tipo = data.tipo ?? null;
   if (hasOwn(data, 'productionModes')) patch.production_modes = data.productionModes ?? [];
-  if (hasOwn(data, 'hydroponicSystemType')) patch.hydroponic_system_type = data.hydroponicSystemType ?? null;
   if (hasOwn(data, 'capacidadeTotal')) patch.capacidade_total = data.capacidadeTotal ?? null;
   if (hasOwn(data, 'unidadeMedida')) patch.unidade_medida = data.unidadeMedida ?? null;
   if (hasOwn(data, 'percentualOcupacao')) patch.percentual_ocupacao = data.percentualOcupacao ?? null;
@@ -152,7 +108,7 @@ const buildSupabaseEstufaPatch = (data: Partial<Estufa>) => {
 };
 
 const createEstufaSupabase = async (data: Partial<Estufa>, tenantId: string) => {
-  validateHydroMotorBindings(data.setores, data.motores);
+
   const supabase = getSupabaseClient();
   const { data: inserted, error } = await supabase
     .from('estufas')
@@ -193,11 +149,7 @@ const updateEstufaSupabase = async (id: string, data: Partial<Estufa>, tenantId:
   if (!estufa) {
     throw new Error('Estufa não encontrada.');
   }
-  if (data.motores !== undefined || data.setores !== undefined) {
-    const nextSetores = data.setores !== undefined ? data.setores : estufa.setores;
-    const nextMotores = data.motores !== undefined ? data.motores : estufa.motores;
-    validateHydroMotorBindings(nextSetores, nextMotores);
-  }
+
 
   const supabase = getSupabaseClient();
   const { error } = await supabase

@@ -6,8 +6,10 @@ export interface EstufaPerformance {
   estufaId: string;
   nome: string;
   receitaTotal: number;
+  receitaRecebida: number;
   custoTotal: number;
   lucroAcumulado: number;
+  resultadoSobreRecebido: number;
   roi: number;
   plantiosContagem: number;
 }
@@ -39,6 +41,7 @@ export const getEstufaPerformanceSummary = async (
   if (plantiosError) throw new Error('Erro ao buscar plantios da estufa.');
 
   let receitaTotal = 0;
+  let receitaRecebida = 0;
   let custoTotal = 0;
 
   // 3. Calcular rentabilidade de cada plantio
@@ -51,6 +54,7 @@ export const getEstufaPerformanceSummary = async (
 
   rentabilidades.forEach((r) => {
     receitaTotal += r.receitaTotal;
+    receitaRecebida += r.receitaRecebida;
     custoTotal += r.custoTotal;
   });
 
@@ -60,9 +64,15 @@ export const getEstufaPerformanceSummary = async (
     .from('estufas')
     .select('area_m2')
     .eq('tenant_id', tenantId);
-  
-  const areaTotalPropriedade = (totalAreaRes || []).reduce((acc, curr) => acc + Number(curr.area_m2 || 0), 0);
-  const pesoEstufa = areaTotalPropriedade > 0 ? Number(estufa.area_m2 || 0) / areaTotalPropriedade : 0;
+
+  const areaTotalPropriedade = (totalAreaRes || []).reduce(
+    (acc, curr) => acc + Number(curr.area_m2 || 0),
+    0
+  );
+  const pesoEstufa =
+    areaTotalPropriedade > 0
+      ? Number(estufa.area_m2 || 0) / areaTotalPropriedade
+      : 0;
 
   const { data: despesasFixas } = await supabase
     .from('despesas')
@@ -72,24 +82,32 @@ export const getEstufaPerformanceSummary = async (
     .is('plantio_id', null)
     .neq('tipo_gasto', 'investimento_inicial');
 
-  const custoFixoRateado = (despesasFixas || []).reduce((acc, curr) => acc + (Number(curr.valor || 0) * pesoEstufa), 0);
+  const custoFixoRateado = (despesasFixas || []).reduce(
+    (acc, curr) => acc + Number(curr.valor || 0) * pesoEstufa,
+    0
+  );
   custoTotal += custoFixoRateado;
 
   const lucroAcumulado = receitaTotal - custoTotal;
+  const resultadoSobreRecebido = receitaRecebida - custoTotal;
   const roi = custoTotal > 0 ? (lucroAcumulado / custoTotal) * 100 : 0;
 
   return {
     estufaId,
     nome: estufa.nome,
     receitaTotal,
+    receitaRecebida,
     custoTotal,
     lucroAcumulado,
+    resultadoSobreRecebido,
     roi,
     plantiosContagem: (plantios || []).length,
   };
 };
 
-export const listAllEstufasPerformance = async (userId: string): Promise<EstufaPerformance[]> => {
+export const listAllEstufasPerformance = async (
+  userId: string
+): Promise<EstufaPerformance[]> => {
   const tenantId = assertTenantId(userId);
   const supabase = getSupabaseClient();
 
@@ -100,5 +118,7 @@ export const listAllEstufasPerformance = async (userId: string): Promise<EstufaP
 
   if (error) throw new Error('Erro ao listar estufas.');
 
-  return Promise.all(estufas.map((e) => getEstufaPerformanceSummary(userId, e.id)));
+  return Promise.all(
+    estufas.map((e) => getEstufaPerformanceSummary(userId, e.id))
+  );
 };

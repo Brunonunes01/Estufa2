@@ -40,7 +40,6 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
   const { showError } = useFeedback();
   const { accessRoleLabel, canWrite } = useAuth();
   const { settings } = useAppSettings();
-  const isHydroMode = settings.activeProductionMode === 'hidroponia';
   const isCampoMode = settings.activeProductionMode === 'campo';
 
   const {
@@ -120,17 +119,8 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
           }),
       },
     ];
-    if (isHydroMode) {
-      base.unshift({
-        label: 'Iniciar Lote',
-        subtitle: 'Novo ciclo hidro',
-        icon: 'sprout',
-        color: COLORS.primaryDark,
-        onPress: () => navigateTo('HidroponiaLoteForm'),
-      });
-    }
     return base;
-  }, [isHydroMode, navigateTo]);
+  }, [navigateTo]);
 
   const modules = useMemo(
     () => [
@@ -142,12 +132,10 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
       },
       {
         label: 'Operação',
-        icon: isHydroMode ? 'water-outline' : 'greenhouse',
+        icon: 'greenhouse',
         color: COLORS.success,
         onPress: () => navigateTo('MainTabs', { screen: 'OperacaoTab' }),
-        subtitle: isHydroMode
-          ? 'Hidroponia'
-          : isCampoMode
+        subtitle:  isCampoMode
             ? 'Campo'
             : 'Estufas',
       },
@@ -176,7 +164,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         onPress: () => navigateTo('Settings'),
       },
     ],
-    [isHydroMode, isCampoMode, navigateTo]
+    [isCampoMode, navigateTo]
   );
 
   const handleCompleteTask = async (taskId: string) => {

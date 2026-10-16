@@ -12,7 +12,6 @@ import EstufasListScreen from '../screens/Estufas/EstufasListScreen';
 import InsumosListScreen from '../screens/Insumos/InsumosListScreen';
 import VendasListScreen from '../screens/Vendas/VendasListScreen';
 import PerfilScreen from '../screens/Perfil/PerfilScreen';
-import HidroponiaLotesScreen from '../modules/hidroponia/screens/HidroponiaLotesScreen';
 import { useAuth } from '../hooks/useAuth';
 import { useThemeMode } from '../hooks/useThemeMode';
 import { COLORS, RADIUS } from '../constants/theme';
@@ -36,7 +35,7 @@ export const MainTabsNavigator = ({
   const [quickActionsVisible, setQuickActionsVisible] = useState(false);
 
   const operationEntryScreen =
-    activeMode === 'hidroponia' ? HidroponiaLotesScreen : activeMode === 'campo' ? CampoHubScreen : EstufasListScreen;
+    activeMode === 'campo' ? CampoHubScreen : EstufasListScreen;
   const quickActions = buildQuickActions(activeMode, (screen, params) =>
     (navigation as any).navigate(screen, params)
   );
@@ -137,7 +136,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   quickSheetBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: COLORS.overlaySoft,
   },
   quickSheet: {

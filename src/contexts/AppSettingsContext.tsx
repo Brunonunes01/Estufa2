@@ -1,14 +1,13 @@
 import React, { createContext, ReactNode, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export interface AppSettings {
-  darkMode: boolean;
-  notifyCritical: boolean;
-  notifyDailySummary: boolean;
-  activeProductionMode: 'ciclo_longo' | 'campo' | 'hidroponia';
-  uiV2Enabled: boolean;
-  useCycleBoxWeightProfiles: boolean;
-}
+import {
+  APP_SETTINGS_STORAGE_KEY,
+  AppSettings,
+  defaultAppSettings,
+  mergeAppSettings,
+  normalizeAppSettings,
+} from './appSettingsHelpers';
 
 interface AppSettingsContextData {
   settings: AppSettings;
@@ -16,54 +15,41 @@ interface AppSettingsContextData {
   updateSettings: (next: Partial<AppSettings>) => Promise<void>;
 }
 
-const STORAGE_KEY = '@estufa2:app_settings';
-
-const defaultSettings: AppSettings = {
-  darkMode: false,
-  notifyCritical: true,
-  notifyDailySummary: true,
-  activeProductionMode: 'ciclo_longo',
-  uiV2Enabled: true,
-  useCycleBoxWeightProfiles: false,
-};
-
 export const AppSettingsContext = createContext<AppSettingsContextData>({} as AppSettingsContextData);
 
 export const AppSettingsProvider = ({ children }: { children: ReactNode }) => {
-  const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  const [settings, setSettings] = useState<AppSettings>(defaultAppSettings);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw) as Partial<AppSettings> & {
-            productionProfiles?: { hydroponics?: boolean };
-          };
-          const inferredMode: AppSettings['activeProductionMode'] =
-            parsed.activeProductionMode ||
-            (parsed.productionProfiles?.hydroponics ? 'hidroponia' : 'ciclo_longo');
-          setSettings({
-            ...defaultSettings,
-            ...parsed,
-            activeProductionMode: inferredMode,
-          });
-        }
+        const raw = await AsyncStorage.getItem(APP_SETTINGS_STORAGE_KEY);
+        setSettings(normalizeAppSettings(raw));
       } catch (error) {
-        console.error('Erro ao carregar preferências locais:', error);
+        console.error('Erro ao carregar preferencias locais:', error);
+        setSettings(defaultAppSettings);
       } finally {
         setLoading(false);
       }
     };
 
-    loadSettings();
+    void loadSettings();
   }, []);
 
   const updateSettings = async (next: Partial<AppSettings>) => {
-    const updated = { ...settings, ...next };
+    const previous = settings;
+    const updated = mergeAppSettings(previous, next);
     setSettings(updated);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+
+    try {
+      await AsyncStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify(updated));
+    } catch (error) {
+      setSettings(previous);
+      throw new Error(
+        error instanceof Error ? error.message : 'Nao foi possivel salvar as preferencias do app.'
+      );
+    }
   };
 
   return (
