@@ -154,9 +154,7 @@ const RelatoriosScreen = () => {
     const descricaoItem = String(venda.itens?.[0]?.descricao || '').trim();
     const descricaoNormalizada = descricaoItem.toLowerCase();
     const isDescricaoGenerica =
-      !descricaoItem ||
-      descricaoNormalizada === 'producao agricola' ||
-      descricaoNormalizada === 'producao hidroponica';
+      !descricaoItem || descricaoNormalizada === 'producao agricola';
 
     if (culturaVenda) return culturaVenda;
     if (culturaPlantio) return culturaPlantio;
@@ -164,15 +162,11 @@ const RelatoriosScreen = () => {
     return 'Produto nao informado';
   };
 
-  const getVendaOrigem = (venda: Venda) =>
-     (venda as any).talhaoId
-        ? 'Campo'
-        : 'Estufa';
+  const getVendaOrigem = (_venda: Venda) => 'Estufa';
 
   const getVendaLocal = (venda: Venda) =>
     String(
       (venda as any).estufaNome ||
-        (venda as any).talhaoNome ||
         'Local nao informado'
     );
 

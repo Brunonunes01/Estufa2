@@ -55,3 +55,9 @@ test('offline sync listener dispara flush ao voltar rede e publica snapshots', a
   stop();
   assert.equal(listener, null);
 });
+test('sincronização preserva itens pendentes sem duplicar o flush', () => {
+  const source = readFileSync('src/services/offline/syncServiceCore.ts', 'utf8');
+  assert.match(source, /if \(state\.syncing\) return/);
+  assert.match(source, /flushOfflineQueue/);
+});
+import { readFileSync } from 'node:fs';

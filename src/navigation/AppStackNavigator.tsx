@@ -35,8 +35,6 @@ import RelatorioOperacionalScreen from '../screens/Financeiro/RelatorioOperacion
 import EstufaPerformanceScreen from '../screens/Financeiro/EstufaPerformanceScreen';
 import CaixasPesoCicloScreen from '../screens/Financeiro/CaixasPesoCicloScreen';
 import TarefasScreen from '../screens/Tarefas/TarefasScreen';
-import TalhoesListScreen from '../screens/Campo/TalhoesListScreen';
-import TalhaoFormScreen from '../screens/Campo/TalhaoFormScreen';
 import PlantioFormScreen from '../screens/Plantios/PlantioFormScreen';
 import PlantioDetailScreen from '../screens/Plantios/PlantioDetailScreen';
 import PlantioHistoryScreen from '../screens/Plantios/PlantioHistoryScreen';
@@ -224,17 +222,6 @@ export const AppStackNavigator = ({
       options={{ title: 'Tarefas Agrícolas' }}
     />
     <Stack.Screen
-      name="TalhoesList"
-      component={TalhoesListScreen}
-      options={{ title: 'Talhões de Campo' }}
-    />
-    <Stack.Screen
-      name="TalhaoForm"
-      component={TalhaoFormScreen}
-      options={{ title: 'Novo talhão' }}
-    />
-
-    <Stack.Screen
           name="PlantioForm"
           component={PlantioFormScreen}
           options={{ title: 'Novo Plantio' }}
@@ -263,11 +250,6 @@ export const AppStackNavigator = ({
           name="ColheitaForm"
           component={ColheitaFormScreen}
           options={{ title: 'Registrar Venda' }}
-        />
-        <Stack.Screen
-          name="CampoVendaForm"
-          component={ColheitaFormScreen}
-          options={{ title: 'Venda de Campo' }}
         />
         <Stack.Screen
           name="AplicacaoForm"

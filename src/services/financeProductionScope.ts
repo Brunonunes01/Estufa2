@@ -1,6 +1,7 @@
 import type { AppSettings } from '../contexts/appSettingsHelpers';
 
 export type FinanceProductionMode = AppSettings['activeProductionMode'];
+type LegacyFinanceProductionMode = FinanceProductionMode | 'campo';
 
 type VendaScopeLike = {
   plantioId?: string | null;
@@ -20,7 +21,7 @@ type DespesaScopeLike = {
 
 export const matchesPlantioProductionMode = (
   plantio: PlantioScopeLike,
-  mode: FinanceProductionMode
+  mode: LegacyFinanceProductionMode
 ) => {
   if (mode === 'campo') return !!plantio.talhaoId;
   return !!plantio.estufaId && !plantio.talhaoId;
@@ -28,7 +29,7 @@ export const matchesPlantioProductionMode = (
 
 export const matchesVendaProductionMode = (
   venda: VendaScopeLike,
-  mode: FinanceProductionMode,
+  mode: LegacyFinanceProductionMode,
   plantiosById: Record<string, PlantioScopeLike> = {}
 ) => {
   const plantio = venda.plantioId ? plantiosById[venda.plantioId] : undefined;
@@ -41,7 +42,7 @@ export const matchesVendaProductionMode = (
 
 export const matchesDespesaProductionMode = (
   despesa: DespesaScopeLike,
-  mode: FinanceProductionMode,
+  mode: LegacyFinanceProductionMode,
   plantiosById: Record<string, PlantioScopeLike> = {}
 ) => {
   const plantio = despesa.plantioId

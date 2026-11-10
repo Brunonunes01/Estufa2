@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 
 import {
   buildSalesAccountingClientSummaries,
@@ -27,6 +28,11 @@ test('relatório contábil separa combinado, recebido real e pendências', () =>
   assert.equal(insights.totalCancelado, 200);
   assert.equal(insights.ajusteRecebimentos, -10);
   assert.equal(insights.totalClientes, 2);
+});
+
+test('relatório contábil preserva somente a origem operacional de estufa', () => {
+  const source = readFileSync('src/screens/Financeiro/RelatoriosScreen.tsx', 'utf8');
+  assert.doesNotMatch(source, /\bCampo\b|hidroponia/i);
 });
 
 test('conciliação contábil agrupa os valores por cliente', () => {

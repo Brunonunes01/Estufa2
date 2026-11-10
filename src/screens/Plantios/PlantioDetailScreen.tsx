@@ -19,7 +19,6 @@ import {
 } from '../../services/plantioService';
 import { calculateRentabilidadeByPlantio } from '../../services/rentabilidadeService';
 import { getEstufaById } from '../../services/estufaService';
-import { listTalhoes } from '../../services/talhaoService';
 import { listColheitasByPlantio } from '../../services/colheitaService';
 import { listVendasByPlantio } from '../../services/vendaService';
 import { buildCycleProductionSummary } from '../../services/cycleProductionReportHelpers';
@@ -154,24 +153,6 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
           listColheitasByPlantio(targetId, plantioId),
           listVendasByPlantio(targetId, plantioId),
           (async (): Promise<CycleLocation> => {
-            if (currentPlantio.talhaoId) {
-              const talhoes = await listTalhoes(targetId);
-              const talhao = talhoes.find(
-                (item) => item.id === currentPlantio.talhaoId
-              );
-              const areaHectares = Number(
-                talhao?.areaCalculadaHectares || talhao?.areaHectares || 0
-              );
-              return {
-                name: talhao?.nome || 'Talhão não identificado',
-                areaM2: areaHectares * 10_000,
-                areaLabel:
-                  areaHectares > 0
-                    ? `${formatNumber(areaHectares, 4)} ha`
-                    : 'Não informada',
-              };
-            }
-
             if (currentPlantio.estufaId) {
               const estufa = await getEstufaById(
                 currentPlantio.estufaId,
@@ -285,7 +266,6 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
     );
   }
 
-  const isFieldCycle = !!plantio.talhaoId;
   const isPlantioInactive =
     plantio.status === 'finalizado' || plantio.status === 'cancelado';
   const statusLabel =
@@ -378,12 +358,12 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
             <Text style={styles.sectionTitle}>Dados do ciclo</Text>
           </View>
           <MaterialCommunityIcons
-            name={isFieldCycle ? 'map-marker-radius-outline' : 'greenhouse'}
+            name="greenhouse"
             size={25}
             color={COLORS.primary}
           />
         </View>
-        <InfoRow label={isFieldCycle ? 'Talhão' : 'Estufa'} value={location?.name || '-'} />
+        <InfoRow label="Estufa" value={location?.name || '-'} />
         <InfoRow label="Área" value={location?.areaLabel || 'Não informada'} />
         <InfoRow label="Início" value={formatDateSafe(startDate)} />
         <InfoRow label="Previsão de colheita" value={formatDateSafe(forecastDate)} />
@@ -659,7 +639,7 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
               style={[styles.btnAction, { borderColor: COLORS.primary }]}
               onPress={() =>
                 navigation.navigate(
-                  isFieldCycle ? 'CampoVendaForm' : 'ColheitaForm',
+                  'ColheitaForm',
                   {
                     plantioId: plantio.id,
                     estufaId: plantio.estufaId,
@@ -721,7 +701,6 @@ const PlantioDetailScreen = ({ route, navigation }: any) => {
                 navigation.navigate('PlantioForm', {
                   plantioId: plantio.id,
                   estufaId: plantio.estufaId,
-                  talhaoId: plantio.talhaoId,
                 })
               }
             >

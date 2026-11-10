@@ -14,6 +14,7 @@ export type TenantContext = {
 } | null | undefined;
 
 export type AccessRole = 'owner' | 'manager' | 'operator' | 'viewer';
+export type TenantOperation = 'read' | 'write' | 'delete' | 'manageSharing';
 
 export type AccessSnapshot = {
   accessRole: AccessRole;
@@ -141,4 +142,23 @@ export const getAccessSnapshot = (tenant: TenantContext): AccessSnapshot => {
     canInviteManager: isOwner,
     canRemoveManager: isOwner,
   };
+};
+
+export const hasTenantPermission = (
+  access: Pick<AccessSnapshot, 'canRead' | 'canWrite' | 'canDelete' | 'canManageSharing'>,
+  operation: TenantOperation
+): boolean => {
+  if (operation === 'read') return access.canRead;
+  if (operation === 'write') return access.canWrite;
+  if (operation === 'delete') return access.canDelete;
+  return access.canManageSharing;
+};
+
+export const assertTenantPermission = (
+  access: Pick<AccessSnapshot, 'canRead' | 'canWrite' | 'canDelete' | 'canManageSharing'>,
+  operation: TenantOperation
+) => {
+  if (!hasTenantPermission(access, operation)) {
+    throw new Error(`Permissao insuficiente para operacao de tenant: ${operation}.`);
+  }
 };

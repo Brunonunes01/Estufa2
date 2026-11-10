@@ -1,3 +1,6 @@
+import type { AccessSnapshot, TenantOperation } from '../lib/accessControl.ts';
+import { assertTenantPermission } from '../lib/accessControl.ts';
+
 export const isTenantIdValid = (tenantId?: string | null): tenantId is string =>
   !!tenantId && !!tenantId.trim();
 
@@ -17,6 +20,22 @@ export const assertSameTenantScope = (expectedTenantId?: string | null, received
   }
 
   return normalizedExpected;
+};
+
+export const assertTenantOperation = ({
+  expectedTenantId,
+  receivedTenantId,
+  access,
+  operation,
+}: {
+  expectedTenantId?: string | null;
+  receivedTenantId?: string | null;
+  access: Pick<AccessSnapshot, 'canRead' | 'canWrite' | 'canDelete' | 'canManageSharing'>;
+  operation: TenantOperation;
+}) => {
+  const tenantId = assertSameTenantScope(expectedTenantId, receivedTenantId);
+  assertTenantPermission(access, operation);
+  return tenantId;
 };
 
 /**

@@ -48,3 +48,12 @@ test('estoque consumido é recomposto antes de apagar aplicações', () => {
     'o estoque deve ser recomposto antes da exclusão'
   );
 });
+
+test('a iniciativa não executa exclusão histórica automaticamente', () => {
+  const quickstart = readFileSync(
+    fileURLToPath(new URL('../specs/001-recuperacao-estufas/quickstart.md', import.meta.url)),
+    'utf8'
+  );
+  assert.match(quickstart, /Não foram executadas migrations/i);
+  assert.match(quickstart, /sem telas operacionais/i);
+});

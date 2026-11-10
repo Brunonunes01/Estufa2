@@ -7,7 +7,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import DashboardScreen from '../screens/Dashboard/DashboardScreen';
-import CampoHubScreen from '../screens/Campo/CampoHubScreen';
 import EstufasListScreen from '../screens/Estufas/EstufasListScreen';
 import InsumosListScreen from '../screens/Insumos/InsumosListScreen';
 import VendasListScreen from '../screens/Vendas/VendasListScreen';
@@ -34,8 +33,6 @@ export const MainTabsNavigator = ({
   const { canWrite, isReadOnly, accessRoleLabel } = useAuth();
   const [quickActionsVisible, setQuickActionsVisible] = useState(false);
 
-  const operationEntryScreen =
-    activeMode === 'campo' ? CampoHubScreen : EstufasListScreen;
   const quickActions = buildQuickActions(activeMode, (screen, params) =>
     (navigation as any).navigate(screen, params)
   );
@@ -76,7 +73,7 @@ export const MainTabsNavigator = ({
         <Tab.Screen name="InicioTab" component={DashboardScreen} options={{ title: 'Início' }} />
         <Tab.Screen
           name="OperacaoTab"
-          component={operationEntryScreen}
+          component={EstufasListScreen}
           options={{ title: getOperationTabTitle(activeMode) }}
         />
         <Tab.Screen name="EstoqueTab" component={InsumosListScreen} options={{ title: 'Estoque' }} />

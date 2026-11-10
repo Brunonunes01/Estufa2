@@ -16,3 +16,22 @@ export const assertProductionOriginNotMixed = (
     );
   }
 };
+
+/**
+ * New operational writes belong exclusively to a conventional greenhouse.
+ * Legacy records may still be read, but they must not be created or
+ * reclassified through the active application flows.
+ */
+export const assertGreenhouseProductionOrigin = (
+  origin: { estufaId?: string | null; talhaoId?: string | null },
+  entityLabel = 'Registro'
+) => {
+  if (hasValue(origin.talhaoId)) {
+    throw new Error(
+      `${entityLabel} de campo/talhão não pode ser criado no modo de estufas.`
+    );
+  }
+  if (!hasValue(origin.estufaId)) {
+    throw new Error(`${entityLabel} deve estar vinculado a uma estufa.`);
+  }
+};

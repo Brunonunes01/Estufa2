@@ -23,6 +23,11 @@ test('venda agricola oferece caixa, kg, unidade e demais unidades', () => {
   }
 });
 
+test('venda ativa não oferece origem de campo ou hidroponia', () => {
+  const source = readProjectFile('../src/screens/Vendas/VendasListScreen.tsx');
+  assert.doesNotMatch(source, /\bCampo\b|hidroponia|talhoesMap/i);
+});
+
 test('servico de venda nao mantem guarda especial de unidade hidroponica', () => {
   const source = readProjectFile('../src/services/vendaService.ts');
   assert.doesNotMatch(source, /isHydroSale/);

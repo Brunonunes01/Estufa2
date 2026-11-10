@@ -183,6 +183,7 @@ export interface PlantioCaixaPerfil {
 export interface Plantio extends BaseDoc {
   safraId?: string;
   estufaId?: string;
+  /** Legado: leitura/sincronização histórica; novos fluxos exigem estufaId. */
   talhaoId?: string;
   subdivisaoId?: string;
   cultura: string;
@@ -315,6 +316,7 @@ export interface VendaItem {
 
 export interface Venda extends BaseDoc {
   plantioId?: string;
+  /** Legado: não é usado por novos fluxos de venda de estufa. */
   talhaoId?: string;
   originType?: 'plantio';
   originId?: string | null;

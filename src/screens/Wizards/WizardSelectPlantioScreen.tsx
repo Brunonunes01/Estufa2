@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAuth } from '../../hooks/useAuth';
@@ -28,11 +28,9 @@ type ScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
   'WizardSelectPlantio'
 >;
-type ScreenRouteProp = RouteProp<RootStackParamList, 'WizardSelectPlantio'>;
 
 const WizardSelectPlantioScreen = () => {
   const navigation = useNavigation<ScreenNavigationProp>();
-  const route = useRoute<ScreenRouteProp>();
   const { user, selectedTenantId } = useAuth();
   const tenantId = selectedTenantId || user?.uid;
 
@@ -42,15 +40,11 @@ const WizardSelectPlantioScreen = () => {
     enabled: !!tenantId,
   });
 
-  const plantiosDisponiveis =
-    route.params?.origem === 'campo'
-      ? (activePlantios || []).filter((plantio) => !!plantio.talhaoId)
-      : activePlantios;
+  const plantiosDisponiveis = activePlantios;
 
   const handleSelectPlantio = (plantio: Plantio) => {
     navigation.navigate('WizardSelectActivity', {
       plantio,
-      origem: route.params?.origem,
     });
   };
 

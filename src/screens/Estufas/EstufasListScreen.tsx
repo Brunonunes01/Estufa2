@@ -31,20 +31,13 @@ const EstufasListScreen = ({ navigation, route }: any) => {
   const { settings } = useAppSettings();
   const { showError, showWarning } = useFeedback();
   const mode = route?.params?.mode as 'colheita' | 'plantio' | 'manejo' | undefined;
-  const talhaoId = route?.params?.talhaoId as string | undefined;
   const targetId = selectedTenantId || user?.uid;
   const { data, isLoading, isFetching, isError, refetch } = useEstufasListData(targetId);
   const estufasRaw: Estufa[] = data?.estufas || [];
   const plantios: Plantio[] = data?.activePlantios || [];
   const loading = isLoading || isFetching;
   
-  const estufas = useMemo(
-    () =>
-      estufasRaw.filter((estufa) => {
-        return true;
-      }),
-    [estufasRaw]
-  );
+  const estufas = estufasRaw;
 
   useEffect(() => {
     if (isError) showError('Não foi possível carregar a lista de estufas.');
@@ -134,7 +127,7 @@ const EstufasListScreen = ({ navigation, route }: any) => {
         return;
       }
       if (mode === 'plantio') {
-        if (canWrite) navigation.navigate('PlantioForm', { estufaId, talhaoId });
+        if (canWrite) navigation.navigate('PlantioForm', { estufaId });
         return;
       }
       if (mode === 'manejo') {
@@ -305,9 +298,6 @@ const EstufasListScreen = ({ navigation, route }: any) => {
 
       {!mode ? (
         <View style={styles.moduleLinksRow}>
-          <TouchableOpacity style={[styles.moduleLink, styles.moduleLinkActive, { borderColor: COLORS.primary }]}>
-            <Text style={[styles.moduleLinkText, { color: COLORS.primary }]}>Campo</Text>
-          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.moduleLink, { borderColor: theme.border, backgroundColor: theme.surfaceBackground }]}
             onPress={() => navigation.navigate('MainTabs', { screen: 'EstoqueTab' })}

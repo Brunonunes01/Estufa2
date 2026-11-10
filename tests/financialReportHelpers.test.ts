@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 
 import {
   buildFinancialReportStats,
@@ -81,4 +82,8 @@ test('fechamento mensal separa despesas lançadas de pagamentos efetuados', () =
   assert.equal(stats.despesaComprometida, 200);
   assert.equal(stats.despesaPaga, 45);
   assert.equal(stats.resultadoRealizado, -45);
+});
+test('relatório financeiro ativo não classifica produção como campo ou hidroponia', () => {
+  const source = readFileSync('src/screens/Financeiro/RelatoriosScreen.tsx', 'utf8');
+  assert.doesNotMatch(source, /\bCampo\b|hidroponia/i);
 });

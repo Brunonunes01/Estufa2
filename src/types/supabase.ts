@@ -509,6 +509,7 @@ export type Database = {
           created_at: string;
           created_by: string | null;
           data_inicio_operacao: string | null;
+          /** Legado persistido; não é selecionável pelos fluxos ativos. */
           hydroponic_system_type:
             | Database['public']['Enums']['hydroponic_system_type']
             | null;

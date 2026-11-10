@@ -59,15 +59,10 @@ const ACTIVITIES = [
 const WizardSelectActivityScreen = () => {
   const navigation = useNavigation<ScreenNavigationProp>();
   const route = useRoute<ScreenRouteProp>();
-  const { plantio, origem } = route.params;
+  const { plantio } = route.params;
 
   const handleSelectActivity = (targetScreen: keyof RootStackParamList) => {
-    const resolvedTarget =
-      targetScreen === 'ColheitaForm' &&
-      (origem === 'campo' || plantio.talhaoId)
-        ? 'CampoVendaForm'
-        : targetScreen;
-    navigation.navigate(resolvedTarget as any, {
+    navigation.navigate(targetScreen as any, {
       // O 'as any' é um workaround para a complexidade de tipos do navigator
       plantioId: plantio.id,
       estufaId: plantio.estufaId,

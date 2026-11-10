@@ -990,7 +990,7 @@ const ContasReceberScreen = ({ navigation }: any) => {
             onReceber={handleOpenReceber}
             onPress={() => {
               navigation.navigate(
-                item.talhaoId ? 'CampoVendaForm' : 'ColheitaForm',
+                'ColheitaForm',
                 { vendaId: item.id, isEdit: true }
               );
             }}

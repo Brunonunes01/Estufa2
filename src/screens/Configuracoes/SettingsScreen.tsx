@@ -37,7 +37,7 @@ import {
 import { getSupabaseClient } from '../../services/supabaseClient';
 import { exportTenantDatabase } from '../../services/databaseExportService';
 
-const SettingsScreen = ({ navigation }: any) => {
+const SettingsScreen = (_props: any) => {
   const {
     user,
     selectedTenant,

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { evaluateEstufaHealth } from '../src/utils/estufaHealth.ts';
 import type { Estufa, Plantio, RegistroManejo } from '../src/types/domain.ts';
@@ -72,6 +73,11 @@ test('deve ignorar alerta sanitário antigo (> 7 dias)', () => {
   };
   const health = evaluateEstufaHealth(mockEstufa, [mockPlantioAtivo], [manejoAntigo]);
   assert.equal(health.level, 'ok');
+});
+
+test('saúde da estufa usa somente o ciclo vinculado à estufa', () => {
+  const source = readFileSync('src/utils/estufaHealth.ts', 'utf8');
+  assert.doesNotMatch(source, /Talhão|hidroponia|Campo/);
 });
 
 test('deve priorizar nível crítico sobre aviso de motor', () => {

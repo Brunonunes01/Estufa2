@@ -73,3 +73,26 @@ test('flushOfflineQueue preserva itens de outro usuario autenticado', async () =
   assert.deepEqual(result, { flushed: 0, pending: 1, failed: 0 });
   assert.equal(await queue.getOfflineQueueSize(), 1);
 });
+
+test('operação offline de estufa permanece retida até o tenant correto voltar', async () => {
+  const { storage } = createMemoryStorage();
+  const executed: string[] = [];
+  let activeScope: OfflineQueueScope | null = { authUserId: 'user-1', tenantId: 'tenant-estufa' };
+  const queue = createOfflineQueueStorage({
+    storage,
+    queueKey: '@test/greenhouse-queue',
+    isOnlineNow: async () => true,
+    resolveActiveScope: async () => activeScope,
+    executeOfflineAction: async (action, payload) => {
+      executed.push(`${action}:${(payload as { userId: string }).userId}`);
+    },
+  });
+
+  await queue.enqueueOfflineAction('createPlantio', {
+    userId: 'tenant-estufa',
+    data: { estufaId: 'estufa-1' },
+  });
+  activeScope = { authUserId: 'user-2', tenantId: 'tenant-estufa' };
+  assert.deepEqual(await queue.flushOfflineQueue(), { flushed: 0, pending: 1, failed: 0 });
+  assert.deepEqual(executed, []);
+});

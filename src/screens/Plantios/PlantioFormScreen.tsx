@@ -19,7 +19,6 @@ import {
   updatePlantio,
   getPlantioById,
   deletePlantioSafely,
-  removeFieldCycle,
 } from '../../services/plantioService';
 import {
   COLORS,
@@ -34,7 +33,6 @@ import { verifyCurrentUserPassword } from '../../services/securityService';
 import { resolveServiceErrorMessage } from '../../services/securityUiHelpers';
 import { useMutation } from '@tanstack/react-query';
 import { useAppSettings } from '../../hooks/useAppSettings';
-import { useTalhoesListData } from '../../hooks/queries/useTalhoesListData';
 import {
   sanitizeDecimalInput,
   sanitizeIntegerInput,
@@ -100,30 +98,12 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
   const targetId = selectedTenantId || user?.uid;
 
   const estufaId = route.params?.estufaId;
-  const talhaoId = route.params?.talhaoId;
   const editingId = route.params?.plantioId;
   const isEditMode = !!editingId;
   const [loadedEstufaId, setLoadedEstufaId] = useState<string | undefined>(
     estufaId
   );
   const resolvedEstufaId = estufaId || loadedEstufaId;
-  const [selectedTalhaoId, setSelectedTalhaoId] = useState<string>(
-    talhaoId || ''
-  );
-  const { data: talhoesData = [], isLoading: isLoadingTalhoes } =
-    useTalhoesListData(targetId);
-  const activeTalhoes = useMemo(
-    () => talhoesData.filter((talhao) => talhao.status !== 'inativo'),
-    [talhoesData]
-  );
-  const selectedTalhao = talhoesData.find(
-    (talhao) => talhao.id === selectedTalhaoId
-  );
-  const selectableTalhoes =
-    selectedTalhao?.status === 'inativo'
-      ? [selectedTalhao, ...activeTalhoes]
-      : activeTalhoes;
-  const isFieldFlow = !resolvedEstufaId;
 
   const [codigoLote, setCodigoLote] = useState('');
   const [cultura, setCultura] = useState('');
@@ -136,7 +116,6 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
   const [quantidadeBandejas, setQuantidadeBandejas] = useState('');
   const [mudasPorBandeja, setMudasPorBandeja] = useState('');
   const [precoUnidade, setPrecoUnidade] = useState('');
-  const [omitPlantingQuantity, setOmitPlantingQuantity] = useState(false);
 
   const [cicloDias, setCicloDias] = useState('');
   const [observacoes, setObservacoes] = useState('');
@@ -160,23 +139,17 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-    if (!resolvedEstufaId && !selectedTalhaoId) {
-      newErrors.talhao = 'Selecione em qual talhão este ciclo será plantado.';
-    }
+    if (!resolvedEstufaId) newErrors.estufa = 'Selecione uma estufa.';
     if (!cultura.trim()) {
       newErrors.cultura = 'Informe a cultura.';
     }
-    const requiresPlantingQuantity = !(
-      isFieldFlow && omitPlantingQuantity
-    );
     if (
-      requiresPlantingQuantity &&
       !quantidadePlantada.trim() &&
       unidadeQuantidade !== 'Bandejas'
     ) {
       newErrors.quantidade = 'Informe a quantidade plantada.';
     }
-    if (requiresPlantingQuantity && unidadeQuantidade === 'Bandejas') {
+    if (unidadeQuantidade === 'Bandejas') {
       const bandejas = parseFloat(quantidadeBandejas.replace(',', '.')) || 0;
       const mudas = parseFloat(mudasPorBandeja.replace(',', '.')) || 0;
       if (bandejas <= 0 || mudas <= 0) {
@@ -261,7 +234,6 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
       const data = await getPlantioById(id, targetId);
       if (data) {
         setLoadedEstufaId(data.estufaId);
-        setSelectedTalhaoId(data.talhaoId || '');
         setCodigoLote(data.codigoLote || '');
         setCultura(data.cultura || '');
         setVariedade(data.variedade || '');
@@ -273,11 +245,6 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
         setQuantidadeBandejas(data.quantidadeBandejas?.toString() || '');
         setMudasPorBandeja(data.mudasPorBandeja?.toString() || '');
         setPrecoUnidade(data.precoEstimadoUnidade?.toString() || '');
-        setOmitPlantingQuantity(
-          !!data.talhaoId &&
-            !(Number(data.quantidadePlantada || 0) > 0) &&
-            !(Number(data.quantidadeBandejas || 0) > 0)
-        );
         setCicloDias(data.cicloDias?.toString() || '');
         setObservacoes(data.observacoes || '');
         setCaixaPerfis(data.caixaPerfis || []);
@@ -369,26 +336,8 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
         return;
       }
 
-      let successMessage = 'O ciclo foi excluído definitivamente.';
-      if (selectedTalhaoId) {
-        const result = await removeFieldCycle(editingId, targetId);
-        const deletedOperationalRecords =
-          result.deletedVendas +
-          result.deletedColheitas +
-          result.deletedAplicacoes +
-          result.deletedManejos +
-          result.deletedTarefas +
-          result.deletedOperationalDespesas;
-        successMessage = result.hadHistory
-          ? `O ciclo e ${deletedOperationalRecords} registro(s) do histórico foram excluídos permanentemente.${
-              result.restoredInsumos > 0
-                ? ` O estoque de ${result.restoredInsumos} insumo(s) foi recomposto.`
-                : ''
-            }`
-          : 'O ciclo vazio foi excluído definitivamente.';
-      } else {
-        await deletePlantioSafely(editingId, targetId);
-      }
+      const successMessage = 'O ciclo foi excluído definitivamente.';
+      await deletePlantioSafely(editingId, targetId);
 
       setDeleteModalVisible(false);
       setAdminPassword('');
@@ -408,7 +357,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
   };
 
   useEffect(() => {
-    if (omitPlantingQuantity || unidadeQuantidade !== 'Bandejas') return;
+    if (unidadeQuantidade !== 'Bandejas') return;
 
     const bandejas = parseFloat(quantidadeBandejas.replace(',', '.'));
     const mudas = parseFloat(mudasPorBandeja.replace(',', '.'));
@@ -416,14 +365,12 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
       setQuantidadePlantada(String(bandejas * mudas));
     }
   }, [
-    omitPlantingQuantity,
     unidadeQuantidade,
     quantidadeBandejas,
     mudasPorBandeja,
   ]);
 
   const custoEstimado = useMemo(() => {
-    if (isFieldFlow && omitPlantingQuantity) return 0;
     const preco = parseFloat(precoUnidade.replace(',', '.')) || 0;
     if (preco <= 0) return 0;
 
@@ -435,8 +382,6 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
     const qtd = parseFloat(quantidadePlantada.replace(',', '.')) || 0;
     return qtd * preco;
   }, [
-    isFieldFlow,
-    omitPlantingQuantity,
     precoUnidade,
     unidadeQuantidade,
     quantidadeBandejas,
@@ -521,9 +466,6 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
         ? parseFloat(mudasPorBandeja.replace(',', '.')) || null
         : null;
     const cicloNum = parseInt(cicloDias) || 0;
-    const shouldOmitPlantingQuantity =
-      isFieldFlow && omitPlantingQuantity;
-
     let previsaoData = null;
     const dataPlantioTimestamp = Timestamp.now();
 
@@ -535,36 +477,17 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
 
     const plantioData = {
       estufaId: resolvedEstufaId,
-      talhaoId: selectedTalhaoId || undefined,
       codigoLote,
       cultura,
       variedade,
       origemSemente,
-      quantidadePlantada: shouldOmitPlantingQuantity ? null : qtdNum,
-      quantidadeBandejas: shouldOmitPlantingQuantity
-        ? null
-        : quantidadeBandejasNum,
-      mudasPorBandeja: shouldOmitPlantingQuantity
-        ? null
-        : mudasPorBandejaNum,
-      unidadeQuantidade: shouldOmitPlantingQuantity
-        ? null
-        : unidadeQuantidade,
-      precoEstimadoUnidade: shouldOmitPlantingQuantity
-        ? null
-        : precoUnidadeNum > 0
-          ? precoUnidadeNum
-          : null,
-      unidadePrecoEstimado: shouldOmitPlantingQuantity
-        ? null
-        : precoUnidadeNum > 0
-          ? unidadeQuantidade
-          : null,
-      custoEstimadoInicial: shouldOmitPlantingQuantity
-        ? null
-        : precoUnidadeNum > 0
-          ? custoEstimado
-          : null,
+      quantidadePlantada: qtdNum,
+      quantidadeBandejas: quantidadeBandejasNum,
+      mudasPorBandeja: mudasPorBandejaNum,
+      unidadeQuantidade,
+      precoEstimadoUnidade: precoUnidadeNum > 0 ? precoUnidadeNum : null,
+      unidadePrecoEstimado: precoUnidadeNum > 0 ? unidadeQuantidade : null,
+      custoEstimadoInicial: precoUnidadeNum > 0 ? custoEstimado : null,
       cicloDias: cicloNum > 0 ? cicloNum : null,
       observacoes,
       caixaPerfis,
@@ -579,58 +502,6 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
 
     mutation.mutate(plantioData);
   };
-
-  if (
-    isFieldFlow &&
-    !isEditMode &&
-    !talhaoId &&
-    !isLoadingTalhoes &&
-    activeTalhoes.length === 0
-  ) {
-    return (
-      <View style={styles.prerequisiteContainer}>
-        <View style={styles.prerequisiteIcon}>
-          <MaterialCommunityIcons
-            name="map-marker-plus-outline"
-            size={38}
-            color={COLORS.primary}
-          />
-        </View>
-        <Text style={styles.prerequisiteEyebrow}>ANTES DO PRIMEIRO CICLO</Text>
-        <Text style={styles.prerequisiteTitle}>Crie um talhão primeiro</Text>
-        <Text style={styles.prerequisiteText}>
-          O talhão identifica onde a cultura será plantada e mantém todo o
-          histórico do ciclo organizado.
-        </Text>
-        <View style={styles.prerequisiteFlow}>
-          <View style={styles.prerequisiteStepActive}>
-            <Text style={styles.prerequisiteStepNumberActive}>1</Text>
-            <Text style={styles.prerequisiteStepTextActive}>Talhão</Text>
-          </View>
-          <MaterialCommunityIcons
-            name="chevron-right"
-            size={22}
-            color={COLORS.textSecondary}
-          />
-          <View style={styles.prerequisiteStep}>
-            <Text style={styles.prerequisiteStepNumber}>2</Text>
-            <Text style={styles.prerequisiteStepText}>Ciclo</Text>
-          </View>
-        </View>
-        <TouchableOpacity
-          style={styles.prerequisiteButton}
-          onPress={() => navigation.replace('TalhaoForm')}
-        >
-          <MaterialCommunityIcons
-            name="plus-circle-outline"
-            size={21}
-            color={COLORS.textLight}
-          />
-          <Text style={styles.prerequisiteButtonText}>Criar meu talhão</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>
@@ -654,46 +525,17 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
             </View>
             <View style={styles.heroContent}>
               <Text style={styles.heroEyebrow}>
-                {isEditMode
-                  ? 'EDIÇÃO DO CICLO'
-                  : isFieldFlow
-                    ? 'ETAPA 2 DE 2'
-                    : 'NOVO CICLO'}
+                {isEditMode ? 'EDIÇÃO DO CICLO' : 'NOVO CICLO'}
               </Text>
               <Text style={styles.heroTitle}>
-                {isEditMode
-                  ? 'Atualize o ciclo'
-                  : isFieldFlow
-                    ? 'Agora crie o ciclo'
-                    : 'Novo ciclo da estufa'}
+                {isEditMode ? 'Atualize o ciclo' : 'Novo ciclo da estufa'}
               </Text>
               <Text style={styles.heroSubtitle}>
-                {isFieldFlow
-                  ? selectedTalhao?.nome
-                    ? `Plantio vinculado ao talhão ${selectedTalhao.nome}`
-                    : 'Escolha o talhão e informe os dados do plantio.'
-                  : 'Informe a cultura, a quantidade e a previsão do ciclo.'}
+                Informe a cultura, a quantidade e a previsão do ciclo.
               </Text>
             </View>
           </View>
 
-          {isFieldFlow ? (
-            <View style={styles.flowRow}>
-              <View style={styles.flowStepDone}>
-                <MaterialCommunityIcons
-                  name="check"
-                  size={14}
-                  color={COLORS.primary}
-                />
-                <Text style={styles.flowStepDoneText}>1. Talhão</Text>
-              </View>
-              <View style={styles.flowLine} />
-              <View style={styles.flowStepActive}>
-                <Text style={styles.flowStepActiveNumber}>2</Text>
-                <Text style={styles.flowStepActiveText}>Ciclo</Text>
-              </View>
-            </View>
-          ) : null}
         </View>
 
         <View style={styles.formCard}>
@@ -704,55 +546,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
             description="Os campos com * são obrigatórios."
           />
 
-          {isFieldFlow ? (
-            <View style={styles.originBlock}>
-              <View style={styles.originLabelRow}>
-                <Text style={styles.label}>Talhão do ciclo *</Text>
-                <TouchableOpacity
-                  style={styles.inlineAction}
-                  onPress={() => navigation.navigate('TalhaoForm')}
-                >
-                  <MaterialCommunityIcons
-                    name="plus"
-                    size={16}
-                    color={COLORS.primary}
-                  />
-                  <Text style={styles.inlineActionText}>Novo talhão</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.pickerWrapperRequired}>
-                <MaterialCommunityIcons
-                  name="map-marker-outline"
-                  size={20}
-                  color={COLORS.primary}
-                  style={styles.pickerLeadingIcon}
-                />
-                <Picker
-                  selectedValue={selectedTalhaoId}
-                  onValueChange={(value) => {
-                    setSelectedTalhaoId(String(value || ''));
-                    if (errors.talhao) setErrors((e) => ({ ...e, talhao: '' }));
-                  }}
-                  style={styles.pickerWithIcon}
-                >
-                  <Picker.Item label="Selecione um talhão" value="" />
-                  {selectableTalhoes.map((talhao) => (
-                    <Picker.Item
-                      key={talhao.id}
-                      label={talhao.nome}
-                      value={talhao.id}
-                    />
-                  ))}
-                </Picker>
-              </View>
-              {errors.talhao ? <Text style={styles.errorText}>{errors.talhao}</Text> : null}
-              <Text style={styles.originHint}>
-                O histórico deste ciclo ficará organizado dentro do talhão
-                selecionado.
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.originSummary}>
+          <View style={styles.originSummary}>
               <View style={styles.originSummaryIcon}>
                 <MaterialCommunityIcons
                   name="greenhouse"
@@ -771,8 +565,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
                 size={22}
                 color={COLORS.success}
               />
-            </View>
-          )}
+          </View>
 
           <View style={styles.loteContainer}>
             <Text style={styles.loteLabel}>
@@ -831,63 +624,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
             description="Defina como este ciclo começa e a previsão de conclusão."
           />
 
-          {isFieldFlow ? (
-            <TouchableOpacity
-              style={[
-                styles.omitQuantityOption,
-                omitPlantingQuantity && styles.omitQuantityOptionActive,
-              ]}
-              onPress={() => {
-                setOmitPlantingQuantity((current) => !current);
-                setErrors((current) => ({
-                  ...current,
-                  quantidade: '',
-                  bandejas: '',
-                }));
-              }}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: omitPlantingQuantity }}
-            >
-              <MaterialCommunityIcons
-                name={
-                  omitPlantingQuantity
-                    ? 'checkbox-marked-circle'
-                    : 'checkbox-blank-circle-outline'
-                }
-                size={24}
-                color={
-                  omitPlantingQuantity
-                    ? COLORS.primary
-                    : COLORS.textSecondary
-                }
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.omitQuantityTitle}>
-                  Não informar quantidade plantada
-                </Text>
-                <Text style={styles.omitQuantityDescription}>
-                  Use quando ainda não souber a quantidade de pés, mudas,
-                  sementes ou bandejas deste ciclo.
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ) : null}
-
-          {isFieldFlow && omitPlantingQuantity ? (
-            <View style={styles.omittedQuantityBox}>
-              <MaterialCommunityIcons
-                name="information-outline"
-                size={20}
-                color={COLORS.info}
-              />
-              <Text style={styles.omittedQuantityText}>
-                A quantidade ficará como não informada. Indicadores por
-                pé/muda serão exibidos somente depois que o ciclo for editado
-                e a quantidade preenchida.
-              </Text>
-            </View>
-          ) : (
-            <>
+          <>
               <View style={styles.row}>
             <View style={{ flex: 1, marginRight: 5 }}>
               <Text style={styles.label}>Quantidade *</Text>
@@ -1008,8 +745,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
               </Text>
                 </View>
               </View>
-            </>
-          )}
+          </>
 
           <View style={styles.row}>
             <View style={{ flex: 1 }}>
@@ -1032,7 +768,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
           </Text>
         </View>
 
-        {settings.useCycleBoxWeightProfiles && !isFieldFlow ? (
+        {settings.useCycleBoxWeightProfiles ? (
           <View style={styles.formCard}>
             <FormSectionHeader
               icon="package-variant-closed"

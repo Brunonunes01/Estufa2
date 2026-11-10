@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 
 import {
   buildVendasStats,
@@ -129,4 +130,8 @@ test('despesas de Estufa não entram no financeiro do Campo', () => {
     false
   );
   assert.equal(matchesDespesaProductionMode({}, 'campo', plantios), true);
+});
+test('lista de vendas pesquisa somente local de estufa na superfície ativa', () => {
+  const source = readFileSync('src/screens/Vendas/VendasListScreen.tsx', 'utf8');
+  assert.doesNotMatch(source, /talhoesMap|Campo|hidroponia/i);
 });

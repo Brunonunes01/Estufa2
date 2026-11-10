@@ -1,9 +1,12 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 
 import {
+  assertTenantPermission,
   getAccessSnapshot,
   getDefaultTenantPermissions,
+  hasTenantPermission,
   resolveAccessRole,
   resolveSharedTenantRole,
   resolveTenantPermissions,
@@ -19,6 +22,17 @@ test('viewer keeps read-only access and can see all read-only dashboards', () =>
   assert.equal(access.canManageSharing, false);
   assert.equal(access.canViewFinancialDashboard, true);
   assert.equal(access.canViewCash, true);
+});
+
+test('greenhouse operations follow the active tenant permissions', () => {
+  const viewer = getAccessSnapshot({ type: 'shared', role: 'guest' });
+  const operator = getAccessSnapshot({ type: 'shared', role: 'operator' });
+
+  assert.equal(hasTenantPermission(viewer, 'read'), true);
+  assert.equal(hasTenantPermission(viewer, 'write'), false);
+  assert.equal(hasTenantPermission(operator, 'write'), true);
+  assert.equal(hasTenantPermission(operator, 'delete'), false);
+  assert.throws(() => assertTenantPermission(viewer, 'write'), /Permissao insuficiente/i);
 });
 
 test('operator can see dashboard and write but not manage sharing', () => {
@@ -102,4 +116,8 @@ test('default tenant permissions stay aligned with expected roles', () => {
     canDelete: false,
     canManageSharing: false,
   });
+});
+test('controle de acesso não libera rotas removidas', () => {
+  const source = readFileSync('src/navigation/AppStackNavigator.tsx', 'utf8');
+  assert.doesNotMatch(source, /TalhoesList|TalhaoForm|CampoVendaForm/);
 });

@@ -8,7 +8,7 @@ import {
 import { getSupabaseClient } from './supabaseClient';
 import { assertTenantId } from './tenantGuard';
 import { createTraceabilityEventSafely } from './traceabilityService';
-import { assertProductionOriginNotMixed } from './productionOriginGuard';
+import { assertGreenhouseProductionOrigin } from './productionOriginGuard';
 
 const toTs = (value?: string | null) =>
   value ? Timestamp.fromDate(new Date(value)) : undefined;
@@ -176,7 +176,7 @@ export const createPlantio = async (
   options?: OfflineWriteOptions
 ) => {
   const tenantId = assertTenantId(userId);
-  assertProductionOriginNotMixed(data, 'Plantio');
+  assertGreenhouseProductionOrigin(data, 'Plantio');
   return runOfflineWrite({
     action: 'createPlantio',
     payload: { data, userId: tenantId },
@@ -359,7 +359,7 @@ export const updatePlantio = async (
         throw new Error('Plantio não encontrado.');
       }
 
-      assertProductionOriginNotMixed(
+      assertGreenhouseProductionOrigin(
         {
           estufaId:
             data.estufaId !== undefined ? data.estufaId : plantio.estufaId,

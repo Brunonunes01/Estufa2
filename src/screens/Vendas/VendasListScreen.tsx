@@ -24,7 +24,6 @@ import { useThemeMode } from '../../hooks/useThemeMode';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { useClientesListData } from '../../hooks/queries/useClientesListData';
 import { useEstufasListData } from '../../hooks/queries/useEstufasListData';
-import { useTalhoesListData } from '../../hooks/queries/useTalhoesListData';
 import { queryClient, queryKeys } from '../../lib/queryClient';
 import {
   deleteVenda,
@@ -183,7 +182,6 @@ const VendasListScreen = ({ navigation, route }: any) => {
 
   const targetId = selectedTenantId || user?.uid;
   const productionMode = settings.activeProductionMode;
-  const isCampoMode = productionMode === 'campo';
   const auditActor = useMemo(
     () =>
       user?.uid
@@ -211,8 +209,7 @@ const VendasListScreen = ({ navigation, route }: any) => {
     enabled: !!targetId,
     queryFn: () => listCaixaPessoas(targetId as string),
   });
-  const estufasQuery = useEstufasListData(isCampoMode ? undefined : targetId);
-  const talhoesQuery = useTalhoesListData(isCampoMode ? targetId : undefined);
+  const estufasQuery = useEstufasListData(targetId);
   const plantiosQuery = useQuery({
     queryKey: queryKeys.plantiosList(targetId || 'none'),
     enabled: !!targetId,
@@ -227,7 +224,6 @@ const VendasListScreen = ({ navigation, route }: any) => {
   const allVendas = vendasQuery.data || [];
   const clientesList = clientesQuery.data || [];
   const estufasList = estufasQuery.data?.estufas || [];
-  const talhoesList = talhoesQuery.data || [];
   const plantiosList = useMemo(
     () =>
       (plantiosQuery.data || []).filter((plantio) =>
@@ -244,7 +240,7 @@ const VendasListScreen = ({ navigation, route }: any) => {
       vendasQuery.refetch(),
       clientesQuery.refetch(),
       caixaPessoasQuery.refetch(),
-      isCampoMode ? talhoesQuery.refetch() : estufasQuery.refetch(),
+      estufasQuery.refetch(),
       plantiosQuery.refetch(),
       despesasQuery.refetch(),
     ]);
@@ -267,11 +263,6 @@ const VendasListScreen = ({ navigation, route }: any) => {
   const estufasMap = useMemo(
     () => Object.fromEntries(estufasList.map((e) => [e.id, e.nome])),
     [estufasList]
-  );
-
-  const talhoesMap = useMemo(
-    () => Object.fromEntries(talhoesList.map((t: any) => [t.id, t.nome])),
-    [talhoesList]
   );
 
   const plantiosCulturaMap = useMemo(
@@ -332,11 +323,10 @@ const VendasListScreen = ({ navigation, route }: any) => {
 
   const getVendaLocalNome = useCallback(
     (venda: any) => {
-      if (venda.talhaoId) return talhoesMap[venda.talhaoId] || 'Talhão';
       if (venda.estufaId) return estufasMap[venda.estufaId] || 'Estufa';
       return 'Local';
     },
-    [talhoesMap, estufasMap]
+    [estufasMap]
   );
 
   const getVendaLoteNome = useCallback(
@@ -359,14 +349,7 @@ const VendasListScreen = ({ navigation, route }: any) => {
       allVendas
         .filter((venda) =>
           matchesVendaProductionMode(venda, productionMode, plantiosMap)
-        )
-        .map((venda) => {
-          const plantio = venda.plantioId ? plantiosMap[venda.plantioId] : null;
-          if (productionMode === 'campo' && !venda.talhaoId) {
-            return { ...venda, talhaoId: plantio?.talhaoId };
-          }
-          return venda;
-        }),
+        ),
     [allVendas, plantiosMap, productionMode]
   );
 
@@ -405,10 +388,9 @@ const VendasListScreen = ({ navigation, route }: any) => {
       if (search) {
         const cliente = getClienteNome(venda.clienteId);
         const estufa = estufasMap[venda.estufaId] || '';
-        const talhao = talhoesMap[venda.talhaoId] || '';
         const produto = getVendaProdutoNome(venda);
         const content = normalizeSearchText(
-          `${cliente} ${estufa} ${talhao} ${produto} ${venda.observacoes || ''}`
+          `${cliente} ${estufa} ${produto} ${venda.observacoes || ''}`
         );
         matchSearch = content.includes(search);
       }
@@ -424,7 +406,6 @@ const VendasListScreen = ({ navigation, route }: any) => {
     searchText,
     getClienteNome,
     estufasMap,
-    talhoesMap,
     getVendaProdutoNome,
   ]);
 
@@ -589,10 +570,7 @@ const VendasListScreen = ({ navigation, route }: any) => {
         periodo: label,
         itens: vendas.map((v) => {
           const cliente = clientesList.find((item) => item.id === v.clienteId);
-          const origem =
-             v.talhaoId
-                ? 'Campo'
-                : 'Estufa';
+          const origem = 'Estufa';
           const vencimento = toDateSafe(
             v.dataCompensacaoCheque || v.dataVencimento
           );
@@ -1190,7 +1168,7 @@ const VendasListScreen = ({ navigation, route }: any) => {
       produtoNome={getVendaProdutoNome(item)}
       loteNome={getVendaLoteNome(item)}
       dataVenda={getVendaData(item)}
-      localLabel={item.talhaoId ? 'Talhão' : 'Estufa'}
+      localLabel="Estufa"
       localNome={getVendaLocalNome(item)}
       status={getFinancialStatus(item)}
       recebidoPor={getRecebidoPor(item)}
@@ -1200,7 +1178,7 @@ const VendasListScreen = ({ navigation, route }: any) => {
       onDelete={() => handleDeleteVenda(item)}
       isDeleting={deletingVendaId === item.id}
       onEdit={() =>
-        navigation.navigate(item.talhaoId ? 'CampoVendaForm' : 'ColheitaForm', {
+        navigation.navigate('ColheitaForm', {
           vendaId: item.id,
           isEdit: true,
         })
@@ -1237,14 +1215,10 @@ const VendasListScreen = ({ navigation, route }: any) => {
             <ScreenHeaderCard
               title="Financeiro"
               subtitle={`Gestão de vendas e fluxo de caixa — ${
-                productionMode === 'campo'
-                  ? 'Campo'
-                  :  'Estufas'
+                'Estufas'
               }.`}
               badgeLabel={
-                productionMode === 'campo'
-                  ? 'Campo'
-                  :  'Estufas'
+                'Estufas'
               }
             >
               <VendasHeaderStats stats={stats} />
@@ -1332,11 +1306,7 @@ const VendasListScreen = ({ navigation, route }: any) => {
             />
 
             <VendasToolbar
-              searchPlaceholder={
-                isCampoMode
-                  ? 'Buscar cliente, talhão ou produto...'
-                  : 'Buscar cliente, local ou produto...'
-              }
+              searchPlaceholder="Buscar cliente, local ou produto..."
               searchText={searchText}
               onSearchChange={setSearchText}
               onShowFilters={() => setShowFilterModal(true)}

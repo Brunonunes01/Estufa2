@@ -19,7 +19,7 @@ import {
   resolveAuditActorName,
   resolveAuditActorUid,
 } from './auditActor';
-import { assertProductionOriginNotMixed } from './productionOriginGuard';
+import { assertGreenhouseProductionOrigin } from './productionOriginGuard';
 import {
   CHEQUE_EM_MAOS_PAYMENT_MARKER,
   canConfirmVendaReceipt,
@@ -281,7 +281,7 @@ const validateVendaFormData = (data: VendaFormData) => {
   if (!data.unidade?.trim()) {
     throw new Error('Informe a unidade da venda.');
   }
-  assertProductionOriginNotMixed(data, 'Venda');
+  assertGreenhouseProductionOrigin(data, 'Venda');
   if (data.metodoPagamento === 'cheque') {
     if (
       !data.dataCompensacaoCheque ||
@@ -354,7 +354,7 @@ export const createVenda = async (
         data.talhaoId !== undefined
           ? data.talhaoId
           : await resolveTalhaoIdFromPlantio(tenantId, data.plantioId);
-      assertProductionOriginNotMixed(
+      assertGreenhouseProductionOrigin(
         { estufaId: data.estufaId, talhaoId: talhaoIdResolved },
         'Venda'
       );
@@ -563,7 +563,7 @@ export const updateVenda = async (
         merged.talhaoId !== undefined && merged.talhaoId !== null
           ? merged.talhaoId
           : await resolveTalhaoIdFromPlantio(tenantId, merged.plantioId);
-      assertProductionOriginNotMixed(
+      assertGreenhouseProductionOrigin(
         { estufaId: merged.estufaId, talhaoId: talhaoIdResolved },
         'Venda'
       );

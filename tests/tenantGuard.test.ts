@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { assertSameTenantScope, assertTenantId, isTenantIdValid } from '../src/services/tenantGuard.ts';
+import {
+  assertSameTenantScope,
+  assertTenantId,
+  assertTenantOperation,
+  isTenantIdValid,
+} from '../src/services/tenantGuard.ts';
 
 test('assertTenantId trims valid ids', () => {
   assert.equal(assertTenantId(' tenant-1 '), 'tenant-1');
@@ -19,4 +24,51 @@ test('isTenantIdValid reconhece tenant valido', () => {
 test('assertSameTenantScope aceita ids equivalentes e rejeita divergencia', () => {
   assert.equal(assertSameTenantScope(' tenant-1 ', 'tenant-1'), 'tenant-1');
   assert.throws(() => assertSameTenantScope('tenant-1', 'tenant-2'), /Escopo de tenant divergente/i);
+});
+
+test('fluxos preservados usam o tenant selecionado sem fallback cruzado', () => {
+  assert.equal(assertSameTenantScope('tenant-estufa-1', 'tenant-estufa-1'), 'tenant-estufa-1');
+  assert.throws(
+    () => assertSameTenantScope('tenant-estufa-1', 'tenant-outro'),
+    /Escopo de tenant divergente/i
+  );
+});
+
+test('protected greenhouse operation requires matching tenant and permission', () => {
+  const access = {
+    canRead: true,
+    canWrite: true,
+    canDelete: false,
+    canManageSharing: false,
+  };
+
+  assert.equal(
+    assertTenantOperation({
+      expectedTenantId: 'tenant-estufa-1',
+      receivedTenantId: ' tenant-estufa-1 ',
+      access,
+      operation: 'write',
+    }),
+    'tenant-estufa-1'
+  );
+  assert.throws(
+    () =>
+      assertTenantOperation({
+        expectedTenantId: 'tenant-estufa-1',
+        receivedTenantId: 'tenant-outro',
+        access,
+        operation: 'write',
+      }),
+    /Escopo de tenant divergente/i
+  );
+  assert.throws(
+    () =>
+      assertTenantOperation({
+        expectedTenantId: 'tenant-estufa-1',
+        receivedTenantId: 'tenant-estufa-1',
+        access,
+        operation: 'delete',
+      }),
+    /Permissao insuficiente/i
+  );
 });

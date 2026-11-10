@@ -16,7 +16,6 @@ import { useAppSettings } from '../../hooks/useAppSettings';
 import { listAllPlantios } from '../../services/plantioService';
 import { listVendasByPlantio } from '../../services/vendaService';
 import { getEstufaById } from '../../services/estufaService';
-import { listTalhoes } from '../../services/talhaoService';
 import {
   getSaleAgreedValue,
   getSaleReceivedValue,
@@ -83,13 +82,7 @@ const fetchCycleAnalysisData = async (plantio: Plantio, tenantId: string) => {
     if (!estufa) throw new Error('Estufa do ciclo não encontrada.');
     return { vendas, local: estufa, localTipo: 'Estufa' as const };
   }
-  if (plantio.talhaoId) {
-    const talhoes = await listTalhoes(tenantId);
-    const talhao = talhoes.find((item) => item.id === plantio.talhaoId);
-    if (!talhao) throw new Error('Talhão do ciclo não encontrado.');
-    return { vendas, local: talhao, localTipo: 'Talhão' as const };
-  }
-  throw new Error('Este ciclo não possui estufa ou talhão vinculado.');
+  throw new Error('Este ciclo não possui estufa vinculada.');
 };
 
 const RelatorioOperacionalScreen = () => {
@@ -125,7 +118,7 @@ const RelatorioOperacionalScreen = () => {
     enabled:
       !!selectedPlantio &&
       !!tenantId &&
-      (!!selectedPlantio.estufaId || !!selectedPlantio.talhaoId),
+      !!selectedPlantio.estufaId,
   });
 
   const calculatedMetrics = useMemo(() => {
@@ -276,7 +269,7 @@ const RelatorioOperacionalScreen = () => {
           (venda as any).clienteNome || venda.clienteId || 'Cliente avulso'
         ),
         documentoCliente: String((venda as any).clienteDocumento || ''),
-        origem: (venda as any).talhaoId ? 'Campo' : 'Estufa',
+        origem: 'Estufa',
         estufa: analysisData.local.nome || analysisData.localTipo,
         lote: String(
           (venda as any).loteColheita || selectedPlantio.codigoLote || '-'
@@ -340,7 +333,7 @@ const RelatorioOperacionalScreen = () => {
       >
         <Picker.Item label="-- Selecione um Ciclo --" value={null} />
         {plantios
-          ?.filter((p) => p.estufaId || p.talhaoId)
+          ?.filter((p) => !!p.estufaId)
           .map((p) => (
             <Picker.Item
               key={p.id}

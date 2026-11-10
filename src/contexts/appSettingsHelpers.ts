@@ -2,7 +2,7 @@ export interface AppSettings {
   darkMode: boolean;
   notifyCritical: boolean;
   notifyDailySummary: boolean;
-  activeProductionMode: 'ciclo_longo' | 'campo';
+  activeProductionMode: 'ciclo_longo';
   uiV2Enabled: boolean;
   useCycleBoxWeightProfiles: boolean;
 }
@@ -21,6 +21,11 @@ export const defaultAppSettings: AppSettings = {
 
 type LegacySettingsShape = Partial<AppSettings> & {
   productionProfiles?: Record<string, unknown>;
+};
+
+type AppSettingsPatch = Partial<Omit<AppSettings, 'activeProductionMode'>> & {
+  /** Aceita somente para normalizar configurações antigas; o modo ativo é sempre ciclo_longo. */
+  activeProductionMode?: 'ciclo_longo' | 'campo';
 };
 
 const toBoolean = (value: unknown, fallback: boolean) =>
@@ -53,7 +58,7 @@ export const normalizeAppSettings = (raw: string | null): AppSettings => {
 
 export const mergeAppSettings = (
   current: AppSettings,
-  next: Partial<AppSettings>
+  next: AppSettingsPatch
 ): AppSettings => ({
   ...current,
   ...next,

@@ -21,8 +21,7 @@ export type RootStackParamList = {
   Settings: undefined;
   EstufasList:
     | {
-        mode?: 'colheita' | 'plantio' | 'manejo' | 'hidro_layout';
-        talhaoId?: string;
+        mode?: 'colheita' | 'plantio' | 'manejo';
       }
     | undefined;
   EstufaForm: { estufaId?: string } | undefined;
@@ -32,7 +31,6 @@ export type RootStackParamList = {
     | {
         plantioId?: string;
         estufaId?: string;
-        talhaoId?: string;
       }
     | undefined;
   PlantioDetail: { plantioId: string };
@@ -43,13 +41,6 @@ export type RootStackParamList = {
     | {
         plantioId?: string;
         estufaId?: string;
-        vendaId?: string;
-        isEdit?: boolean;
-      }
-    | undefined;
-  CampoVendaForm:
-    | {
-        plantioId?: string;
         vendaId?: string;
         isEdit?: boolean;
       }
@@ -76,9 +67,7 @@ export type RootStackParamList = {
   EstufaPerformance: undefined;
   CaixasPesoCiclo: undefined;
   Tarefas: undefined;
-  TalhoesList: undefined;
-  TalhaoForm: { talhaoId?: string } | undefined;
   // Wizard
-  WizardSelectPlantio: { origem?: 'campo' } | undefined;
-  WizardSelectActivity: { plantio: Plantio; origem?: 'campo' };
+  WizardSelectPlantio: undefined;
+  WizardSelectActivity: { plantio: Plantio };
 };

@@ -35,7 +35,6 @@ import {
   updatePlantio,
 } from '../../services/plantioService';
 import { listEstufas } from '../../services/estufaService';
-import { listTalhoes } from '../../services/talhaoService';
 import { listClientes, createCliente } from '../../services/clienteService';
 import {
   createCaixaPessoa,
@@ -93,8 +92,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
     [user?.displayName, user?.name, user?.uid]
   );
   const params = route.params || {};
-  const isCampoVenda = route.name === 'CampoVendaForm';
-  const draftScope = isCampoVenda ? ('campo' as const) : undefined;
+  const draftScope = undefined;
   const vendaIdParam = params.vendaId as string | undefined;
   const colheitaIdParam = params.colheitaId as string | undefined;
   const isEditMode = !!(colheitaIdParam || vendaIdParam);
@@ -106,7 +104,6 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const [clientesList, setClientesList] = useState<Cliente[]>([]);
   const [caixaPessoas, setCaixaPessoas] = useState<CaixaPessoa[]>([]);
   const [estufasMap, setEstufasMap] = useState<Record<string, string>>({});
-  const [talhoesMap, setTalhoesMap] = useState<Record<string, string>>({});
   const [loadingData, setLoadingData] = useState(false);
 
   const [selectedPlantioId, setSelectedPlantioId] = useState<string>(
@@ -114,7 +111,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   );
   const [quantidade, setQuantidade] = useState('');
   const [unidade, setUnidade] = useState<UnidadeColheita>(
-    isCampoVenda ? 'sacas' : 'caixas'
+    'caixas'
   );
   const [preco, setPreco] = useState('');
   const [pesoBruto, setPesoBruto] = useState('');
@@ -160,11 +157,6 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const [editPassword, setEditPassword] = useState('');
   const [editAuthorizing, setEditAuthorizing] = useState(false);
   const [isEditAuthorized, setIsEditAuthorized] = useState(false);
-  const [missingQuantityModalVisible, setMissingQuantityModalVisible] =
-    useState(false);
-  const [missingQuantityPassword, setMissingQuantityPassword] = useState('');
-  const [confirmingMissingQuantity, setConfirmingMissingQuantity] =
-    useState(false);
   const [draftRestoredAt, setDraftRestoredAt] = useState<string | null>(null);
   const initialEditSnapshotRef = useRef<string | null>(null);
   const draftReadyRef = useRef(false);
@@ -172,12 +164,8 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   useLayoutEffect(() => {
     navigation.setOptions({
       title: isEditMode
-        ? isCampoVenda
-          ? 'Editar Venda de Campo'
-          : 'Editar Venda'
-        : isCampoVenda
-          ? 'Venda de Campo'
-          : 'Registrar Venda',
+        ? 'Editar Venda'
+        : 'Registrar Venda',
       headerRight: () =>
         isEditMode ? (
           <TouchableOpacity onPress={handleDelete} style={{ marginRight: 15 }}>
@@ -189,7 +177,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
           </TouchableOpacity>
         ) : null,
     });
-  }, [navigation, isEditMode, isCampoVenda]);
+  }, [navigation, isEditMode]);
 
   if (!canWrite) return null;
 
@@ -199,13 +187,12 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
 
       setLoadingData(true);
       try {
-        const [clientes, pessoasCaixa, plantios, estufas, talhoes] =
+        const [clientes, pessoasCaixa, plantios, estufas] =
           await Promise.all([
             listClientes(targetId),
             listCaixaPessoas(targetId),
             listAllPlantios(targetId),
             listEstufas(targetId),
-            listTalhoes(targetId),
           ]);
 
         setClientesList(clientes);
@@ -213,14 +200,8 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
         const mapE: any = {};
         estufas.forEach((e: any) => (mapE[e.id] = e.nome));
         setEstufasMap(mapE);
-        const mapT: Record<string, string> = {};
-        talhoes.forEach((talhao) => {
-          mapT[talhao.id] = talhao.nome;
-        });
-        setTalhoesMap(mapT);
-
         const ativos = plantios.filter((p: any) => {
-          const isInCurrentArea = isCampoVenda ? !!p.talhaoId : !p.talhaoId;
+          const isInCurrentArea = !!p.estufaId && !p.talhaoId;
           const isAvailable =
             isEditMode ||
             (p.status !== 'finalizado' && p.status !== 'cancelado');
@@ -313,7 +294,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
       }
     };
     carregarTudo();
-  }, [targetId, isEditMode, colheitaIdParam, vendaIdParam, isCampoVenda]);
+  }, [targetId, isEditMode, colheitaIdParam, vendaIdParam]);
 
   useEffect(() => {
     const restoreDraft = async () => {
@@ -327,7 +308,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
 
       setSelectedPlantioId(draft.selectedPlantioId || '');
       setQuantidade(draft.quantidade || '');
-      setUnidade(draft.unidade || (isCampoVenda ? 'sacas' : 'caixas'));
+        setUnidade(draft.unidade || 'caixas');
       setPreco(draft.preco || '');
       setPesoBruto(draft.pesoBruto || '');
       setPesoLiquido(draft.pesoLiquido || '');
@@ -351,7 +332,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
     };
 
     void restoreDraft();
-  }, [targetId, isEditMode, loadingData, draftScope, isCampoVenda]);
+  }, [targetId, isEditMode, loadingData, draftScope]);
 
   useEffect(() => {
     const persistDraft = async () => {
@@ -451,24 +432,12 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
   const loteSelecionado = useMemo(() => {
     return plantiosDisponiveis.find((p) => p.id === selectedPlantioId);
   }, [selectedPlantioId, plantiosDisponiveis]);
-  const isPlantingQuantityMissing = useMemo(
-    () =>
-      isCampoVenda &&
-      !!loteSelecionado &&
-      Number(loteSelecionado.quantidadePlantada || 0) <= 0 &&
-      Number(loteSelecionado.quantidadeBandejas || 0) <= 0,
-    [isCampoVenda, loteSelecionado]
-  );
   const localVendaLabel = useMemo(
     () =>
-      isCampoVenda
-        ? loteSelecionado?.talhaoId
-          ? talhoesMap[loteSelecionado.talhaoId] || 'Talhão não identificado'
-          : 'Sem talhão'
-        : loteSelecionado?.estufaId
-          ? estufasMap[loteSelecionado.estufaId] || 'Estufa não identificada'
-          : 'Sem estufa',
-    [estufasMap, isCampoVenda, loteSelecionado, talhoesMap]
+      loteSelecionado?.estufaId
+        ? estufasMap[loteSelecionado.estufaId] || 'Estufa não identificada'
+        : 'Sem estufa',
+    [estufasMap, loteSelecionado]
   );
   const clienteSelecionadoNome = useMemo(() => {
     if (!selectedClienteId) return 'Venda avulsa / consumidor final';
@@ -983,7 +952,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
     setDraftRestoredAt(null);
     setSelectedPlantioId(plantiosDisponiveis[0]?.id || '');
     setQuantidade('');
-    setUnidade(isCampoVenda ? 'sacas' : 'caixas');
+    setUnidade('caixas');
     setPreco('');
     setPesoBruto('');
     setPesoLiquido('');
@@ -1000,8 +969,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
 
   const persistColheita = async (
     allowBeforeCycleDays = false,
-    reason?: string,
-    authorizeMissingPlantingQuantity = false
+    reason?: string
   ) => {
     if (!targetId)
       return Alert.alert('Atenção', 'Sua sessão expirou. Entre novamente.');
@@ -1077,15 +1045,6 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                   reason: reason || null,
                 }
               : null,
-            authorizationAudit: authorizeMissingPlantingQuantity
-              ? {
-                  byUid: user?.uid || targetId,
-                  byName: user?.name || user?.displayName || null,
-                  reason:
-                    'Venda de Campo autorizada por senha sem quantidade plantada informada no ciclo.',
-                  kind: 'venda_sem_quantidade_plantada',
-                }
-              : null,
           },
           undefined,
           auditActor
@@ -1104,15 +1063,6 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                   byUid: user?.uid || targetId,
                   byName: user?.name || user?.displayName || null,
                   reason: reason || null,
-                }
-              : null,
-            authorizationAudit: authorizeMissingPlantingQuantity
-              ? {
-                  byUid: user?.uid || targetId,
-                  byName: user?.name || user?.displayName || null,
-                  reason:
-                    'Venda de Campo autorizada por senha sem quantidade plantada informada no ciclo.',
-                  kind: 'venda_sem_quantidade_plantada',
                 }
               : null,
           },
@@ -1134,9 +1084,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
           cliente,
           plantio: plantioObj || null,
           nomeFazenda: user?.name || user?.displayName || 'Produtor',
-          nomeEstufa: isCampoVenda
-            ? talhoesMap[plantioObj?.talhaoId || ''] || 'Talhão'
-            : estufasMap[plantioObj?.estufaId || ''] || 'Estufa',
+          nomeEstufa: estufasMap[plantioObj?.estufaId || ''] || 'Estufa',
           cultura: plantioObj?.cultura || 'Produto agrícola',
         });
       };
@@ -1236,7 +1184,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
         return;
       }
       // Salva direto apos autorizacao de admin
-      await persistColheita(true, reason, isPlantingQuantityMissing);
+      await persistColheita(true, reason);
     } catch (error: unknown) {
       Alert.alert(
         'Erro',
@@ -1276,7 +1224,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
       if (!hasEditChanges) {
         Alert.alert(
           'Sem alteracoes',
-          'Altere algum campo para salvar a venda.'
+          'Altere algum valor para salvar a venda.'
         );
         return;
       }
@@ -1285,14 +1233,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
       return;
     }
 
-    // 3. No Campo, vender sem quantidade plantada exige confirmacao por senha.
-    if (isPlantingQuantityMissing) {
-      setMissingQuantityPassword('');
-      setMissingQuantityModalVisible(true);
-      return;
-    }
-
-    // 4. Se ja passou pelas autorizacoes necessarias
+    // 3. Se ja passou pelas autorizacoes necessarias
     await persistColheita(
       isBeforeMinimumSaleDate && saleUnlockedByAdmin,
       unlockReason
@@ -1339,7 +1280,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
 
         <View style={styles.card}>
           <Text style={styles.sectionHeader}>
-            {isCampoVenda ? 'Origem no Campo e Destino' : 'Origem e Destino'}
+            {'Origem e Destino'}
           </Text>
 
           <Text style={styles.label}>Produto (Lote de Plantio)</Text>
@@ -1356,9 +1297,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                 <Picker.Item
                   key={p.id}
                   label={
-                    isCampoVenda
-                      ? `[${p.codigoLote || 'S/ LOTE'}] ${p.cultura} - Talhão: ${talhoesMap[p.talhaoId || ''] || '?'}`
-                      : `[${p.codigoLote || 'S/ LOTE'}] ${p.cultura} - Estufa: ${estufasMap[p.estufaId || ''] || '?'}`
+                    `[${p.codigoLote || 'S/ LOTE'}] ${p.cultura} - Estufa: ${estufasMap[p.estufaId || ''] || '?'}`
                   }
                   value={p.id}
                 />
@@ -1386,18 +1325,6 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
               </View>
             </View>
           )}
-
-          {isPlantingQuantityMissing ? (
-            <View style={styles.lockBox}>
-              <Text style={styles.lockTitle}>
-                Quantidade plantada não informada
-              </Text>
-              <Text style={styles.lockText}>
-                A venda pode ser registrada normalmente. Ao salvar, digite a
-                senha do app para confirmar esta operação.
-              </Text>
-            </View>
-          ) : null}
 
           <Text style={[styles.label, { marginTop: 15 }]}>
             Cliente / Destino
@@ -2335,8 +2262,7 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
                     // Salva direto para evitar o delay do estado assincrono que faria o handleSave abrir o modal de novo
                     await persistColheita(
                       isCycleUnlockedForSale,
-                      cycleUnlockReason,
-                      isPlantingQuantityMissing
+                      cycleUnlockReason
                     );
                   } catch (error: unknown) {
                     Alert.alert(
@@ -2364,100 +2290,6 @@ const ColheitaFormScreen = ({ route, navigation }: any) => {
         </View>
       </Modal>
 
-      <Modal
-        animationType="fade"
-        transparent
-        visible={missingQuantityModalVisible}
-        onRequestClose={() => {
-          if (!confirmingMissingQuantity) {
-            setMissingQuantityModalVisible(false);
-            setMissingQuantityPassword('');
-          }
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              Vender sem quantidade plantada
-            </Text>
-            <Text style={styles.unlockText}>
-              Este ciclo de Campo não possui quantidade plantada informada. A
-              quantidade vendida será registrada, mas os indicadores por pé não
-              poderão ser calculados. Digite sua senha para confirmar.
-            </Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Senha"
-              value={missingQuantityPassword}
-              onChangeText={setMissingQuantityPassword}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                onPress={() => {
-                  setMissingQuantityModalVisible(false);
-                  setMissingQuantityPassword('');
-                }}
-                disabled={confirmingMissingQuantity}
-              >
-                <Text style={{ color: COLORS.textSecondary }}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalBtn}
-                disabled={confirmingMissingQuantity}
-                onPress={async () => {
-                  if (!missingQuantityPassword.trim()) {
-                    Alert.alert('Atenção', 'Digite sua senha para confirmar.');
-                    return;
-                  }
-
-                  setConfirmingMissingQuantity(true);
-                  try {
-                    const ok = await verifyCurrentUserPassword(
-                      missingQuantityPassword.trim()
-                    );
-                    if (!ok) {
-                      Alert.alert(
-                        'Senha inválida',
-                        'A senha informada está incorreta.'
-                      );
-                      return;
-                    }
-
-                    setMissingQuantityModalVisible(false);
-                    setMissingQuantityPassword('');
-                    await persistColheita(
-                      isBeforeMinimumSaleDate && isCycleUnlockedForSale,
-                      cycleUnlockReason,
-                      true
-                    );
-                  } catch (error: unknown) {
-                    Alert.alert(
-                      'Erro',
-                      getPasswordVerificationErrorMessage(
-                        error,
-                        'Não foi possível confirmar esta venda.'
-                      )
-                    );
-                  } finally {
-                    setConfirmingMissingQuantity(false);
-                  }
-                }}
-              >
-                {confirmingMissingQuantity ? (
-                  <ActivityIndicator color={COLORS.textLight} />
-                ) : (
-                  <Text style={{ color: COLORS.textLight, fontWeight: 'bold' }}>
-                    Confirmar e vender
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </KeyboardAvoidingView>
   );
 };

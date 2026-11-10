@@ -23,7 +23,7 @@ import {
   resolveAuditActorName,
   resolveAuditActorUid,
 } from './auditActor';
-import { assertProductionOriginNotMixed } from './productionOriginGuard';
+import { assertGreenhouseProductionOrigin } from './productionOriginGuard';
 
 export type ColheitaFormData = {
   quantidade: number;
@@ -270,7 +270,7 @@ export const createColheita = async (
 
       const plantio = await getPlantioById(plantioId, tenantId);
       if (!plantio) throw new Error('Plantio não encontrado.');
-      assertProductionOriginNotMixed(
+      assertGreenhouseProductionOrigin(
         { estufaId, talhaoId: plantio.talhaoId },
         'Venda/colheita'
       );
@@ -451,7 +451,7 @@ export const createColheita = async (
           entidadeId: inserted.id,
           acao: 'autorizacao_admin',
           descricao:
-            'Venda de Campo autorizada por senha sem quantidade plantada informada.',
+            'Venda autorizada por senha sem quantidade plantada informada.',
           motivo: authorizationAudit.reason,
           actorUid: authorizationAudit.byUid,
           actorName: authorizationAudit.byName || null,
@@ -465,7 +465,7 @@ export const createColheita = async (
             entidadeId: vId,
             acao: 'autorizacao_admin',
             descricao:
-              'Venda de Campo autorizada por senha sem quantidade plantada informada.',
+            'Venda autorizada por senha sem quantidade plantada informada.',
             motivo: authorizationAudit.reason,
             actorUid: authorizationAudit.byUid,
             actorName: authorizationAudit.byName || null,
@@ -643,7 +643,7 @@ export const updateColheita = async (
         : now;
       const plantio = await getPlantioById(colheita.plantioId, tenantId);
       if (!plantio) throw new Error('Plantio não encontrado.');
-      assertProductionOriginNotMixed(
+      assertGreenhouseProductionOrigin(
         { estufaId: colheita.estufaId, talhaoId: plantio.talhaoId },
         'Venda/colheita'
       );
@@ -745,7 +745,7 @@ export const updateColheita = async (
           entidadeId: id,
           acao: 'autorizacao_admin',
           descricao:
-            'Alteração de venda de Campo autorizada por senha sem quantidade plantada informada.',
+            'Alteração de venda autorizada por senha sem quantidade plantada informada.',
           motivo: authorizationAudit.reason,
           actorUid: authorizationAudit.byUid,
           actorName: authorizationAudit.byName || null,
@@ -810,7 +810,7 @@ export const updateColheita = async (
             entidadeId: savedVendaId,
             acao: 'autorizacao_admin',
             descricao:
-              'Alteração de venda de Campo autorizada por senha sem quantidade plantada informada.',
+              'Alteração de venda autorizada por senha sem quantidade plantada informada.',
             motivo: authorizationAudit.reason,
             actorUid: authorizationAudit.byUid,
             actorName: authorizationAudit.byName || null,

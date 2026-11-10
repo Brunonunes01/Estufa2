@@ -128,7 +128,6 @@ const getVendaOrigemProducao = (venda: CaixaRawRecord) => {
   
   if (originType === 'seedling_lote') return 'Mudas';
   if (originType === 'resale_lote') return 'Revenda';
-  if (venda?.talhaoId) return 'Campo';
   return 'Estufa';
 };
 

@@ -13,7 +13,6 @@ import { useThemeMode } from '../../hooks/useThemeMode';
 import { useFeedback } from '../../hooks/useFeedback';
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics';
 import { useAuth } from '../../hooks/useAuth';
-import { useAppSettings } from '../../hooks/useAppSettings';
 import ModuleGridItem from '../../components/dashboard/ModuleGridItem';
 import HeroStats from '../../components/dashboard/HeroStats';
 import ScreenHeaderCard from '../../components/ui/ScreenHeaderCard';
@@ -39,8 +38,6 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
   const insets = useSafeAreaInsets();
   const { showError } = useFeedback();
   const { accessRoleLabel, canWrite } = useAuth();
-  const { settings } = useAppSettings();
-  const isCampoMode = settings.activeProductionMode === 'campo';
 
   const {
     user,
@@ -135,9 +132,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         icon: 'greenhouse',
         color: COLORS.success,
         onPress: () => navigateTo('MainTabs', { screen: 'OperacaoTab' }),
-        subtitle:  isCampoMode
-            ? 'Campo'
-            : 'Estufas',
+        subtitle: 'Estufas',
       },
       {
         label: 'Estoque',
@@ -164,7 +159,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
         onPress: () => navigateTo('Settings'),
       },
     ],
-    [isCampoMode, navigateTo]
+    [navigateTo]
   );
 
   const handleCompleteTask = async (taskId: string) => {
@@ -191,11 +186,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
 
       {canWrite && (
         <DashboardWizardButton
-          label={
-            isCampoMode
-              ? 'Registrar atividade no talhão'
-              : 'Registrar Atividade do Dia'
-          }
+          label="Registrar Atividade do Dia"
           onPress={() => navigateTo('WizardSelectPlantio')}
         />
       )}
@@ -290,7 +281,7 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
           actionLabel="Mapa"
           actionIcon="map-outline"
           onPressAction={() =>
-            navigateTo(isCampoMode ? 'TalhoesList' : 'EstufasList')
+            navigateTo('EstufasList')
           }
         >
           <HeroStats

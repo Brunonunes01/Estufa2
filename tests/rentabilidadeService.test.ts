@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { computeRentabilidade } from '../src/services/rentabilidadeCore.ts';
 
 test('computeRentabilidade - lucro positivo com todos os campos', () => {
@@ -23,6 +24,11 @@ test('computeRentabilidade - lucro positivo com todos os campos', () => {
   assert.equal(result.lucroBruto, 350); // 500 - 150
   assert.equal(result.areaM2, 100);
   assert.equal(result.rendimentoM2, 5); // 500 / 100
+});
+
+test('rentabilidade não exige talhão ou hidroponia para ciclo de estufa', () => {
+  const source = readFileSync('src/services/rentabilidadeCore.ts', 'utf8');
+  assert.doesNotMatch(source, /talhaoId|hidroponia/i);
 });
 
 test('computeRentabilidade - ignora vendas canceladas', () => {

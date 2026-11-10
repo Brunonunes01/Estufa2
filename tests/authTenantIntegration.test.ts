@@ -70,3 +70,9 @@ test('bootstrapAuthTenantState cria tenant inicial, reidrata perfil e hidrata re
   assert.equal(result.availableTenants[1].ownerName, 'Maria Responsavel');
   assert.equal(result.availableTenants[1].ownerEmail, 'maria@test.com');
 });
+test('seleção de tenant permanece independente do domínio produtivo', () => {
+  const source = readFileSync('src/contexts/AuthContext.tsx', 'utf8');
+  assert.match(source, /selectedTenantId|availableTenants/);
+  assert.doesNotMatch(source, /talhaoId|activeProductionMode/);
+});
+import { readFileSync } from 'node:fs';
