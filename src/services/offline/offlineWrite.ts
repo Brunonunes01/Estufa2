@@ -5,6 +5,10 @@ import {
   OfflineWriteOptions,
 } from './offlineStorage';
 import { isOfflineLikeError, shouldAllowQueue } from './offlineUtils';
+import { assertActiveTenantAuthorization } from '../tenantAuthorizationState.ts';
+
+const operationForAction = (action: OfflineActionName) =>
+  action.startsWith('delete') || action === 'removeVendaReceipt' ? 'delete' as const : 'write' as const;
 
 export const buildOfflinePlaceholderId = () =>
   `offline-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -24,6 +28,10 @@ export const runOfflineWrite = async <T>({
   onQueuedValue,
   write,
 }: RunOfflineWriteParams<T>): Promise<T> => {
+  const tenantId = payload && typeof payload === 'object' && 'userId' in payload
+    ? String((payload as { userId?: unknown }).userId || '')
+    : '';
+  assertActiveTenantAuthorization(tenantId, operationForAction(action));
   const allowQueue = shouldAllowQueue(options);
 
   if (allowQueue) {

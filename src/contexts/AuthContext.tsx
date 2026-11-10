@@ -2,9 +2,14 @@ import React, { createContext, useCallback, useEffect, useMemo, useRef, useState
 
 import { onAuthStateChangedBridge, signInWithPasswordBridge } from '../services/authBridge';
 import { bootstrapAuthTenantState } from '../services/authTenantService';
-import { loadPersistedTenantSelection, persistTenantSelection } from '../services/tenantSelectionStorage';
+import {
+  loadPersistedTenantSelection,
+  persistTenantAuthorization,
+  persistTenantSelection,
+} from '../services/tenantSelectionStorage';
 import { AuthContextData } from './authTypes';
 import { toAuthBootstrapErrorMessage } from './authContextHelpers';
+import { clearActiveTenantAuthorization, setActiveTenantAuthorization } from '../services/tenantAuthorizationState';
 
 export const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
@@ -22,6 +27,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setAvailableTenants([]);
     setSelectedTenantId('');
     selectedTenantIdRef.current = '';
+    clearActiveTenantAuthorization();
   }, []);
 
   const ensureSupabaseProfileAndTenants = useCallback(
@@ -36,6 +42,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setSelectedTenantId(bootstrap.resolvedTenantId);
       selectedTenantIdRef.current = bootstrap.resolvedTenantId;
       await persistTenantSelection(authUser.id, bootstrap.resolvedTenantId);
+      const selectedTenant = bootstrap.availableTenants.find(
+        (tenant) => tenant.uid === bootstrap.resolvedTenantId
+      );
+      if (selectedTenant) {
+        setActiveTenantAuthorization(authUser.id, selectedTenant.uid, selectedTenant.permissions || {});
+      }
+      await persistTenantAuthorization(
+        authUser.id,
+        bootstrap.resolvedTenantId,
+        selectedTenant?.permissions
+      );
       setUser(bootstrap.user);
       setAuthBootstrapError(null);
     },
@@ -89,6 +106,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setSelectedTenantId(trimmedUid);
     if (user?.uid) {
       void persistTenantSelection(user.uid, trimmedUid);
+      const selectedTenant = availableTenants.find((tenant) => tenant.uid === trimmedUid);
+      if (selectedTenant && user?.uid) {
+        setActiveTenantAuthorization(user.uid, selectedTenant.uid, selectedTenant.permissions || {});
+      }
+      void persistTenantAuthorization(user.uid, trimmedUid, selectedTenant?.permissions);
     }
   };
 
@@ -110,7 +132,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       user,
       loading,
       authBootstrapError,
-      selectedTenantId: selectedTenantId || user?.uid || '',
+      selectedTenantId,
       changeTenant,
       availableTenants,
       signIn,

@@ -1,5 +1,6 @@
 import type { AccessSnapshot, TenantOperation } from '../lib/accessControl.ts';
 import { assertTenantPermission } from '../lib/accessControl.ts';
+import { assertActiveTenantAuthorization } from './tenantAuthorizationState.ts';
 
 export const isTenantIdValid = (tenantId?: string | null): tenantId is string =>
   !!tenantId && !!tenantId.trim();
@@ -8,7 +9,7 @@ export const assertTenantId = (tenantId?: string | null): string => {
   if (!isTenantIdValid(tenantId)) {
     throw new Error('Tenant invalido para consulta protegida.');
   }
-  return tenantId.trim();
+  return assertActiveTenantAuthorization(tenantId.trim(), 'read');
 };
 
 export const assertSameTenantScope = (expectedTenantId?: string | null, receivedTenantId?: string | null) => {

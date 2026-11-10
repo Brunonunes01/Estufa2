@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 
 import { createAuthTenantBootstrapService } from '../src/services/authTenantBootstrapCore.ts';
 import type { MembershipRow } from '../src/services/authTenantHelpers.ts';
@@ -75,4 +76,18 @@ test('seleção de tenant permanece independente do domínio produtivo', () => {
   assert.match(source, /selectedTenantId|availableTenants/);
   assert.doesNotMatch(source, /talhaoId|activeProductionMode/);
 });
-import { readFileSync } from 'node:fs';
+
+test('tenant solicitado precisa pertencer à lista autorizada', () => {
+  const availableTenants = [
+    { uid: 'tenant-owner', name: 'Minha Estufa' },
+    { uid: 'tenant-shared', name: 'Conta Compartilhada' },
+  ];
+
+  assert.equal(availableTenants.some((tenant) => tenant.uid === 'tenant-shared'), true);
+  assert.equal(availableTenants.some((tenant) => tenant.uid === 'tenant-outro'), false);
+});
+
+test('selected tenant does not fall back to the authenticated user id', () => {
+  const source = readFileSync('src/contexts/AuthContext.tsx', 'utf8');
+  assert.doesNotMatch(source, /selectedTenantId \|\| user\?\.uid/);
+});

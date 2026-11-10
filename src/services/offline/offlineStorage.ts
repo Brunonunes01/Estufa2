@@ -1,7 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { getSupabaseClient, isSupabaseConfigured } from '../supabaseClient.ts';
-import { loadPersistedTenantSelection } from '../tenantSelectionStorage.ts';
+import {
+  loadPersistedTenantAuthorization,
+  loadPersistedTenantSelection,
+} from '../tenantSelectionStorage.ts';
 import {
   createOfflineQueueStorage,
   type OfflineQueueScope,
@@ -34,9 +37,46 @@ export const resolveActiveOfflineQueueScope = async (): Promise<OfflineQueueScop
     if (!authUserId) return null;
 
     const persistedTenantId = (await loadPersistedTenantSelection(authUserId)).trim();
+    if (!persistedTenantId) return null;
+    const authorization = await loadPersistedTenantAuthorization(authUserId);
     return {
       authUserId,
-      tenantId: persistedTenantId || authUserId,
+      tenantId: persistedTenantId,
+      permissions:
+        authorization?.tenantId === persistedTenantId
+          ? {
+              canRead: authorization.canRead,
+              canWrite: authorization.canWrite,
+              canDelete: authorization.canDelete,
+              canManageSharing: authorization.canManageSharing,
+            }
+          : undefined,
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const revalidateActiveOfflineQueueScope = async (): Promise<OfflineQueueScope | null> => {
+  const localScope = await resolveActiveOfflineQueueScope();
+  if (!localScope || !isSupabaseConfigured()) return null;
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('tenant_memberships')
+      .select('can_read, can_write, can_delete, can_manage_sharing')
+      .eq('tenant_id', localScope.tenantId)
+      .eq('user_id', localScope.authUserId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return {
+      ...localScope,
+      permissions: {
+        canRead: Boolean(data.can_read),
+        canWrite: Boolean(data.can_write),
+        canDelete: Boolean(data.can_delete),
+        canManageSharing: Boolean(data.can_manage_sharing),
+      },
     };
   } catch {
     return null;
@@ -48,6 +88,7 @@ const defaultOfflineQueueStorage = createOfflineQueueStorage({
   queueKey: OFFLINE_QUEUE_KEY,
   isOnlineNow,
   resolveActiveScope: resolveActiveOfflineQueueScope,
+  revalidateActiveScope: revalidateActiveOfflineQueueScope,
   executeOfflineAction: async (action, payload) => {
     // Import dinamico para evitar ciclos no load inicial.
     const { executeOfflineAction } = await import('./offlineStorageHandlers.ts');

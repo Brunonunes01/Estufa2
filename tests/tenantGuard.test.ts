@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   assertSameTenantScope,
@@ -71,4 +72,46 @@ test('protected greenhouse operation requires matching tenant and permission', (
       }),
     /Permissao insuficiente/i
   );
+});
+
+test('protected operation rejects missing or unavailable tenant scope before permission', () => {
+  const access = {
+    canRead: true,
+    canWrite: true,
+    canDelete: true,
+    canManageSharing: true,
+  };
+
+  assert.throws(
+    () =>
+      assertTenantOperation({
+        expectedTenantId: '',
+        receivedTenantId: 'tenant-estufa-1',
+        access,
+        operation: 'read',
+      }),
+    /Tenant invalido/i
+  );
+  assert.throws(
+    () =>
+      assertTenantOperation({
+        expectedTenantId: 'tenant-estufa-1',
+        receivedTenantId: null,
+        access,
+        operation: 'read',
+      }),
+    /Tenant invalido/i
+  );
+});
+
+test('active greenhouse services keep using the common tenant guard', () => {
+  const source = [
+    'src/services/estufaService.ts',
+    'src/services/plantioService.ts',
+    'src/services/colheitaService.ts',
+    'src/services/vendaService.ts',
+    'src/services/despesaService.ts',
+  ].map((file) => readFileSync(file, 'utf8')).join('\n');
+
+  assert.match(source, /assertTenantId/);
 });

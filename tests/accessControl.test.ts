@@ -35,6 +35,18 @@ test('greenhouse operations follow the active tenant permissions', () => {
   assert.throws(() => assertTenantPermission(viewer, 'write'), /Permissao insuficiente/i);
 });
 
+test('operation matrix keeps sharing and deletion independent from write access', () => {
+  const operator = getAccessSnapshot({ type: 'shared', role: 'operator' });
+  const manager = getAccessSnapshot({ type: 'shared', role: 'admin' });
+
+  assert.equal(hasTenantPermission(operator, 'read'), true);
+  assert.equal(hasTenantPermission(operator, 'write'), true);
+  assert.equal(hasTenantPermission(operator, 'delete'), false);
+  assert.equal(hasTenantPermission(operator, 'manageSharing'), false);
+  assert.equal(hasTenantPermission(manager, 'manageSharing'), true);
+  assert.throws(() => assertTenantPermission(operator, 'manageSharing'), /Permissao insuficiente/i);
+});
+
 test('operator can see dashboard and write but not manage sharing', () => {
   const access = getAccessSnapshot({ type: 'shared', role: 'operator' });
 

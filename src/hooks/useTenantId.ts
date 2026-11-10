@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useAuth } from './useAuth';
 
 export const useTenantId = () => {
-  const { user, selectedTenantId } = useAuth();
+  const { selectedTenantId } = useAuth();
 
-  return useMemo(() => selectedTenantId || user?.uid, [selectedTenantId, user?.uid]);
+  return useMemo(() => selectedTenantId.trim() || undefined, [selectedTenantId]);
 };

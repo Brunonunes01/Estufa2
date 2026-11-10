@@ -4,6 +4,7 @@ import {
 } from './offlinePayloadCodec.ts';
 import type { JsonValue } from './offlinePayloadCodec.ts';
 import { isOfflineLikeError } from './offlineUtils.ts';
+import { hasTenantPermission, type TenantOperation } from '../../lib/accessControl.ts';
 
 export type OfflineActionName =
   | 'createEstufa'
@@ -41,6 +42,12 @@ export type OfflineActionName =
 export type OfflineQueueScope = {
   authUserId: string;
   tenantId: string;
+  permissions?: {
+    canRead: boolean;
+    canWrite: boolean;
+    canDelete: boolean;
+    canManageSharing: boolean;
+  };
 };
 
 export type OfflineQueueItem = {
@@ -50,6 +57,7 @@ export type OfflineQueueItem = {
   queuedAt: number;
   attempts: number;
   scope?: OfflineQueueScope;
+  lastError?: string;
 };
 
 type FlushResult = {
@@ -68,6 +76,7 @@ type OfflineQueueStorageDeps = {
   queueKey: string;
   isOnlineNow(): Promise<boolean>;
   resolveActiveScope(): Promise<OfflineQueueScope | null>;
+  revalidateActiveScope?(): Promise<OfflineQueueScope | null>;
   executeOfflineAction(
     action: OfflineActionName,
     payload: unknown
@@ -79,6 +88,11 @@ const extractTenantIdFromPayload = (payload: unknown) => {
   const candidate = (payload as { userId?: unknown }).userId;
   return typeof candidate === 'string' ? candidate.trim() : '';
 };
+
+const operationForAction = (action: OfflineActionName): TenantOperation =>
+  action.startsWith('delete') || action === 'removeVendaReceipt'
+    ? 'delete'
+    : 'write';
 
 const isQueueItemScopedToActiveSession = (
   item: OfflineQueueItem,
@@ -98,6 +112,7 @@ export const createOfflineQueueStorage = ({
   queueKey,
   isOnlineNow,
   resolveActiveScope,
+  revalidateActiveScope,
   executeOfflineAction,
 }: OfflineQueueStorageDeps) => {
   const readQueue = async (): Promise<OfflineQueueItem[]> => {
@@ -115,29 +130,6 @@ export const createOfflineQueueStorage = ({
     await storage.setItem(queueKey, JSON.stringify(queue));
   };
 
-  const stampLegacyQueueItems = async (
-    queue: OfflineQueueItem[],
-    activeScope: OfflineQueueScope | null
-  ) => {
-    if (!activeScope) return queue;
-
-    let changed = false;
-    const migrated = queue.map((item) => {
-      if (item.scope) return item;
-      changed = true;
-      return {
-        ...item,
-        scope: activeScope,
-      };
-    });
-
-    if (changed) {
-      await writeQueue(migrated);
-    }
-
-    return migrated;
-  };
-
   const enqueueOfflineAction = async (
     action: OfflineActionName,
     payload: unknown
@@ -145,19 +137,20 @@ export const createOfflineQueueStorage = ({
     const queue = await readQueue();
     const activeScope = await resolveActiveScope();
     const tenantId = extractTenantIdFromPayload(payload);
+    if (!activeScope || !tenantId || tenantId !== activeScope.tenantId) {
+      throw new Error('Operacao offline rejeitada por escopo de tenant invalido.');
+    }
+    const operation = operationForAction(action);
+    if (activeScope.permissions && !hasTenantPermission(activeScope.permissions, operation)) {
+      throw new Error('Operacao offline rejeitada por permissao insuficiente.');
+    }
     const nextItem: OfflineQueueItem = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       action,
       payload: serializeOfflinePayload(payload),
       queuedAt: Date.now(),
       attempts: 0,
-      scope:
-        activeScope && tenantId
-          ? {
-              authUserId: activeScope.authUserId,
-              tenantId,
-            }
-          : undefined,
+      scope: { ...activeScope, tenantId },
     };
     queue.push(nextItem);
     await writeQueue(queue);
@@ -176,9 +169,9 @@ export const createOfflineQueueStorage = ({
       return { flushed: 0, pending: queue.length, failed: 0 };
     }
 
-    const activeScope = await resolveActiveScope();
+    const activeScope = await (revalidateActiveScope ? revalidateActiveScope() : resolveActiveScope());
     const storedQueue = await readQueue();
-    const queue = await stampLegacyQueueItems(storedQueue, activeScope);
+    const queue = storedQueue;
     if (queue.length === 0) return { flushed: 0, pending: 0, failed: 0 };
 
     const remaining: OfflineQueueItem[] = [];
@@ -188,6 +181,12 @@ export const createOfflineQueueStorage = ({
     for (const item of queue) {
       if (!isQueueItemScopedToActiveSession(item, activeScope)) {
         remaining.push(item);
+        continue;
+      }
+
+      if (!item.scope?.permissions || !hasTenantPermission(item.scope.permissions, operationForAction(item.action))) {
+        failed += 1;
+        remaining.push({ ...item, attempts: item.attempts + 1, lastError: 'authorization_rejected' });
         continue;
       }
 
