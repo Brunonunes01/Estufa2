@@ -23,7 +23,8 @@ import {
   resolveAuditActorName,
   resolveAuditActorUid,
 } from './auditActor';
-import { assertGreenhouseProductionOrigin } from './productionOriginGuard';
+import { assertProductionOrigin as assertGreenhouseProductionOrigin } from '../lib/productionDomainRules';
+import { assertCycleOperationDate } from '../lib/productionCycleRules';
 
 export type ColheitaFormData = {
   quantidade: number;
@@ -184,6 +185,7 @@ const getPlantioDate = (plantio: Plantio): Date | null => {
 };
 
 const validateSaleDateByCycle = (plantio: Plantio, dataOperacao: Timestamp) => {
+  assertCycleOperationDate(plantio, dataOperacao, 'Venda');
   const cicloDias = Number(plantio.cicloDias || 0);
   if (!cicloDias || cicloDias <= 0) return;
 

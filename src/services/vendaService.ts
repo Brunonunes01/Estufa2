@@ -19,7 +19,7 @@ import {
   resolveAuditActorName,
   resolveAuditActorUid,
 } from './auditActor';
-import { assertGreenhouseProductionOrigin } from './productionOriginGuard';
+import { assertProductionOrigin as assertGreenhouseProductionOrigin } from '../lib/productionDomainRules';
 import {
   CHEQUE_EM_MAOS_PAYMENT_MARKER,
   canConfirmVendaReceipt,

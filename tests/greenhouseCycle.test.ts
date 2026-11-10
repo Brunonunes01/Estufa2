@@ -5,14 +5,8 @@ import test from 'node:test';
 const read = (path: string) => readFileSync(path, 'utf8');
 
 test('ciclo de estufa mantém vínculos de estufa e tenant', () => {
-  const plantio = read('src/services/plantioService.ts');
-  const colheita = read('src/services/colheitaService.ts');
-  const venda = read('src/services/vendaService.ts');
-
-  for (const source of [plantio, colheita, venda]) {
-    assert.match(source, /tenant_id/);
-    assert.match(source, /estufa/);
-    assert.match(source, /assertGreenhouseProductionOrigin/);
+  for (const source of ['src/services/plantioService.ts', 'src/services/colheitaService.ts', 'src/services/vendaService.ts'].map(read)) {
+    assert.match(source, /tenant_id/); assert.match(source, /estufa/); assert.match(source, /assertGreenhouseProductionOrigin/);
   }
 });
 

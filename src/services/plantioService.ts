@@ -8,7 +8,7 @@ import {
 import { getSupabaseClient } from './supabaseClient';
 import { assertTenantId } from './tenantGuard';
 import { createTraceabilityEventSafely } from './traceabilityService';
-import { assertGreenhouseProductionOrigin } from './productionOriginGuard';
+import { assertProductionOrigin as assertGreenhouseProductionOrigin } from '../lib/productionDomainRules';
 
 const toTs = (value?: string | null) =>
   value ? Timestamp.fromDate(new Date(value)) : undefined;
