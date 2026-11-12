@@ -7,8 +7,8 @@ import {
   resolveServiceErrorMessage,
 } from '../src/services/securityUiHelpers.ts';
 
-test('resolveServiceErrorMessage usa a mensagem da excecao quando existir', () => {
-  assert.equal(resolveServiceErrorMessage(new Error('falha real'), 'fallback'), 'falha real');
+test('resolveServiceErrorMessage não expõe a mensagem técnica de exceção desconhecida', () => {
+  assert.equal(resolveServiceErrorMessage(new Error('provider stack detail'), 'fallback'), 'fallback');
 });
 
 test('getPasswordChangeErrorMessage trata senha atual invalida', () => {

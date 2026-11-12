@@ -138,3 +138,18 @@ test('flushOfflineQueue does not associate a legacy item with the active tenant'
   assert.deepEqual(await queue.flushOfflineQueue(), { flushed: 0, pending: 1, failed: 1 });
   assert.equal(executed, 0);
 });
+
+test('offline queue deduplicates a logical operation and rejects a divergent payload', async () => {
+  const { storage, values } = createMemoryStorage();
+  const queue = createOfflineQueueStorage({
+    storage, queueKey: '@test/idempotent-queue', isOnlineNow: async () => false,
+    resolveActiveScope: async () => ({ authUserId: 'user-1', tenantId: 'tenant-1', permissions: writePermissions }),
+    executeOfflineAction: async () => {},
+  });
+  const payload = { userId: 'tenant-1', data: { descricao: 'A', value: 1 } };
+  const first = await queue.enqueueOfflineAction('createDespesa', payload, 'op-stable');
+  const replay = await queue.enqueueOfflineAction('createDespesa', { data: { value: 1, descricao: 'A' }, userId: 'tenant-1' }, 'op-stable');
+  assert.equal(replay, first);
+  assert.equal(JSON.parse(values.get('@test/idempotent-queue') ?? '[]').length, 1);
+  await assert.rejects(queue.enqueueOfflineAction('createDespesa', { userId: 'tenant-1', data: { descricao: 'B' } }, 'op-stable'), /idempotencia/i);
+});

@@ -14,9 +14,14 @@ test('compound read preserves source and degrades auxiliary failures', async () 
   assert.equal(result.errors.tips.context.source, 'tips');
 });
 
-test('compound read fails with the essential source identity', async () => {
-  await assert.rejects(() => readCompound([{ name: 'estufas', kind: 'essential', read: async () => { throw new Error('database down'); } }]), (error: unknown) => {
-    assert.equal((error as { context: { source: string } }).context.source, 'estufas');
-    return true;
-  });
+test('compound read reports essential failure and blocks only dependent actions', async () => {
+  const result = await readCompound([
+    { name: 'estufas', kind: 'essential', dependentActions: ['create-cycle'], read: async () => { throw new Error('database down'); } },
+    { name: 'profile', kind: 'auxiliary', read: async () => ({ name: 'safe' }) },
+  ]);
+  assert.equal(result.sources.estufas.status, 'failed');
+  assert.equal(result.sources.estufas.error?.context.source, 'estufas');
+  assert.deepEqual(result.sources.profile.data, { name: 'safe' });
+  assert.deepEqual(result.blockedActions, ['create-cycle']);
+  assert.equal(result.degraded, true);
 });

@@ -1,0 +1,2 @@
+import test from 'node:test'; import assert from 'node:assert/strict'; import fs from 'node:fs';
+test('feedback provider keeps legacy helpers and structured retry', () => { const source = fs.readFileSync(new URL('../src/contexts/FeedbackContext.tsx', import.meta.url), 'utf8'); for (const name of ['showSuccess', 'showError', 'showWarning', 'showStructuredError']) assert.match(source, new RegExp(name)); assert.match(source, /nextStep/); assert.match(source, /onRetry/); });

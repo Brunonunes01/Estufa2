@@ -1,0 +1,4 @@
+import test from 'node:test'; import assert from 'node:assert/strict';
+import { classifyServiceError } from '../src/services/serviceErrorClassifier.ts'; import { errorFixtures } from './helpers/errorHandlingFixtures.ts';
+const cases = [[{ message: 'validation required field' }, 'validation'], [errorFixtures.authExpired, 'authentication'], [errorFixtures.rlsDenied, 'authorization'], [errorFixtures.uniqueConflict, 'conflict'], [errorFixtures.network, 'connectivity'], [errorFixtures.unavailable, 'availability'], [errorFixtures.dataContract, 'data-contract'], [{ message: 'opaque provider detail' }, 'unexpected']] as const;
+for (const [input, expected] of cases) test(`classifies ${expected}`, () => { const result = classifyServiceError(input, { operation: 'test', correlationId: 'try-1' }); assert.equal(result.category, expected); assert.equal(result.safeMessage.includes('opaque provider detail'), false); });
