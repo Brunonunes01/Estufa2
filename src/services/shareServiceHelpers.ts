@@ -55,7 +55,15 @@ export const mapSharedTenantRows = (
   ownerNamesMap: Map<string, string>,
   ownerEmailsMap: Map<string, string>
 ) => {
-  const filtered = memberships.filter((item) => pickSharedTenant(item.tenants)?.owner_user_id !== userId);
+  const seenTenantIds = new Set<string>();
+  const filtered = memberships.filter((item) => {
+    const tenant = pickSharedTenant(item.tenants);
+    if (item.can_read === false || !tenant || tenant.owner_user_id === userId || seenTenantIds.has(item.tenant_id)) {
+      return false;
+    }
+    seenTenantIds.add(item.tenant_id);
+    return true;
+  });
 
   return filtered.map((item) => {
     const tenant = pickSharedTenant(item.tenants);

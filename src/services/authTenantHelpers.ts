@@ -46,8 +46,22 @@ export const mapMembershipsToAvailableTenants = (
   fallbackName: string,
   ownerNamesMap: Map<string, string> = new Map(),
   ownerEmailsMap: Map<string, string> = new Map()
-): AvailableTenantLike[] =>
-  memberships.map((membership) => {
+): AvailableTenantLike[] => {
+  const seenTenantIds = new Set<string>();
+  let ownerTenantAlreadyIncluded = false;
+
+  return memberships
+    .filter((membership) => membership.can_read !== false && Boolean(membership.tenant_id) && Boolean(pickMembershipTenant(membership.tenants)))
+    .filter((membership) => {
+      const tenant = pickMembershipTenant(membership.tenants);
+      const isOwner = tenant?.owner_user_id === authUser.id;
+      if (seenTenantIds.has(membership.tenant_id)) return false;
+      if (isOwner && ownerTenantAlreadyIncluded) return false;
+      seenTenantIds.add(membership.tenant_id);
+      if (isOwner) ownerTenantAlreadyIncluded = true;
+      return true;
+    })
+    .map((membership) => {
     const tenant = pickMembershipTenant(membership.tenants);
     const isOwner = tenant?.owner_user_id === authUser.id;
     const ownerId = tenant?.owner_user_id || '';
@@ -75,7 +89,8 @@ export const mapMembershipsToAvailableTenants = (
             canManageSharing: !!membership.can_manage_sharing,
           },
     };
-  });
+    });
+};
 
 export const resolveTenantSelection = (
   availableTenants: AvailableTenantLike[],

@@ -45,7 +45,8 @@
           "contactsPermission": "Permitir que o Estufa Pro acesse seus contatos para importar dados de clientes."
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-sharing"
     ]
   }
 }

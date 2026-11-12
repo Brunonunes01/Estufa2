@@ -199,7 +199,9 @@ export const listEstufas = async (userId: string): Promise<Estufa[]> => {
     return await listEstufasSupabase(tenantId);
   } catch (error) {
     console.error('Erro ao listar estufas:', error);
-    throw new Error('Erro ao buscar lista de estufas.');
+    throw new Error(
+      `Erro ao buscar lista de estufas. ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 };
 

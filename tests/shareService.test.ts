@@ -35,6 +35,22 @@ test('mapSharedTenantRows remove tenant do proprio owner e monta permissoes', ()
   assert.equal(tenants[0].permissions?.canWrite, true);
 });
 
+test('mapSharedTenantRows ignora acessos revogados, tenants ausentes e duplicados', () => {
+  const tenants = mapSharedTenantRows(
+    [
+      { tenant_id: 'shared-1', can_read: true, tenants: { name: 'Parceira', owner_user_id: 'owner-2' } },
+      { tenant_id: 'shared-1', can_read: true, tenants: { name: 'Duplicada', owner_user_id: 'owner-2' } },
+      { tenant_id: 'revoked', can_read: false, tenants: { name: 'Revogada', owner_user_id: 'owner-3' } },
+      { tenant_id: 'missing', can_read: true, tenants: null },
+    ],
+    'user-1',
+    new Map(),
+    new Map()
+  );
+
+  assert.deepEqual(tenants.map((tenant) => tenant.uid), ['shared-1']);
+});
+
 test('mapTenantMembers usa fallback de perfil quando profile nao existe', () => {
   const members = mapTenantMembers(
     [

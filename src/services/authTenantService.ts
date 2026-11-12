@@ -18,12 +18,13 @@ const defaultAuthTenantBootstrapService = createAuthTenantBootstrapService({
   },
   loadMemberships: async (userId) => {
     const supabase = getSupabaseClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('tenant_memberships')
       .select(
         'tenant_id, role, can_read, can_write, can_delete, can_manage_sharing, tenants(id, name, owner_user_id)'
       )
       .eq('user_id', userId);
+    if (error) throw error;
     return data || [];
   },
   upsertProfile: async (input) => {
@@ -36,11 +37,10 @@ const defaultAuthTenantBootstrapService = createAuthTenantBootstrapService({
     if (error) throw error;
     return data || null;
   },
-  createOwnerTenant: async (ownerUserId, tenantName) => {
+  createOwnerTenant: async (_ownerUserId, tenantName) => {
     const supabase = getSupabaseClient();
-    const { error } = await supabase.from('tenants').insert({
-      owner_user_id: ownerUserId,
-      name: tenantName,
+    const { error } = await supabase.rpc('create_initial_tenant', {
+      p_name: tenantName,
     });
     if (error && !String(error.message || '').toLowerCase().includes('duplicate')) {
       throw error;

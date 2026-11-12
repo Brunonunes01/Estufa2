@@ -69,7 +69,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (authUser) {
           try {
             await ensureSupabaseProfileAndTenants(authUser);
-          } catch {
+          } catch (error) {
+            console.error('Falha no bootstrap de tenant após login:', error);
             if (!isMounted) return;
             resetAuthState();
             setAuthBootstrapError('Nao foi possivel carregar o perfil autenticado.');

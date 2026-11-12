@@ -8,6 +8,14 @@ const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 let cachedClient: SupabaseClient | null = null;
 
+// O Fast Refresh recria o módulo, mas não destrói a instância anterior do
+// GoTrueClient. Persistir o cliente no global evita duas auto-refresh loops
+// disputando o mesmo Navigator LockManager no navegador.
+const GLOBAL_CLIENT_KEY = '__sge_supabase_client__';
+type SupabaseGlobal = typeof globalThis & {
+  [GLOBAL_CLIENT_KEY]?: SupabaseClient;
+};
+
 export const isSupabaseConfigured = () => !!supabaseUrl && !!supabaseAnonKey;
 
 export const getSupabaseClient = () => {
@@ -18,6 +26,12 @@ export const getSupabaseClient = () => {
   }
 
   if (!cachedClient) {
+    const globalScope = globalThis as SupabaseGlobal;
+    if (globalScope[GLOBAL_CLIENT_KEY]) {
+      cachedClient = globalScope[GLOBAL_CLIENT_KEY] as SupabaseClient;
+      return cachedClient;
+    }
+
     cachedClient = createClient(supabaseUrl as string, supabaseAnonKey as string, {
       auth: {
         storage: AsyncStorage,
@@ -25,8 +39,10 @@ export const getSupabaseClient = () => {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: Platform.OS === 'web',
+        lockAcquireTimeout: 10000,
       },
     });
+    globalScope[GLOBAL_CLIENT_KEY] = cachedClient;
   }
 
   return cachedClient;
