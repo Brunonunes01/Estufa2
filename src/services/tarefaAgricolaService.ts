@@ -3,6 +3,8 @@ import { TarefaAgricola } from '../types/domain';
 import { getSupabaseClient } from './supabaseClient';
 import { assertTenantId } from './tenantGuard';
 import { AuditActor, resolveAuditActorUid } from './auditActor';
+import type { OfflineWriteOptions } from './offline/offlineStorage';
+import { createLogicalOperationId } from './operationIdentity';
 
 const mapSupabaseTaskToDomain = (row: any): TarefaAgricola => ({
   id: row.id,
@@ -32,7 +34,8 @@ const mapSupabaseTaskToDomain = (row: any): TarefaAgricola => ({
 export const createTarefaAgricola = async (
   data: Omit<TarefaAgricola, 'id' | 'createdAt' | 'updatedAt' | 'tenantId' | 'userId' | 'createdBy'>,
   userId: string,
-  actor?: AuditActor | null
+  actor?: AuditActor | null,
+  options?: OfflineWriteOptions
 ) => {
   const tenantId = assertTenantId(userId);
   const actorUid = resolveAuditActorUid(tenantId, actor);
@@ -46,10 +49,12 @@ export const createTarefaAgricola = async (
       reason: null,
     },
   ];
+  const logicalOperationId = options?.logicalOperationId?.trim() || createLogicalOperationId();
 
   const { data: inserted, error } = await supabase
     .from('tarefas_agricolas')
     .insert({
+      id: logicalOperationId,
       tenant_id: tenantId,
       plantio_id: data.plantioId,
       estufa_id: data.estufaId || null,

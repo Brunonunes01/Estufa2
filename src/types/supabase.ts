@@ -395,6 +395,63 @@ export type Database = {
           },
         ];
       };
+      diagnostic_events: {
+        Row: {
+          actor_user_id: string;
+          category: string;
+          code: string;
+          correlation_id: string;
+          created_at: string;
+          id: string;
+          occurred_at: string;
+          operation: string;
+          safe_context: Json;
+          source: string;
+          tenant_id: string;
+        };
+        Insert: {
+          actor_user_id?: string;
+          category: string;
+          code: string;
+          correlation_id: string;
+          created_at?: string;
+          id: string;
+          occurred_at?: string;
+          operation: string;
+          safe_context?: Json;
+          source: string;
+          tenant_id: string;
+        };
+        Update: {
+          actor_user_id?: string;
+          category?: string;
+          code?: string;
+          correlation_id?: string;
+          created_at?: string;
+          id?: string;
+          occurred_at?: string;
+          operation?: string;
+          safe_context?: Json;
+          source?: string;
+          tenant_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'diagnostic_events_actor_user_id_fkey';
+            columns: ['actor_user_id'];
+            isOneToOne: false;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'diagnostic_events_tenant_id_fkey';
+            columns: ['tenant_id'];
+            isOneToOne: false;
+            referencedRelation: 'tenants';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       despesas: {
         Row: {
           categoria: Database['public']['Enums']['despesa_categoria'];

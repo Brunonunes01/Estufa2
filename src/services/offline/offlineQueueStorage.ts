@@ -1,6 +1,7 @@
 import {
   deserializeOfflinePayload,
   serializeOfflinePayload,
+  hashOfflinePayload,
 } from './offlinePayloadCodec.ts';
 import type { JsonValue } from './offlinePayloadCodec.ts';
 import { isOfflineLikeError } from './offlineUtils.ts';
@@ -58,6 +59,8 @@ export type OfflineQueueItem = {
   attempts: number;
   scope?: OfflineQueueScope;
   lastError?: string;
+  logicalOperationId?: string;
+  payloadHash?: string;
 };
 
 type FlushResult = {
@@ -132,7 +135,8 @@ export const createOfflineQueueStorage = ({
 
   const enqueueOfflineAction = async (
     action: OfflineActionName,
-    payload: unknown
+    payload: unknown,
+    logicalOperationId = `${action}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
   ) => {
     const queue = await readQueue();
     const activeScope = await resolveActiveScope();
@@ -144,6 +148,12 @@ export const createOfflineQueueStorage = ({
     if (activeScope.permissions && !hasTenantPermission(activeScope.permissions, operation)) {
       throw new Error('Operacao offline rejeitada por permissao insuficiente.');
     }
+    const payloadHash = hashOfflinePayload(payload);
+    const existing = queue.find((item) => item.logicalOperationId === logicalOperationId);
+    if (existing) {
+      if (existing.payloadHash !== payloadHash) throw new Error('Conflito de idempotencia: mesma operacao com payload divergente.');
+      return existing.id;
+    }
     const nextItem: OfflineQueueItem = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       action,
@@ -151,6 +161,8 @@ export const createOfflineQueueStorage = ({
       queuedAt: Date.now(),
       attempts: 0,
       scope: { ...activeScope, tenantId },
+      logicalOperationId,
+      payloadHash,
     };
     queue.push(nextItem);
     await writeQueue(queue);

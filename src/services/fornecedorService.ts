@@ -37,11 +37,11 @@ const buildSupabaseFornecedorPayload = (data: FornecedorFormData, tenantId: stri
   observacoes: data.observacoes ?? null,
 });
 
-const createFornecedorSupabase = async (data: FornecedorFormData, tenantId: string) => {
+const createFornecedorSupabase = async (data: FornecedorFormData, tenantId: string, logicalOperationId: string) => {
   const supabase = getSupabaseClient();
   const { data: inserted, error } = await supabase
     .from('fornecedores')
-    .insert(buildSupabaseFornecedorPayload(data, tenantId))
+    .insert({ ...buildSupabaseFornecedorPayload(data, tenantId), id: logicalOperationId })
     .select('id')
     .single();
 
@@ -117,9 +117,9 @@ export const createFornecedor = async (data: FornecedorFormData, userId: string,
     payload: { data, userId: tenantId },
     options,
     onQueuedValue: () => buildOfflinePlaceholderId(),
-    write: async () => {
+    write: async (logicalOperationId) => {
       try {
-        return await createFornecedorSupabase(data, tenantId);
+        return await createFornecedorSupabase(data, tenantId, logicalOperationId);
       } catch (error) {
         console.error('Erro ao criar fornecedor: ', error);
         throw new Error('Não foi possível criar o fornecedor.');

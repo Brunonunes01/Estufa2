@@ -5,6 +5,7 @@ import { buildOfflinePlaceholderId, runOfflineWrite } from './offline/offlineWri
 import { getSupabaseClient } from './supabaseClient';
 import { assertTenantId } from './tenantGuard';
 import { createTraceabilityEventSafely } from './traceabilityService';
+import { ServiceError } from './serviceError';
 
 export interface AplicacaoItemData {
   insumoId: string;
@@ -158,9 +159,7 @@ const createAplicacaoSupabase = async (data: CreateAplicacaoData, tenantId: stri
       custo_unitario_na_aplicacao: item.custoUnitarioNaAplicacao ?? null,
     }))
   );
-  if (itensError) {
-    throw new Error(`Erro ao salvar itens da aplicação. ${itensError.message}`);
-  }
+  if (itensError) throw new ServiceError('unexpected', 'A aplicação foi criada, mas seus itens não foram confirmados.', { operation: 'createAplicacao', source: 'aplicacaoService', nextStep: 'Reabra a aplicação e reconcilie os itens.', context: { completedSteps: ['estoque', 'aplicacao'], reconciliationAction: 'revisar-itens-aplicacao', aplicacaoId: aplicacaoRow.id }, cause: itensError });
 
   const { error: plantioUpdateError } = await supabase
     .from('plantios')
@@ -170,9 +169,7 @@ const createAplicacaoSupabase = async (data: CreateAplicacaoData, tenantId: stri
     })
     .eq('id', data.plantioId)
     .eq('tenant_id', tenantId);
-  if (plantioUpdateError) {
-    throw new Error(`Erro ao atualizar custo acumulado do plantio. ${plantioUpdateError.message}`);
-  }
+  if (plantioUpdateError) throw new ServiceError('unexpected', 'A aplicação foi registrada, mas o custo do ciclo não foi atualizado.', { operation: 'createAplicacao', source: 'aplicacaoService', nextStep: 'Recalcule o custo acumulado do ciclo.', context: { completedSteps: ['estoque', 'aplicacao', 'itens'], reconciliationAction: 'recalcular-custo-ciclo', aplicacaoId: aplicacaoRow.id }, cause: plantioUpdateError });
 
   await createTraceabilityEventSafely(tenantId, {
     plantioId: data.plantioId,

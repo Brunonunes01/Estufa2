@@ -74,3 +74,21 @@ export const deserializeOfflinePayload = (value: JsonValue): unknown => {
   }
   return value;
 };
+
+const sortJson = (value: JsonValue): JsonValue => {
+  if (Array.isArray(value)) return value.map(sortJson);
+  if (isObject(value)) return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortJson(value[key] as JsonValue)]));
+  return value;
+};
+
+export const canonicalOfflinePayload = (value: unknown) => JSON.stringify(sortJson(serializeOfflinePayload(value)));
+
+export const hashOfflinePayload = (value: unknown) => {
+  const input = canonicalOfflinePayload(value);
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `fnv1a-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+};

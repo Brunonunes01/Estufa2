@@ -20,6 +20,8 @@ import {
   resolveAuditActorUid,
 } from './auditActor';
 import { assertProductionOrigin as assertGreenhouseProductionOrigin } from '../lib/productionDomainRules';
+import { assertRequiredPayloadFields } from './persistenceIntegrityGuard';
+import { ServiceError } from './serviceError';
 import {
   CHEQUE_EM_MAOS_PAYMENT_MARKER,
   canConfirmVendaReceipt,
@@ -333,6 +335,7 @@ export const createVenda = async (
   actor?: AuditActor | null
 ) => {
   const tenantId = assertTenantId(userId);
+  assertRequiredPayloadFields(data as unknown as Record<string, unknown>, ['estufaId', 'quantidade', 'unidade', 'precoUnitario'], 'createVenda');
   const traceActor = resolveTraceActor(
     tenantId,
     actor,
@@ -343,7 +346,7 @@ export const createVenda = async (
     payload: { data, userId: tenantId, actor },
     options,
     onQueuedValue: () => buildOfflinePlaceholderId(),
-    write: async () => {
+    write: async (logicalOperationId) => {
       validateVendaFormData(data);
 
       const supabase = getSupabaseClient();
@@ -367,7 +370,7 @@ export const createVenda = async (
 
       const { data: inserted, error } = await supabase
         .from('vendas')
-        .insert(payload.venda)
+        .insert({ ...payload.venda, id: logicalOperationId })
         .select('id')
         .single();
       if (error || !inserted?.id) {
@@ -381,9 +384,7 @@ export const createVenda = async (
         venda_id: inserted.id,
         ...payload.item,
       });
-      if (itemError) {
-        throw new Error(`Erro ao salvar itens da venda. ${itemError.message}`);
-      }
+      if (itemError) throw new ServiceError('unexpected', 'A venda foi criada, mas seus itens não foram confirmados.', { operation: 'createVenda', source: 'vendaService', nextStep: 'Reabra a venda e conclua ou remova o registro incompleto.', context: { completedSteps: ['venda'], reconciliationAction: 'revisar-itens-venda', vendaId: inserted.id }, cause: itemError });
 
       const tracePlantioId = data.plantioId || null;
       const compradorTrace = await resolveCompradorTrace(

@@ -13,7 +13,7 @@ import {
 const OFFLINE_QUEUE_KEY = '@sge/offline_queue_v1';
 
 export type OfflineSyncMode = 'allow_queue' | 'online_only';
-export type OfflineWriteOptions = { syncMode?: OfflineSyncMode };
+export type OfflineWriteOptions = { syncMode?: OfflineSyncMode; logicalOperationId?: string };
 export type { OfflineActionName, OfflineQueueItem, OfflineQueueScope } from './offlineQueueStorage.ts';
 
 export const isOnlineNow = async () => {

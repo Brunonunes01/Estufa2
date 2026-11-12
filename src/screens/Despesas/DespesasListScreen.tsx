@@ -20,6 +20,8 @@ import { Despesa } from '../../types/domain';
 import { COLORS, SPACING } from '../../constants/theme';
 import { useThemeMode } from '../../hooks/useThemeMode';
 import { useFeedback } from '../../hooks/useFeedback';
+import { ServiceError } from '../../services/serviceError';
+import { classifyServiceError } from '../../services/serviceErrorClassifier';
 import { useDespesasList } from '../../hooks/useDespesasList';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import EmptyState from '../../components/ui/EmptyState';
@@ -38,7 +40,7 @@ const DespesasListScreen = ({ navigation }: any) => {
   const { settings } = useAppSettings();
   const theme = useThemeMode();
   const insets = useSafeAreaInsets();
-  const { showError, showSuccess } = useFeedback();
+  const { showSuccess, showStructuredError } = useFeedback();
   const {
     despesas,
     totalGasto,
@@ -83,8 +85,8 @@ const DespesasListScreen = ({ navigation }: any) => {
   }, [selectedTenantId, user?.uid]);
 
   useEffect(() => {
-    if (isError) showError('Não foi possível carregar as despesas.');
-  }, [isError, showError]);
+    if (isError) showStructuredError(new ServiceError('availability', 'As despesas não responderam.', { operation: 'load', source: 'despesas', nextStep: 'Atualize a lista quando a conexão estiver disponível.' }));
+  }, [isError, showStructuredError]);
 
   useFocusEffect(
     useCallback(() => {
@@ -116,14 +118,14 @@ const DespesasListScreen = ({ navigation }: any) => {
             try {
               await deleteDespesa(item.id);
               showSuccess('Despesa excluída.');
-            } catch {
-              showError('Não foi possível excluir a despesa.');
+            } catch (error) {
+              showStructuredError(classifyServiceError(error, { operation: 'delete', source: 'despesas' }));
             }
           },
         },
       ]);
     },
-    [deleteDespesa, showError, showSuccess]
+    [deleteDespesa, showStructuredError, showSuccess]
   );
 
   const handleDarBaixa = useCallback(
@@ -160,11 +162,11 @@ const DespesasListScreen = ({ navigation }: any) => {
         });
         setDespesaParaBaixa(null);
         showSuccess('Pagamento registrado no caixa selecionado.');
-      } catch {
-        showError('Não foi possível atualizar a despesa.');
+      } catch (error) {
+        showStructuredError(classifyServiceError(error, { operation: 'save', source: 'despesas' }));
       }
     },
-    [dataPagamento, despesaParaBaixa, markDespesaAsPaid, showError, showSuccess]
+    [dataPagamento, despesaParaBaixa, markDespesaAsPaid, showStructuredError, showSuccess]
   );
 
   const handleOpenComprovante = useCallback(async (url?: string | null) => {

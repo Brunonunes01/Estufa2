@@ -16,6 +16,7 @@ import {
 import { Feather, Ionicons } from '@expo/vector-icons';
 
 import { COLORS } from '../../constants/theme';
+import { actionableErrorMessage } from '../../services/serviceErrorPresentation';
 import { resetPasswordForEmailBridge, signInWithPasswordBridge } from '../../services/authBridge';
 import {
   getSavedLoginAccounts,
@@ -62,7 +63,7 @@ const LoginScreen = ({ navigation }: any) => {
       const accounts = await saveLoginAccount(normalizedEmail);
       setSavedAccounts(accounts);
     } catch (err: any) {
-      let msg = 'Erro ao entrar.';
+      let msg = actionableErrorMessage(err, 'authentication');
       if (
         err?.code === 'auth/invalid-credential' ||
         err?.code === 'auth/user-not-found' ||
@@ -90,7 +91,7 @@ const LoginScreen = ({ navigation }: any) => {
       await resetPasswordForEmailBridge(normalizedEmail);
       Alert.alert('Recuperação de senha', 'Enviamos um link de redefinição para o e-mail informado.');
     } catch (err: any) {
-      const msg = err?.message || 'Não foi possível enviar o link de redefinição de senha.';
+      const msg = actionableErrorMessage(err, 'authentication');
       setError(msg);
       Alert.alert('Erro', msg);
     }

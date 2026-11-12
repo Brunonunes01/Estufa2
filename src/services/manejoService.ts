@@ -36,11 +36,12 @@ export const createManejo = async (
     payload: { data, userId: tenantId },
     options,
     onQueuedValue: () => buildOfflinePlaceholderId(),
-    write: async () => {
+    write: async (logicalOperationId) => {
       const supabase = getSupabaseClient();
       const { data: inserted, error } = await supabase
         .from('manejos')
         .insert({
+          id: logicalOperationId,
           tenant_id: tenantId,
           plantio_id: data.plantioId,
           estufa_id: data.estufaId || null,

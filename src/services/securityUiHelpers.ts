@@ -1,3 +1,6 @@
+import { ServiceError } from './serviceError.ts';
+import { presentServiceError } from './serviceErrorPresentation.ts';
+
 const getErrorMessage = (error: unknown) => {
   if (error instanceof Error) {
     return error.message;
@@ -9,8 +12,8 @@ const getErrorMessage = (error: unknown) => {
 };
 
 export const resolveServiceErrorMessage = (error: unknown, fallback: string) => {
-  const message = getErrorMessage(error).trim();
-  return message || fallback;
+  if (error instanceof ServiceError) return presentServiceError(error).message;
+  return fallback;
 };
 
 export const getPasswordChangeErrorMessage = (error: unknown) => {

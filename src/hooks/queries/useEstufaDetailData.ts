@@ -1,8 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
+import { useRef } from 'react';
 import { getEstufaById } from '../../services/estufaService';
 import { listPlantiosByEstufa } from '../../services/plantioService';
 import { listManejosByEstufa } from '../../services/manejoService';
 import { queryKeys } from '../../lib/queryClient';
+import { useAuth } from '../useAuth';
+import { acceptOperationResponse, captureOperationContext } from '../../services/operationContextGuard';
 
 const getPlantioSortSeconds = (value?: { seconds?: number; toDate?: () => Date } | null) => {
   if (!value) return 0;
@@ -13,8 +16,11 @@ const getPlantioSortSeconds = (value?: { seconds?: number; toDate?: () => Date }
   return 0;
 };
 
-export const useEstufaDetailData = (estufaId?: string, tenantId?: string) =>
-  useQuery({
+export const useEstufaDetailData = (estufaId?: string, tenantId?: string) => {
+  const { user, selectedTenantId } = useAuth();
+  const currentRef = useRef({ authUserId: user?.uid || '', tenantId: selectedTenantId || tenantId || '' });
+  currentRef.current = { authUserId: user?.uid || '', tenantId: selectedTenantId || tenantId || '' };
+  return useQuery({
     queryKey: queryKeys.estufaDetail(estufaId || 'none', tenantId || 'none'),
     enabled: !!estufaId && !!tenantId,
     staleTime: 1000 * 45,
@@ -22,6 +28,7 @@ export const useEstufaDetailData = (estufaId?: string, tenantId?: string) =>
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     queryFn: async () => {
+      const captured = captureOperationContext(currentRef.current);
       const [estufa, plantios, manejos] = await Promise.all([
         getEstufaById(estufaId as string, tenantId as string),
         listPlantiosByEstufa(tenantId as string, estufaId as string),
@@ -36,6 +43,7 @@ export const useEstufaDetailData = (estufaId?: string, tenantId?: string) =>
         return getPlantioSortSeconds(b.dataPlantio) - getPlantioSortSeconds(a.dataPlantio);
       });
 
-      return { estufa, plantios, manejos };
+      return acceptOperationResponse(captured, currentRef.current, { estufa, plantios, manejos });
     },
   });
+};

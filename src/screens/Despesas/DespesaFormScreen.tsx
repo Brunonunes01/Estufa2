@@ -17,6 +17,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createDespesa } from '../../services/despesaService';
+import { actionableErrorMessage } from '../../services/serviceErrorPresentation';
+import { isOfflinePlaceholderId } from '../../services/offline/offlineWrite';
 import { useAuth } from '../../hooks/useAuth';
 import { sanitizeDecimalInput } from '../../utils/numericFields';
 import { useWriteGuard } from '../../hooks/useWriteGuard';
@@ -118,7 +120,7 @@ const DespesaFormScreen = ({ navigation }: any) => {
 
     setLoading(true);
     try {
-      await createDespesa(
+      const resultId = await createDespesa(
         {
           descricao: descricao.trim(),
           valor: valorNum,
@@ -142,15 +144,16 @@ const DespesaFormScreen = ({ navigation }: any) => {
         await invalidateDespesasQueries(targetId);
       }
 
+      const pending = isOfflinePlaceholderId(resultId);
       Alert.alert(
-        'Despesa registrada',
-        `${descricao.trim()}\nValor: R$ ${valorNum.toFixed(2)}\nStatus: ${status === 'pago' ? 'Pago' : 'Pendente'}`,
+        pending ? 'Despesa pendente' : 'Despesa registrada',
+        pending ? 'A despesa está na fila e será confirmada quando a conexão voltar.' : `${descricao.trim()}\nValor: R$ ${valorNum.toFixed(2)}\nStatus: ${status === 'pago' ? 'Pago' : 'Pendente'}`,
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     } catch (error: any) {
       Alert.alert(
         'Erro',
-        error?.message || 'Não consegui salvar a despesa. Tente novamente.'
+        actionableErrorMessage(error, 'save')
       );
     } finally {
       setLoading(false);

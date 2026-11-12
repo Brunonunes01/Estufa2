@@ -7,6 +7,7 @@ import {
 } from './offline/offlineWrite';
 import { getSupabaseClient } from './supabaseClient';
 import { assertTenantId } from './tenantGuard';
+import { assertRequiredPayloadFields } from './persistenceIntegrityGuard';
 
 export type DespesaFormData = {
   descricao: string;
@@ -90,12 +91,13 @@ const buildSupabaseDespesaPayload = (
 
 const createDespesaSupabase = async (
   data: DespesaFormData,
-  tenantId: string
+  tenantId: string,
+  logicalOperationId: string
 ) => {
   const supabase = getSupabaseClient();
   const { data: inserted, error } = await supabase
     .from('despesas')
-    .insert(buildSupabaseDespesaPayload(data, tenantId))
+    .insert({ ...buildSupabaseDespesaPayload(data, tenantId), id: logicalOperationId })
     .select('id')
     .single();
   if (error || !inserted?.id) {
@@ -184,12 +186,13 @@ export const createDespesa = async (
   options?: OfflineWriteOptions
 ) => {
   const tenantId = assertTenantId(userId);
+  assertRequiredPayloadFields(data as unknown as Record<string, unknown>, ['descricao', 'categoria', 'valor', 'dataDespesa', 'statusPagamento'], 'createDespesa');
   return runOfflineWrite({
     action: 'createDespesa',
     payload: { data, userId: tenantId },
     options,
     onQueuedValue: () => buildOfflinePlaceholderId(),
-    write: async () => createDespesaSupabase(data, tenantId),
+    write: async (logicalOperationId) => createDespesaSupabase(data, tenantId, logicalOperationId),
   });
 };
 

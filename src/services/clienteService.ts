@@ -93,9 +93,9 @@ const getClienteByIdSupabase = async (clienteId: string, tenantId: string): Prom
   return data ? mapSupabaseClienteToDomain(data) : null;
 };
 
-const createClienteSupabase = async (data: ClienteFormData, tenantId: string) => {
+const createClienteSupabase = async (data: ClienteFormData, tenantId: string, logicalOperationId: string) => {
   const supabase = getSupabaseClient();
-  const payload = buildSupabaseClientePayload(data, tenantId);
+  const payload = { ...buildSupabaseClientePayload(data, tenantId), id: logicalOperationId };
   const { data: inserted, error } = await supabase.from('clientes').insert(payload).select('id').single();
 
   if (error || !inserted?.id) {
@@ -129,7 +129,7 @@ export const createCliente = async (data: ClienteFormData, userId: string, optio
     payload: { data, userId: tenantId },
     options,
     onQueuedValue: () => buildOfflinePlaceholderId(),
-    write: async () => createClienteSupabase(data, tenantId),
+    write: async (logicalOperationId) => createClienteSupabase(data, tenantId, logicalOperationId),
   });
 };
 

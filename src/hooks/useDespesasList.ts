@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { deleteDespesa, updateDespesaStatus } from '../services/despesaService';
 import { useTenantId } from './useTenantId';
@@ -6,6 +6,8 @@ import { useDespesasListData } from './queries/useDespesasListData';
 import { queryKeys } from '../lib/queryClient';
 import { invalidateDespesasQueries } from '../lib/queryInvalidation';
 import { listAllPlantios } from '../services/plantioService';
+import { useAuth } from './useAuth';
+import { acceptOperationResponse, captureOperationContext } from '../services/operationContextGuard';
 import {
   FinanceProductionMode,
   matchesDespesaProductionMode,
@@ -13,6 +15,9 @@ import {
 
 export const useDespesasList = (productionMode?: FinanceProductionMode) => {
   const targetId = useTenantId();
+  const { user, selectedTenantId } = useAuth();
+  const operationContextRef = useRef({ authUserId: user?.uid || '', tenantId: selectedTenantId || targetId || '' });
+  operationContextRef.current = { authUserId: user?.uid || '', tenantId: selectedTenantId || targetId || '' };
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [payingId, setPayingId] = useState<string | null>(null);
 
@@ -20,7 +25,7 @@ export const useDespesasList = (productionMode?: FinanceProductionMode) => {
   const plantiosQuery = useQuery({
     queryKey: queryKeys.plantiosList(targetId || 'none'),
     enabled: !!targetId && !!productionMode,
-    queryFn: () => listAllPlantios(targetId as string),
+    queryFn: async () => { const captured = captureOperationContext(operationContextRef.current); return acceptOperationResponse(captured, operationContextRef.current, await listAllPlantios(targetId as string)); },
   });
   const despesasRaw = query.data || [];
   const refetchDespesas = query.refetch;

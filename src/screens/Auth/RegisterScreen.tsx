@@ -18,6 +18,7 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 import useGoogleAuth from '../../hooks/useGoogleAuth';
 import { signUpWithPasswordBridge } from '../../services/authBridge';
+import { actionableErrorMessage } from '../../services/serviceErrorPresentation';
 
 const { width } = Dimensions.get('window');
 
@@ -55,7 +56,7 @@ const RegisterScreen = ({ navigation }: any) => {
       Alert.alert('Conta criada', 'Seu cadastro foi realizado com sucesso.');
       navigation.navigate('Login');
     } catch (err: any) {
-      let message = 'Erro ao criar conta.';
+      let message = actionableErrorMessage(err, 'save');
       if (
         err?.code === 'auth/email-already-in-use' ||
         err?.message?.toLowerCase?.().includes('already registered')
@@ -63,8 +64,6 @@ const RegisterScreen = ({ navigation }: any) => {
         message = 'Este e-mail já está em uso.';
       } else if (err?.code === 'auth/invalid-email') {
         message = 'Informe um e-mail válido.';
-      } else if (typeof err?.message === 'string' && err.message.trim()) {
-        message = err.message;
       }
       setError(message);
       Alert.alert('Erro', message);

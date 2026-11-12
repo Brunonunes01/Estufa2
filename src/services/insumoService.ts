@@ -50,9 +50,9 @@ const buildSupabaseInsumoPayload = (data: Partial<InsumoFormData>, tenantId: str
   observacoes: data.observacoes ?? null,
 });
 
-const createInsumoSupabase = async (data: InsumoFormData, tenantId: string) => {
+const createInsumoSupabase = async (data: InsumoFormData, tenantId: string, logicalOperationId: string) => {
   const supabase = getSupabaseClient();
-  const payload = buildSupabaseInsumoPayload(data, tenantId);
+  const payload = { ...buildSupabaseInsumoPayload(data, tenantId), id: logicalOperationId };
   const { data: inserted, error } = await supabase.from('insumos').insert(payload).select('id').single();
   if (error || !inserted?.id) {
     throw new Error(`Não foi possível criar insumo. ${error?.message || ''}`.trim());
@@ -110,7 +110,7 @@ export const createInsumo = async (data: InsumoFormData, userId: string, options
     payload: { data, userId: tenantId },
     options,
     onQueuedValue: () => buildOfflinePlaceholderId(),
-    write: async () => createInsumoSupabase(data, tenantId),
+    write: async (logicalOperationId) => createInsumoSupabase(data, tenantId, logicalOperationId),
   });
 };
 

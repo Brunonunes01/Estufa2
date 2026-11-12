@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   ActivityIndicator,
@@ -78,6 +78,7 @@ import {
   toDateSafe,
 } from './vendasListUtils';
 import { resolveServiceErrorMessage } from '../../services/securityUiHelpers';
+import { acceptOperationResponse, captureOperationContext } from '../../services/operationContextGuard';
 import { isChequeEmMaosPayment } from '../../services/paymentStatusHelpers';
 import { getAccountingStatusLabel } from '../../services/salesAccountingReportHelpers';
 import { sanitizeDecimalInput } from '../../utils/numericFields';
@@ -181,6 +182,8 @@ const VendasListScreen = ({ navigation, route }: any) => {
   );
 
   const targetId = selectedTenantId || user?.uid;
+  const operationContextRef = useRef({ authUserId: user?.uid || '', tenantId: targetId || '' });
+  operationContextRef.current = { authUserId: user?.uid || '', tenantId: targetId || '' };
   const productionMode = settings.activeProductionMode;
   const auditActor = useMemo(
     () =>
@@ -201,24 +204,24 @@ const VendasListScreen = ({ navigation, route }: any) => {
   const vendasQuery = useQuery({
     queryKey: queryKeys.vendasList(targetId || 'none'),
     enabled: !!targetId,
-    queryFn: () => listAllVendas(targetId as string),
+    queryFn: async () => { const captured = captureOperationContext(operationContextRef.current); return acceptOperationResponse(captured, operationContextRef.current, await listAllVendas(targetId as string)); },
   });
   const clientesQuery = useClientesListData(targetId);
   const caixaPessoasQuery = useQuery({
     queryKey: queryKeys.caixaPessoas(targetId || 'none'),
     enabled: !!targetId,
-    queryFn: () => listCaixaPessoas(targetId as string),
+    queryFn: async () => { const captured = captureOperationContext(operationContextRef.current); return acceptOperationResponse(captured, operationContextRef.current, await listCaixaPessoas(targetId as string)); },
   });
   const estufasQuery = useEstufasListData(targetId);
   const plantiosQuery = useQuery({
     queryKey: queryKeys.plantiosList(targetId || 'none'),
     enabled: !!targetId,
-    queryFn: () => listAllPlantios(targetId as string),
+    queryFn: async () => { const captured = captureOperationContext(operationContextRef.current); return acceptOperationResponse(captured, operationContextRef.current, await listAllPlantios(targetId as string)); },
   });
   const despesasQuery = useQuery({
     queryKey: queryKeys.despesasList(targetId || 'none'),
     enabled: !!targetId,
-    queryFn: () => listDespesas(targetId as string),
+    queryFn: async () => { const captured = captureOperationContext(operationContextRef.current); return acceptOperationResponse(captured, operationContextRef.current, await listDespesas(targetId as string)); },
   });
 
   const allVendas = vendasQuery.data || [];

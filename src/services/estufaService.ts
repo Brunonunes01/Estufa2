@@ -107,12 +107,12 @@ const buildSupabaseEstufaPatch = (data: Partial<Estufa>) => {
   return patch;
 };
 
-const createEstufaSupabase = async (data: Partial<Estufa>, tenantId: string) => {
+const createEstufaSupabase = async (data: Partial<Estufa>, tenantId: string, logicalOperationId: string) => {
 
   const supabase = getSupabaseClient();
   const { data: inserted, error } = await supabase
     .from('estufas')
-    .insert(buildSupabaseEstufaPayload(data, tenantId))
+    .insert({ ...buildSupabaseEstufaPayload(data, tenantId), id: logicalOperationId })
     .select('id')
     .single();
   if (error || !inserted?.id) {
@@ -182,9 +182,9 @@ export const createEstufa = async (data: Partial<Estufa>, userId: string, option
     payload: { data, userId: tenantId },
     options,
     onQueuedValue: () => buildOfflinePlaceholderId(),
-    write: async () => {
+    write: async (logicalOperationId) => {
       try {
-        return await createEstufaSupabase(data, tenantId);
+        return await createEstufaSupabase(data, tenantId, logicalOperationId);
       } catch (error) {
         console.error('Erro ao criar estufa:', error);
         throw new Error('Erro ao salvar estufa no banco de dados.');

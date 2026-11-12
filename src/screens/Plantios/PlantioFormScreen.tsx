@@ -28,6 +28,8 @@ import {
   TYPOGRAPHY,
 } from '../../constants/theme';
 import { Timestamp } from '../../lib/timestamp';
+import { actionableErrorMessage } from '../../services/serviceErrorPresentation';
+import { isOfflinePlaceholderId } from '../../services/offline/offlineWrite';
 import { invalidatePlantioQueries } from '../../lib/queryInvalidation';
 import { verifyCurrentUserPassword } from '../../services/securityService';
 import { resolveServiceErrorMessage } from '../../services/securityUiHelpers';
@@ -167,20 +169,22 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
       }
       if (isEditMode && editingId) {
         await updatePlantio(editingId as string, plantioData, targetId);
+        return editingId;
       } else {
-        await createPlantio(plantioData, targetId);
+        return createPlantio(plantioData, targetId);
       }
     },
-    onSuccess: async (_data, variables) => {
+    onSuccess: async (resultId, variables) => {
       await invalidateQueries();
       const custoEstimadoValue = variables.custoEstimadoInicial || 0;
       const plantingSummary =
         variables.quantidadePlantada == null
           ? 'Quantidade plantada não informada'
           : `${variables.quantidadePlantada} ${variables.unidadeQuantidade}`;
+      const pending = isOfflinePlaceholderId(resultId);
       Alert.alert(
-        isEditMode ? 'Ciclo atualizado' : 'Ciclo criado',
-        `${variables.cultura} • ${plantingSummary}${custoEstimadoValue > 0 ? `\nCusto inicial: R$ ${custoEstimadoValue.toFixed(2)}` : ''}`,
+        pending ? 'Ciclo pendente' : isEditMode ? 'Ciclo atualizado' : 'Ciclo criado',
+        pending ? 'O ciclo está salvo na fila e será confirmado quando a conexão voltar.' : `${variables.cultura} • ${plantingSummary}${custoEstimadoValue > 0 ? `\nCusto inicial: R$ ${custoEstimadoValue.toFixed(2)}` : ''}`,
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     },
@@ -347,9 +351,7 @@ const PlantioFormScreen = ({ route, navigation }: any) => {
     } catch (error: unknown) {
       Alert.alert(
         'Falha na remoção',
-        error instanceof Error
-          ? error.message
-          : 'Não foi possível excluir o ciclo.'
+        actionableErrorMessage(error, 'delete')
       );
     } finally {
       setDeleting(false);

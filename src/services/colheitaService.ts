@@ -25,6 +25,7 @@ import {
 } from './auditActor';
 import { assertProductionOrigin as assertGreenhouseProductionOrigin } from '../lib/productionDomainRules';
 import { assertCycleOperationDate } from '../lib/productionCycleRules';
+import { ServiceError } from './serviceError';
 
 export type ColheitaFormData = {
   quantidade: number;
@@ -380,7 +381,11 @@ export const createColheita = async (
               }
             : null,
         };
-        vId = await createVenda(vendaData, tenantId, undefined, actor);
+        try {
+          vId = await createVenda(vendaData, tenantId, undefined, actor);
+        } catch (cause) {
+          throw new ServiceError('unexpected', 'A colheita foi registrada, mas a venda vinculada não foi confirmada.', { operation: 'createColheita', source: 'colheitaService', nextStep: 'Abra a colheita e registre ou reconcilie a venda.', context: { completedSteps: ['colheita', 'status-plantio'], reconciliationAction: 'revisar-venda-colheita', colheitaId: inserted.id }, cause });
+        }
       }
 
       await createTraceabilityEventSafely(tenantId, {

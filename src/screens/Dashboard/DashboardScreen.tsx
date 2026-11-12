@@ -27,6 +27,7 @@ import { formatDateSafe } from '../../utils/date';
 // Modular Components
 import DashboardTenantSwitcher from './components/DashboardTenantSwitcher';
 import DashboardWizardButton from './components/DashboardWizardButton';
+import { ServiceError } from '../../services/serviceError';
 
 type DashboardScreenProps = NativeStackScreenProps<
   RootStackParamList,
@@ -36,7 +37,7 @@ type DashboardScreenProps = NativeStackScreenProps<
 const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
   const theme = useThemeMode();
   const insets = useSafeAreaInsets();
-  const { showError } = useFeedback();
+  const { showError, showStructuredError } = useFeedback();
   const { accessRoleLabel, canWrite } = useAuth();
 
   const {
@@ -63,9 +64,8 @@ const DashboardScreen = ({ navigation }: DashboardScreenProps) => {
   );
 
   useEffect(() => {
-    if (isError)
-      showError('Não foi possível carregar os indicadores do painel.');
-  }, [isError, showError]);
+    if (isError) showStructuredError(new ServiceError('availability', 'Os indicadores não responderam.', { operation: 'load', source: 'dashboard', nextStep: 'Tente atualizar; as demais áreas disponíveis continuam utilizáveis.' }));
+  }, [isError, showStructuredError]);
 
   const navigateTo = useCallback(
     (

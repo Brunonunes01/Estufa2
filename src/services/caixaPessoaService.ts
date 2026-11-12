@@ -1,5 +1,7 @@
 import { assertTenantId } from './tenantGuard';
 import { getSupabaseClient } from './supabaseClient';
+import type { OfflineWriteOptions } from './offline/offlineStorage';
+import { createLogicalOperationId } from './operationIdentity';
 
 export interface CaixaPessoa {
   id: string;
@@ -41,15 +43,17 @@ export const listCaixaPessoas = async (userId: string): Promise<CaixaPessoa[]> =
   return (data || []).map(mapSupabaseCaixaPessoa);
 };
 
-export const createCaixaPessoa = async (data: { nome: string }, userId: string): Promise<string> => {
+export const createCaixaPessoa = async (data: { nome: string }, userId: string, options?: OfflineWriteOptions): Promise<string> => {
   const tenantId = assertTenantId(userId);
   const nome = data.nome.trim();
   if (!nome) throw new Error('Informe o nome da pessoa do caixa.');
 
   const supabase: any = getSupabaseClient();
+  const logicalOperationId = options?.logicalOperationId?.trim() || createLogicalOperationId();
   const { data: inserted, error } = await supabase
     .from('caixa_pessoas')
     .insert({
+      id: logicalOperationId,
       tenant_id: tenantId,
       nome,
       ativo: true,

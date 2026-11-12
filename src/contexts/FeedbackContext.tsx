@@ -1,6 +1,8 @@
 import React, { createContext, ReactNode, useCallback, useMemo, useState } from 'react';
 import { Snackbar, useTheme } from 'react-native-paper';
 import { useThemeMode } from '../hooks/useThemeMode';
+import type { ServiceError } from '../services/serviceError';
+import { presentServiceError } from '../services/serviceErrorPresentation';
 
 type FeedbackType = 'success' | 'error' | 'warning';
 
@@ -8,12 +10,16 @@ interface FeedbackContextData {
   showSuccess: (message: string) => void;
   showError: (message: string) => void;
   showWarning: (message: string) => void;
+  showStructuredError: (error: ServiceError, options?: { operation?: string; onRetry?: () => void }) => void;
 }
 
 interface SnackbarState {
   visible: boolean;
   message: string;
   type: FeedbackType;
+  nextStep?: string;
+  retryLabel?: string;
+  onRetry?: () => void;
 }
 
 const initialState: SnackbarState = {
@@ -33,11 +39,12 @@ export const FeedbackProvider = ({ children }: { children: ReactNode }) => {
     setState((prev) => ({ ...prev, visible: false }));
   }, []);
 
-  const show = useCallback((type: FeedbackType, message: string) => {
+  const show = useCallback((type: FeedbackType, message: string, details?: Partial<SnackbarState>) => {
     setState({
       visible: true,
       message,
       type,
+      ...details,
     });
   }, []);
 
@@ -46,6 +53,10 @@ export const FeedbackProvider = ({ children }: { children: ReactNode }) => {
       showSuccess: (message: string) => show('success', message),
       showError: (message: string) => show('error', message),
       showWarning: (message: string) => show('warning', message),
+      showStructuredError: (error: ServiceError, options?: { operation?: string; onRetry?: () => void }) => {
+        const presentation = presentServiceError(error, options?.operation);
+        show('error', presentation.message, { nextStep: presentation.nextStep, retryLabel: options?.onRetry ? presentation.retryLabel : undefined, onRetry: options?.onRetry });
+      },
     }),
     [show]
   );
@@ -65,8 +76,9 @@ export const FeedbackProvider = ({ children }: { children: ReactNode }) => {
         duration={3200}
         style={{ backgroundColor: backgroundByType[state.type], marginBottom: 16 }}
         theme={{ colors: { inverseOnSurface: paperTheme.colors.onPrimary } }}
+        action={state.retryLabel && state.onRetry ? { label: state.retryLabel, onPress: state.onRetry } : undefined}
       >
-        {state.message}
+        {state.nextStep ? `${state.message}\n${state.nextStep}` : state.message}
       </Snackbar>
     </FeedbackContext.Provider>
   );

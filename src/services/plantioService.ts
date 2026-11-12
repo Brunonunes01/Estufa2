@@ -9,6 +9,8 @@ import { getSupabaseClient } from './supabaseClient';
 import { assertTenantId } from './tenantGuard';
 import { createTraceabilityEventSafely } from './traceabilityService';
 import { assertProductionOrigin as assertGreenhouseProductionOrigin } from '../lib/productionDomainRules';
+import { assertRequiredPayloadFields } from './persistenceIntegrityGuard';
+import { ServiceError } from './serviceError';
 
 const toTs = (value?: string | null) =>
   value ? Timestamp.fromDate(new Date(value)) : undefined;
@@ -176,17 +178,18 @@ export const createPlantio = async (
   options?: OfflineWriteOptions
 ) => {
   const tenantId = assertTenantId(userId);
+  assertRequiredPayloadFields(data as Record<string, unknown>, ['estufaId', 'cultura', 'dataPlantio'], 'createPlantio');
   assertGreenhouseProductionOrigin(data, 'Plantio');
   return runOfflineWrite({
     action: 'createPlantio',
     payload: { data, userId: tenantId },
     options,
     onQueuedValue: () => buildOfflinePlaceholderId(),
-    write: async () => {
+    write: async (logicalOperationId) => {
       const supabase = getSupabaseClient();
       const { data: inserted, error } = await supabase
         .from('plantios')
-        .insert(buildPlantioPayload(data, tenantId))
+        .insert({ ...buildPlantioPayload(data, tenantId), id: logicalOperationId })
         .select('id')
         .single();
       if (error || !inserted?.id) {
@@ -211,9 +214,7 @@ export const createPlantio = async (
           tipo_gasto: 'investimento_inicial',
         });
         if (despesaError) {
-          throw new Error(
-            `Plantio criado, mas nao foi possivel registrar o gasto inicial. ${despesaError.message}`
-          );
+          throw new ServiceError('unexpected', 'O ciclo foi criado, mas o gasto inicial ficou pendente.', { operation: 'createPlantio', source: 'plantioService', nextStep: 'Abra o ciclo e registre ou confira o gasto inicial.', context: { completedSteps: ['plantio'], reconciliationAction: 'revisar-gasto-inicial' }, cause: despesaError });
         }
       }
 

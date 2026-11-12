@@ -13,6 +13,7 @@ export type SyncServiceDeps = {
   isOnlineNow(): Promise<boolean>;
   flushOfflineQueue(): Promise<{ flushed: number; pending: number; failed: number }>;
   getOfflineQueueSize(): Promise<number>;
+  flushDiagnosticEvidence?(): Promise<unknown>;
   addNetInfoListener(listener: (net: { isConnected?: boolean | null; isInternetReachable?: boolean | null }) => void): () => void;
   now(): number;
 };
@@ -55,6 +56,11 @@ export const createOfflineSyncService = (deps: SyncServiceDeps) => {
 
       const flushResult = await deps.flushOfflineQueue();
       Object.assign(state, applyFlushResultToSyncState(state, flushResult, deps.now()));
+      try {
+        await deps.flushDiagnosticEvidence?.();
+      } catch {
+        // Diagnóstico é independente: sua falha não altera o resultado da fila de negócio.
+      }
     } catch (error) {
       state.lastError = toOfflineSyncErrorMessage(error);
     } finally {

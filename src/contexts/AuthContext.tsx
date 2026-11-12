@@ -10,6 +10,7 @@ import {
 import { AuthContextData } from './authTypes';
 import { toAuthBootstrapErrorMessage } from './authContextHelpers';
 import { clearActiveTenantAuthorization, setActiveTenantAuthorization } from '../services/tenantAuthorizationState';
+import { classifyServiceError } from '../services/serviceErrorClassifier';
 
 export const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
@@ -70,10 +71,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           try {
             await ensureSupabaseProfileAndTenants(authUser);
           } catch (error) {
-            console.error('Falha no bootstrap de tenant após login:', error);
+            const normalized = classifyServiceError(error, { operation: 'load', source: 'auth-bootstrap' });
+            console.error('Falha no bootstrap de tenant após login:', normalized.toSafeObject());
             if (!isMounted) return;
             resetAuthState();
-            setAuthBootstrapError('Nao foi possivel carregar o perfil autenticado.');
+            setAuthBootstrapError(`${normalized.safeMessage} ${normalized.nextStep}`);
           }
         } else {
           resetAuthState();

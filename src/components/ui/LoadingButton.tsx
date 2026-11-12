@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useCallback, useRef } from 'react';
 import { ActivityIndicator, StyleProp, StyleSheet, Text, TextStyle, TouchableOpacity, ViewStyle } from 'react-native';
 import { useThemeMode } from '../../hooks/useThemeMode';
 import { SHADOWS } from '../../constants/theme';
 
 interface LoadingButtonProps {
   label: string;
-  onPress: () => void;
+  onPress: () => void | Promise<void>;
   loading?: boolean;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -24,6 +24,12 @@ const LoadingButton = ({
 }: LoadingButtonProps) => {
   const theme = useThemeMode();
   const isDisabled = disabled || loading;
+  const inFlightRef = useRef(false);
+  const handlePress = useCallback(async () => {
+    if (inFlightRef.current || isDisabled) return;
+    inFlightRef.current = true;
+    try { await onPress(); } finally { inFlightRef.current = false; }
+  }, [isDisabled, onPress]);
 
   const variantStyles = {
     primary: { bg: theme.rawColors.primary, text: theme.rawColors.textLight },
@@ -47,7 +53,7 @@ const LoadingButton = ({
         },
         style,
       ]}
-      onPress={onPress}
+      onPress={handlePress}
       disabled={isDisabled}
       activeOpacity={0.7}
     >

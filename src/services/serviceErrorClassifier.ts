@@ -1,0 +1,14 @@
+import { ServiceError, type ServiceErrorCategory, type ServiceErrorOptions } from './serviceError.ts';
+type ErrorLike = { name?: unknown; message?: unknown; code?: unknown; status?: unknown; statusCode?: unknown };
+const details = (error: unknown) => { const value = error && typeof error === 'object' ? error as ErrorLike : {}; return { name: String(value.name ?? ''), message: String(value.message ?? (typeof error === 'string' ? error : '')), code: String(value.code ?? ''), status: Number(value.status ?? value.statusCode ?? 0) }; };
+const categoryFor = (error: unknown): ServiceErrorCategory => { const value = details(error); const text = `${value.name} ${value.code} ${value.message}`.toLowerCase();
+  if (value.status === 401 || /jwt|session.*(missing|expired)|not authenticated/.test(text)) return 'authentication';
+  if (value.status === 403 || value.code === '42501' || /row.level security|permission denied/.test(text)) return 'authorization';
+  if (value.status === 409 || value.code === '23505' || /duplicate|unique constraint|idempoten/.test(text)) return 'conflict';
+  if (/network|failed to fetch|timeout|timed out|econn/.test(text)) return 'connectivity';
+  if (value.status >= 500 || /service unavailable|temporarily unavailable/.test(text)) return 'availability';
+  if (/^pgrst(1|2)/i.test(value.code) || /could not find.*(column|relationship)|schema cache/.test(text)) return 'data-contract';
+  if (/validation|required|invalid field|regra local/.test(text)) return 'validation'; return 'unexpected'; };
+const safeDefaults: Record<ServiceErrorCategory, [string, string]> = {
+  validation: ['Revise os dados informados.', 'Corrija os campos indicados e envie novamente.'], authentication: ['Sua sessao expirou.', 'Entre novamente para continuar.'], authorization: ['Voce nao tem permissao para esta acao.', 'Use uma conta permitida ou solicite acesso.'], conflict: ['O registro foi alterado ou ja existe.', 'Recarregue os dados e revise antes de tentar novamente.'], connectivity: ['Sem conexao para concluir a operacao.', 'Verifique a rede e tente novamente com seguranca.'], availability: ['O servico esta temporariamente indisponivel.', 'Tente novamente mais tarde.'], 'data-contract': ['Parte dos dados nao pode ser carregada.', 'Atualize o aplicativo ou procure suporte.'], unexpected: ['Nao foi possivel concluir a operacao.', 'Tente novamente uma vez ou procure suporte.'] };
+export const classifyServiceError = (error: unknown, options: ServiceErrorOptions = {}) => { if (error instanceof ServiceError) return error; const category = categoryFor(error); const [message, nextStep] = safeDefaults[category]; const providerCode = details(error).code; return new ServiceError(category, message, { ...options, cause: error, code: options.code ?? (providerCode || `app.${category}`), nextStep: options.nextStep ?? nextStep }); };
