@@ -8,6 +8,9 @@ export default [
     ignores: [
       'android/**',
       'dist/**',
+      'build/**',
+      'coverage/**',
+      '**/*.min.js',
       'node_modules/**',
       '.expo/**',
       '.expo-export-check/**',

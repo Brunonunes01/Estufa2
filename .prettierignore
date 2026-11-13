@@ -1,8 +1,13 @@
 android
 node_modules
+dist
+build
+coverage
 .expo
 .expo-export-check
 package-lock.json
+yarn.lock
+pnpm-lock.yaml
 APRESENTACAO_AQUISICAO_ESTUFA_PRO.pptx
 support-portal/node_modules
 Telas

@@ -7,6 +7,7 @@ node_modules/
 .expo/
 .expo-export-check/
 dist/
+build/
 web-build/
 expo-env.d.ts
 
@@ -36,6 +37,13 @@ Telas/
 # local env files
 .env
 .env*.local
+.env*
+*.log
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
+.idea/
 
 # typescript
 *.tsbuildinfo
