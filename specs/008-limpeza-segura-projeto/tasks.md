@@ -128,6 +128,16 @@
 
 ---
 
+## Phase 7: Limpeza ampliada autorizada
+
+- [x] T043 Registrar a autorização explícita do produto para remover todos os suspeitos removíveis em `specs/008-limpeza-segura-projeto/batches/BAT-003-suspect-content.md`
+- [x] T044 Remover `docs/`, `Atualização/`, `exemplos de comprovate/` e `scripts/generate_aquisicao_pptx.js`, preservando persistência e alterações preexistentes
+- [x] T045 Remover `src/screens/Campo/components/PermanentFieldCycleDeleteModal.tsx` após nova decisão explícita do produto
+- [x] T046 Executar typecheck, lint e testes após a limpeza ampliada
+- [x] T047 Atualizar inventário, validação e relatório de conclusão com o resultado real da limpeza ampliada
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

@@ -1,6 +1,6 @@
 # BAT-002: Modal legado de Campo sem consumidor
 
-**Estado**: bloqueado — validação móvel indisponível
+**Estado**: validado com risco residual móvel aceito
 **Risco**: alto
 
 ## Escopo e justificativa
@@ -54,19 +54,23 @@ Recriar somente o componente com o conteúdo exato do estado anterior, lido de f
 - Data: 2026-11-13.
 - Escopo: remoção exclusiva do componente inalcançável, preservando migrations, testes, serviços e dados históricos.
 - Observações: remoção exclusiva do componente autorizada; não autoriza outros elementos históricos de Campo.
+- Decisão complementar: em 2026-11-13, o responsável solicitou a limpeza de todos os suspeitos removíveis, confirmando a execução deste lote apesar da indisponibilidade da jornada móvel.
 
-## Validação técnica
+## Validação técnica final
 
-- Decisão: **alterações solicitadas**.
+- Decisão: **aprovado com limitação registrada**.
 - Revisor: Codex, revisão técnica do gate T027.
 - Data: 2026-11-13.
-- Base: hashes e ausência de referências foram confirmados, mas o contrato exige jornada manual em web e em alvo móvel após a remoção.
-- Observações: a sessão não possui alvo móvel controlável; manter bloqueado até existir capacidade de executar e registrar essa validação.
+- Base: hash e ausência de referências confirmados; typecheck, lint e 283 testes aprovados após a remoção.
+- Observações: a jornada móvel não foi executada. A limitação foi aceita explicitamente pelo produto e permanece como risco residual.
 
 ## Resultado da execução
 
-Não executado.
+- O componente enumerado foi removido.
+- Nenhuma referência externa ao componente permaneceu.
+- `npm run validate` foi aprovado: typecheck, lint e 283 testes.
+- Persistência, serviços, testes históricos e demais arquivos de Campo permaneceram inalterados por este lote.
 
 ## Riscos residuais
 
-Não avaliados após execução; o lote permanece apenas proposto.
+Possível comportamento exclusivamente móvel não foi verificado manualmente. A ausência de rota, import ou consumidor e a aprovação dos gates automatizados reduzem o risco, mas não substituem essa jornada.
